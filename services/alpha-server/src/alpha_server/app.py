@@ -1,10 +1,23 @@
 """FastAPI application for alpha-server."""
 
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
+from .registry import registry
 from .routes import router
 
-app = FastAPI(title="alpha-server", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Auto-discover factors on startup
+    registry.auto_discover()
+    yield
+
+
+app = FastAPI(title="alpha-server", version="0.1.0", lifespan=lifespan)
 app.include_router(router)
 
 
