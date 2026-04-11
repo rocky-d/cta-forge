@@ -1,0 +1,1 @@
+"""volatility alpha factor."""

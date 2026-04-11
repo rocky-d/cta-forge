@@ -1,0 +1,48 @@
+services:
+  data-server:
+    build:
+      context: .
+      dockerfile: services/data-server/Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATA_DIR=/app/data
+
+  alpha-server:
+    build:
+      context: .
+      dockerfile: services/alpha-server/Dockerfile
+    ports:
+      - "8002:8002"
+
+  strategy-server:
+    build:
+      context: .
+      dockerfile: services/strategy-server/Dockerfile
+    ports:
+      - "8003:8003"
+
+  engine:
+    build:
+      context: .
+      dockerfile: services/engine/Dockerfile
+    ports:
+      - "8004:8004"
+    depends_on:
+      - data-server
+      - alpha-server
+      - strategy-server
+    environment:
+      - DATA_SERVER_URL=http://data-server:8001
+      - ALPHA_SERVER_URL=http://alpha-server:8002
+      - STRATEGY_SERVER_URL=http://strategy-server:8003
+      - REPORTER_URL=http://reporter:8005
+
+  reporter:
+    build:
+      context: .
+      dockerfile: services/reporter/Dockerfile
+    ports:
+      - "8005:8005"

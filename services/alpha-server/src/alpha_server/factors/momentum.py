@@ -1,0 +1,1 @@
+"""momentum alpha factor."""

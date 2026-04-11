@@ -1,0 +1,1 @@
+"""Alpha factor implementations."""
