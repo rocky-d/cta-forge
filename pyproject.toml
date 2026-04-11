@@ -18,6 +18,7 @@ dev = [
     "strategy-server",
     "engine",
     "reporter",
+    "exchange-server",
 ]
 
 [tool.uv.sources]
@@ -26,6 +27,7 @@ alpha-server = { workspace = true }
 strategy-server = { workspace = true }
 engine = { workspace = true }
 reporter = { workspace = true }
+exchange-server = { workspace = true }
 
 [tool.uv.workspace]
 members = [
@@ -35,6 +37,7 @@ members = [
     "services/strategy-server",
     "services/engine",
     "services/reporter",
+    "services/exchange",
 ]
 
 [tool.ruff]
