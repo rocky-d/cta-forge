@@ -110,6 +110,10 @@ class ExchangeAdapter(Protocol):
         """Cancel all open orders, optionally filtered by symbol."""
         ...
 
+    async def get_open_orders(self, symbol: str | None = None) -> list[dict]:
+        """Get open orders, optionally filtered by symbol."""
+        ...
+
     async def set_leverage(self, symbol: str, leverage: int, cross: bool = True) -> bool:
         """Set leverage for a symbol."""
         ...

@@ -343,6 +343,13 @@ class HyperliquidAdapter:
         logger.info("Cancelled %d/%d orders", cancelled, len(cancels))
         return cancelled
 
+    async def get_open_orders(self, symbol: str | None = None) -> list[dict]:
+        """Get open orders, optionally filtered by symbol."""
+        all_orders = await self._run_sync(self._info.open_orders, self._address)
+        if symbol:
+            all_orders = [o for o in all_orders if o.get("coin") == symbol]
+        return all_orders
+
     async def set_leverage(self, symbol: str, leverage: int, cross: bool = True) -> bool:
         try:
             result = await self._run_sync(

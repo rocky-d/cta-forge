@@ -102,15 +102,21 @@ class LiveEngine:
         self._state = LiveState()
         self._bars_cache: dict[str, pl.DataFrame] = {}
 
+    # ── Minimum equity to start trading ────────────────────────────
+    MIN_EQUITY = 100.0  # USD
+
     async def start(self) -> None:
         """Start the live trading loop."""
-        logger.info("LiveEngine starting: %d symbols, dry_run=%s", len(self._symbols), self._dry_run)
+        logger.info(
+            "LiveEngine starting: %d symbols, dry_run=%s",
+            len(self._symbols),
+            self._dry_run,
+        )
 
-        # Get initial equity
-        account = await self._exchange.get_account_state()
-        self._state.initial_equity = float(account.equity)
-        self._state.peak_equity = self._state.initial_equity
-        logger.info("Initial equity: $%.2f", self._state.initial_equity)
+        # Preflight checks — must pass before trading
+        if not await self._preflight():
+            logger.error("Preflight checks FAILED — aborting")
+            return
 
         self._running = True
 
@@ -126,6 +132,113 @@ class LiveEngine:
                 await asyncio.sleep(60)  # backoff on error
 
         logger.info("LiveEngine stopped")
+
+    async def _preflight(self) -> bool:
+        """Run preflight checks before trading. Returns True if all pass.
+
+        Checks:
+        1. Exchange connectivity (can reach API)
+        2. Account equity (minimum threshold)
+        3. No stale positions (clean slate or adopt existing)
+        4. No stale open orders (cancel or abort)
+        5. Market data available (can fetch at least one symbol)
+        """
+        logger.info("=== Preflight Checks ===")
+        passed = True
+
+        # 1. Exchange connectivity + account state
+        try:
+            account = await self._exchange.get_account_state()
+            logger.info("[✓] Exchange connected")
+        except Exception:
+            logger.exception("[✗] Exchange connectivity FAILED")
+            return False
+
+        # 2. Equity check
+        equity = float(account.equity)
+        if equity < self.MIN_EQUITY:
+            logger.error(
+                "[✗] Insufficient equity: $%.2f < $%.2f minimum",
+                equity,
+                self.MIN_EQUITY,
+            )
+            return False
+        logger.info("[✓] Equity: $%.2f", equity)
+        self._state.initial_equity = equity
+        self._state.peak_equity = equity
+
+        # 3. Stale positions check
+        if account.positions:
+            symbols_with_pos = [p.symbol for p in account.positions]
+            logger.warning(
+                "[!] Found %d existing position(s): %s",
+                len(account.positions),
+                ", ".join(symbols_with_pos),
+            )
+            # In non-dry-run mode, flatten stale positions
+            if not self._dry_run:
+                logger.info("Closing stale positions before starting...")
+                for pos in account.positions:
+                    is_buy = pos.size < 0  # reverse to close
+                    result = await self._exchange.place_market_order(
+                        pos.symbol,
+                        is_buy,
+                        abs(pos.size),
+                        reduce_only=True,
+                    )
+                    if result.success:
+                        logger.info(
+                            "[✓] Closed %s position: %s",
+                            pos.symbol,
+                            result.message,
+                        )
+                    else:
+                        logger.error(
+                            "[✗] Failed to close %s: %s",
+                            pos.symbol,
+                            result.message,
+                        )
+                        passed = False
+            else:
+                logger.info("[DRY RUN] Would close stale positions")
+        else:
+            logger.info("[✓] No existing positions")
+
+        # 4. Stale orders check
+        try:
+            open_orders = await self._exchange.get_open_orders()
+            if open_orders:
+                logger.warning("[!] Found %d stale open order(s)", len(open_orders))
+                if not self._dry_run:
+                    cancelled = await self._exchange.cancel_all_orders()
+                    logger.info("[✓] Cancelled %d stale orders", cancelled)
+                else:
+                    logger.info("[DRY RUN] Would cancel %d stale orders", len(open_orders))
+            else:
+                logger.info("[✓] No open orders")
+        except Exception:
+            logger.exception("[✗] Failed to check open orders")
+            passed = False
+
+        # 5. Market data spot check (fetch one symbol)
+        test_symbol = self._symbols[0] if self._symbols else "BTC"
+        try:
+            snap = await self._exchange.get_market_snapshot(test_symbol)
+            if snap.mid_price > 0:
+                logger.info("[✓] Market data OK (%s: $%s)", test_symbol, snap.mid_price)
+            else:
+                logger.error("[✗] Market data returned zero price for %s", test_symbol)
+                passed = False
+        except Exception:
+            logger.exception("[✗] Market data fetch FAILED for %s", test_symbol)
+            passed = False
+
+        if passed:
+            logger.info("=== Preflight PASSED ===")
+        else:
+            logger.error("=== Preflight FAILED ===")
+
+        return passed
 
     async def stop(self) -> None:
         """Stop the trading loop gracefully."""
