@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn>=0.34.0",
     "polars>=1.0.0",
     "numpy>=2.0.0",
+    "dttb>=0.3.2",
 ]
 
 [tool.uv.sources]

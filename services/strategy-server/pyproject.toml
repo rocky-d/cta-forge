@@ -10,6 +10,7 @@ dependencies = [
     "httpx>=0.28.0",
     "polars>=1.0.0",
     "numpy>=2.0.0",
+    "dttb>=0.3.2",
 ]
 
 [tool.uv.sources]
