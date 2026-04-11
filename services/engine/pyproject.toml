@@ -11,7 +11,9 @@ dependencies = [
     "polars>=1.0.0",
     "numpy>=2.0.0",
     "dttb>=0.3.2",
+    "exchange-server",
 ]
 
 [tool.uv.sources]
 cta-core = { workspace = true }
+exchange-server = { workspace = true, editable = true }
