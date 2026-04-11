@@ -16,7 +16,7 @@ members = [
 [[package]]
 name = "alpha-server"
 version = "0.1.0"
-source = { virtual = "services/alpha-server" }
+source = { editable = "services/alpha-server" }
 dependencies = [
     { name = "cta-core" },
     { name = "fastapi" },
@@ -197,11 +197,16 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "alpha-server" },
+    { name = "data-server" },
+    { name = "engine" },
     { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
+    { name = "reporter" },
     { name = "ruff" },
+    { name = "strategy-server" },
     { name = "ty" },
 ]
 
@@ -209,18 +214,23 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "alpha-server", editable = "services/alpha-server" },
+    { name = "data-server", editable = "services/data-server" },
+    { name = "engine", editable = "services/engine" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "pytest", specifier = ">=9.0.0" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "reporter", editable = "services/reporter" },
     { name = "ruff", specifier = ">=0.15.0" },
+    { name = "strategy-server", editable = "services/strategy-server" },
     { name = "ty", specifier = ">=0.0.22" },
 ]
 
 [[package]]
 name = "data-server"
 version = "0.1.0"
-source = { virtual = "services/data-server" }
+source = { editable = "services/data-server" }
 dependencies = [
     { name = "cta-core" },
     { name = "fastapi" },
@@ -241,7 +251,7 @@ requires-dist = [
 [[package]]
 name = "engine"
 version = "0.1.0"
-source = { virtual = "services/engine" }
+source = { editable = "services/engine" }
 dependencies = [
     { name = "cta-core" },
     { name = "fastapi" },
@@ -580,7 +590,7 @@ wheels = [
 [[package]]
 name = "reporter"
 version = "0.1.0"
-source = { virtual = "services/reporter" }
+source = { editable = "services/reporter" }
 dependencies = [
     { name = "cta-core" },
     { name = "fastapi" },
@@ -639,7 +649,7 @@ wheels = [
 [[package]]
 name = "strategy-server"
 version = "0.1.0"
-source = { virtual = "services/strategy-server" }
+source = { editable = "services/strategy-server" }
 dependencies = [
     { name = "cta-core" },
     { name = "fastapi" },

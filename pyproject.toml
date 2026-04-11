@@ -13,7 +13,19 @@ dev = [
     "ruff>=0.15.0",
     "ty>=0.0.22",
     "httpx>=0.28.0",
+    "data-server",
+    "alpha-server",
+    "strategy-server",
+    "engine",
+    "reporter",
 ]
+
+[tool.uv.sources]
+data-server = { workspace = true }
+alpha-server = { workspace = true }
+strategy-server = { workspace = true }
+engine = { workspace = true }
+reporter = { workspace = true }
 
 [tool.uv.workspace]
 members = [
