@@ -92,9 +92,47 @@ Yearly: 2021 +17.3% | 2022 +6.8% | 2023 +7.5% | 2024 +20.8% | 2025 +5.7% | 2026 
 - Parquet storage: `{data_dir}/{symbol}/{interval}.parquet` (zstd)
 - Signal range: normalized to [-1, +1]
 
+## Phase 4: Live Trading (Hyperliquid Testnet)
+
+Architecture:
+- `services/exchange/` — new microservice (:8006), HL SDK wrapper
+  - `ExchangeAdapter` Protocol interface (structural subtyping)
+  - `HyperliquidAdapter` implementation (safe init, unified account, async executor)
+  - REST routes: /account, /market/{symbol}, /order, /cancel, /leverage
+- `services/engine/live.py` — LiveEngine (v10g strategy, 6h candle-aligned loop)
+- `services/engine/run_live.py` — CLI entry point
+
+Preflight checks (must all pass before trading):
+1. Exchange connectivity
+2. Minimum equity ($100)
+3. Stale positions → auto-flatten
+4. Stale open orders → auto-cancel
+5. Market data spot check
+
+Risk controls:
+- 15% max drawdown → hard stop (flatten all)
+- 8% drawdown → DD breaker (50% position size reduction)
+- ATR trailing stops (4.5x)
+- Max 5 concurrent positions
+- 20% max per-position equity
+
+Testnet wallet: `0xe9bfE8DF9277ACafA19667bA64aD617413D70B71`
+Testnet balance: ~$2009 USDC (unified account, spot = perp collateral)
+
+Ops:
+- Use tmux for long-running engine process
+- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN
+
+Commits:
+- `3616ad2` feat: exchange-server
+- `b71a928` feat: live engine (v10g)
+- `7545cf1` feat: preflight checks
+
 ## Next Steps
 
-- Phase 4: Live trading via Hyperliquid
+- Run engine continuously in tmux (6h rebalance loop)
+- Telegram notifications on trades
+- State persistence (survive restarts)
+- Exchange-server test suite
 - Further parameter stability analysis (Monte Carlo?)
 - Transaction cost sensitivity analysis
-- Slippage modeling
