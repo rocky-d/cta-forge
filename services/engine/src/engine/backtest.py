@@ -70,6 +70,8 @@ class BacktestEngine:
         result.equity_curve.append((timestamps[0], equity))
 
         for t_idx in range(1, len(timestamps)):
+            if t_idx % 100 == 0:
+                logger.info("  step %d/%d", t_idx, len(timestamps))
             # Get bars up to current time for each symbol
             signals: dict[str, float] = {}
             current_bars: dict[str, pl.DataFrame] = {}
