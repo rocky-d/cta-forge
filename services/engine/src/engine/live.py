@@ -23,6 +23,49 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+# ── Notification protocol ────────────────────────────────────────
+
+
+class _Notifier:
+    """Protocol-ish base for trade notifications."""
+
+    async def send(self, message: str) -> None:
+        """Send a notification message."""
+
+
+class _NullNotifier(_Notifier):
+    """No-op notifier for when notifications aren't configured."""
+
+    async def send(self, message: str) -> None:
+        pass
+
+
+class TelegramNotifier(_Notifier):
+    """Send notifications via Telegram Bot API."""
+
+    def __init__(self, bot_token: str, chat_id: str) -> None:
+        self._bot_token = bot_token
+        self._chat_id = chat_id
+
+    async def send(self, message: str) -> None:
+        import httpx
+
+        url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    url,
+                    json={
+                        "chat_id": self._chat_id,
+                        "text": message,
+                        "parse_mode": "Markdown",
+                    },
+                )
+        except Exception as e:
+            logger.warning("Telegram notification failed: %s", e)
+
+
 # ── v10g strategy parameters (from backtest champion) ────────────
 
 SYMBOLS = [
@@ -94,6 +137,8 @@ class LiveEngine:
         *,
         symbols: list[str] | None = None,
         dry_run: bool = False,
+        state_file: str = "engine-state.json",
+        notify: _Notifier | None = None,
     ) -> None:
         self._exchange = exchange
         self._symbols = symbols or SYMBOLS
@@ -101,6 +146,8 @@ class LiveEngine:
         self._running = False
         self._state = LiveState()
         self._bars_cache: dict[str, pl.DataFrame] = {}
+        self._state_file = state_file
+        self._notify = notify or _NullNotifier()
 
     # ── Minimum equity to start trading ────────────────────────────
     MIN_EQUITY = 100.0  # USD
@@ -118,17 +165,53 @@ class LiveEngine:
             logger.error("Preflight checks FAILED — aborting")
             return
 
+        # Try to restore state from disk
+        from .state import load_state, save_state
+
+        restored = load_state(self._state_file)
+        if restored:
+            # Validate restored positions against exchange
+            account = await self._exchange.get_account_state()
+            exchange_syms = {p.symbol for p in account.positions}
+            restored_syms = set(restored.positions.keys())
+
+            # Only keep positions that still exist on exchange
+            stale = restored_syms - exchange_syms
+            if stale:
+                logger.warning("Dropping stale restored positions: %s", stale)
+                for sym in stale:
+                    del restored.positions[sym]
+
+            self._state = restored
+            # Update equity from exchange (ground truth)
+            self._state.peak_equity = max(self._state.peak_equity, float(account.equity))
+            logger.info(
+                "Restored state: bar #%d, %d positions, peak $%.2f",
+                self._state.bar_count,
+                len(self._state.positions),
+                self._state.peak_equity,
+            )
+            await self._notify.send(
+                f"🔄 Engine restarted — restored {len(self._state.positions)} positions, bar #{self._state.bar_count}"
+            )
+        else:
+            await self._notify.send("🚀 Engine started — no prior state, starting fresh")
+
         self._running = True
 
         while self._running:
             try:
                 await self._wait_for_candle_close()
                 await self._tick()
+                # Persist state after each tick
+                save_state(self._state, self._state_file)
             except asyncio.CancelledError:
                 logger.info("LiveEngine cancelled")
+                save_state(self._state, self._state_file)
                 break
             except Exception:
                 logger.exception("LiveEngine tick error")
+                save_state(self._state, self._state_file)
                 await asyncio.sleep(60)  # backoff on error
 
         logger.info("LiveEngine stopped")
@@ -309,6 +392,14 @@ class LiveEngine:
         # 5. Rebalance (only every N bars)
         if self._state.bar_count % REBALANCE_EVERY == 0 or self._state.bar_count == 1:
             await self._rebalance(signals, equity)
+
+        # 6. Tick summary notification
+        pos_summary = ", ".join(f"{s} {p.side[0].upper()}" for s, p in self._state.positions.items()) or "flat"
+        await self._notify.send(
+            f"⏰ Tick #{self._state.bar_count} | ${equity:.0f} | "
+            f"DD {drawdown_pct:.1f}% | {len(signals)} signals | "
+            f"pos: {pos_summary}"
+        )
 
     # ── Data fetching ────────────────────────────────────────────
 
@@ -560,6 +651,10 @@ class LiveEngine:
             trailing_stop=stop,
         )
         logger.info("Position opened: %s %s @ %.2f, stop=%.2f", side.upper(), symbol, current_price, stop)
+        await self._notify.send(
+            f"📈 OPEN {side.upper()} {symbol} | size=${size_usd:.0f} | "
+            f"entry={current_price:.2f} | stop={stop:.2f} | signal={signal:.2f}"
+        )
 
     async def _close_position(self, symbol: str) -> None:
         """Close an existing position."""
@@ -578,10 +673,12 @@ class LiveEngine:
 
         del self._state.positions[symbol]
         logger.info("Position closed: %s %s", pos.side.upper(), symbol)
+        await self._notify.send(f"📉 CLOSE {pos.side.upper()} {symbol} | held={pos.bars_held} bars")
 
     async def _flatten_all(self) -> None:
         """Emergency: close all positions."""
         logger.warning("FLATTENING ALL POSITIONS")
+        await self._notify.send("🚨 MAX DRAWDOWN — FLATTENING ALL POSITIONS")
         symbols = list(self._state.positions.keys())
         for symbol in symbols:
             await self._close_position(symbol)

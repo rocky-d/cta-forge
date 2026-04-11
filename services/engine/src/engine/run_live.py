@@ -24,13 +24,24 @@ def main() -> None:
 
     testnet = os.environ.get("HL_NETWORK", "testnet") == "testnet"
     dry_run = os.environ.get("DRY_RUN", "false").lower() in ("true", "1", "yes")
+    state_file = os.environ.get("STATE_FILE", "engine-state.json")
 
     from exchange_server.hyperliquid import HyperliquidAdapter
 
-    from .live import LiveEngine
+    from .live import LiveEngine, TelegramNotifier, _NullNotifier
+
+    # Setup Telegram notifications if configured
+    tg_token = os.environ.get("TG_BOT_TOKEN", "")
+    tg_chat = os.environ.get("TG_CHAT_ID", "")
+    notifier = TelegramNotifier(tg_token, tg_chat) if tg_token and tg_chat else _NullNotifier()
 
     adapter = HyperliquidAdapter(pk, addr, testnet=testnet)
-    engine = LiveEngine(adapter, dry_run=dry_run)
+    engine = LiveEngine(
+        adapter,
+        dry_run=dry_run,
+        state_file=state_file,
+        notify=notifier,
+    )
 
     async def run() -> None:
         try:
