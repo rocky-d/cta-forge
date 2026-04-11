@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import datetime
 
     import polars as pl
@@ -39,9 +40,9 @@ class BacktestEngine:
     def run(
         self,
         bars: dict[str, pl.DataFrame],
-        compute_signals: callable,
-        allocate: callable,
-        check_risk: callable | None = None,
+        compute_signals: Callable[..., Any],
+        allocate: Callable[..., Any],
+        check_risk: Callable[..., Any] | None = None,
     ) -> BacktestResult:
         """Run backtest over historical bars.
 

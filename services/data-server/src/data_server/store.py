@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import polars as pl
 from cta_core.constants import PARQUET_COMPRESSION
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +82,9 @@ class ParquetStore:
             return None
 
         ts = df["open_time"].max()
-        return ts  # type: ignore[return-value]
+        if not isinstance(ts, datetime):
+            return None
+        return ts
 
     def symbols(self) -> list[str]:
         """List all symbols that have data stored."""

@@ -38,8 +38,9 @@ async def factor_config(name: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Factor '{name}' not found")
     # Return dataclass fields as config
     config = {}
-    if hasattr(factor, "__dataclass_fields__"):
-        for field_name in factor.__dataclass_fields__:
+    dc_fields = getattr(factor, "__dataclass_fields__", None)
+    if dc_fields is not None:
+        for field_name in dc_fields:
             config[field_name] = getattr(factor, field_name)
     return {"name": factor.name, "config": config}
 

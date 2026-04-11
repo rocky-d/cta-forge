@@ -40,6 +40,17 @@ members = [
 [tool.ruff]
 target-version = "py312"
 line-length = 120
+extend-exclude = ["scripts/"]
+
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.src]
+exclude = ["scripts/"]
+
+[tool.ty.rules]
+invalid-argument-type = "warn"
+unresolved-attribute = "warn"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH", "RUF"]

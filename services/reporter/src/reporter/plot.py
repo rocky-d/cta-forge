@@ -39,8 +39,8 @@ def plot_equity_curve(
     equities = [e[1] for e in equity_curve]
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.plot(timestamps, equities, linewidth=1.5, color="#2ecc71")
-    ax.fill_between(timestamps, equities, alpha=0.2, color="#2ecc71")
+    ax.plot(timestamps, equities, linewidth=1.5, color="#2ecc71")  # type: ignore[arg-type]
+    ax.fill_between(timestamps, equities, alpha=0.2, color="#2ecc71")  # type: ignore[arg-type]
 
     ax.set_title(title, fontsize=14, fontweight="bold")
     ax.set_xlabel("Date")
@@ -83,8 +83,8 @@ def plot_drawdown(equity_curve: list[tuple[datetime, float]]) -> bytes:
     drawdowns = (running_max - equities) / running_max * 100
 
     fig, ax = plt.subplots(figsize=(12, 4))
-    ax.fill_between(timestamps, 0, -drawdowns, color="#e74c3c", alpha=0.6)
-    ax.plot(timestamps, -drawdowns, color="#c0392b", linewidth=1)
+    ax.fill_between(timestamps, 0, -drawdowns, color="#e74c3c", alpha=0.6)  # type: ignore[arg-type]
+    ax.plot(timestamps, -drawdowns, color="#c0392b", linewidth=1)  # type: ignore[arg-type]
 
     ax.set_title("Drawdown", fontsize=14, fontweight="bold")
     ax.set_xlabel("Date")

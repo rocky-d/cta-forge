@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
@@ -10,7 +12,7 @@ from .loop import EngineConfig, EngineMode, TradingLoop
 router = APIRouter()
 
 # Global state
-_engine_state = {
+_engine_state: dict[str, Any] = {
     "status": "idle",
     "last_result": None,
 }

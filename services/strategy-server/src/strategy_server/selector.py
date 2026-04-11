@@ -39,7 +39,7 @@ def select_assets(
         # Average volume filter
         if min_volume > 0 and "volume" in recent.columns:
             avg_vol = recent["volume"].mean()
-            if avg_vol < min_volume:
+            if avg_vol is not None and float(avg_vol) < min_volume:
                 continue
 
         # Calculate Sharpe on log returns
