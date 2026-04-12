@@ -22,28 +22,28 @@ jobs:
         run: uv sync --all-packages
 
       - name: Run tests
-        run: uv run pytest --cov
+        run: uv run pytest
 
-  # coverage:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #
-  #     - name: Install uv
-  #       uses: astral-sh/setup-uv@v4
-  #       with:
-  #         python-version: "3.12"
-  #
-  #     - name: Install dependencies
-  #       run: uv sync --all-packages
-  #
-  #     - name: Run tests with coverage
-  #       run: |
-  #         uv run pytest --cov --cov-report=xml
-  #
-  #     - name: Upload coverage to Codecov
-  #       uses: codecov/codecov-action@v5
-  #       with:
-  #         token: ${{ secrets.CODECOV_TOKEN }}
-  #         files: ./coverage.xml
-  #         flags: unittests
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --all-packages
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest --cov --cov-branch --cov-report=term --cov-report=xml
+
+      # - name: Upload coverage to Codecov
+      #   uses: codecov/codecov-action@v5
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     files: ./coverage.xml
+      #     flags: unittests
