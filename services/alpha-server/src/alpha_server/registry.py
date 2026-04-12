@@ -37,7 +37,9 @@ class FactorRegistry:
     def auto_discover(self) -> None:
         """Scan the factors/ package and register all classes with a `name` property and `compute` method."""
         for _importer, modname, _ispkg in pkgutil.iter_modules(_factors_pkg.__path__):
-            module = importlib.import_module(f".factors.{modname}", package="alpha_server")
+            module = importlib.import_module(
+                f".factors.{modname}", package="alpha_server"
+            )
             for attr_name in dir(module):
                 obj = getattr(module, attr_name)
                 if (
@@ -50,7 +52,9 @@ class FactorRegistry:
                         instance = obj()
                         self.register(instance)
                     except Exception:
-                        logger.exception("Failed to instantiate factor %s.%s", modname, attr_name)
+                        logger.exception(
+                            "Failed to instantiate factor %s.%s", modname, attr_name
+                        )
 
 
 # Global registry

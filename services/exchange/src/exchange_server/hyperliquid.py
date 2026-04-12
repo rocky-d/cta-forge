@@ -51,7 +51,9 @@ def _safe_init_info(api_url: str, *, skip_ws: bool = True) -> Info:
     max_idx = len(spot_meta.get("tokens", [])) - 1
     if max_idx >= 0:
         spot_meta["universe"] = [
-            u for u in spot_meta.get("universe", []) if u["tokens"][0] <= max_idx and u["tokens"][1] <= max_idx
+            u
+            for u in spot_meta.get("universe", [])
+            if u["tokens"][0] <= max_idx and u["tokens"][1] <= max_idx
         ]
     meta = api.post("/info", {"type": "meta"})
     return Info(api_url, skip_ws=skip_ws, meta=meta, spot_meta=spot_meta)
@@ -71,7 +73,9 @@ class HyperliquidAdapter:
         testnet: bool = True,
     ) -> None:
         self._testnet = testnet
-        self._api_url = constants.TESTNET_API_URL if testnet else constants.MAINNET_API_URL
+        self._api_url = (
+            constants.TESTNET_API_URL if testnet else constants.MAINNET_API_URL
+        )
         self._address = account_address
 
         wallet = eth_account.Account.from_key(private_key)
@@ -110,7 +114,9 @@ class HyperliquidAdapter:
 
     # ── helpers ──────────────────────────────────────────────────────
 
-    async def _run_sync(self, func: Any, *args: Any, timeout: float = SDK_TIMEOUT) -> Any:
+    async def _run_sync(
+        self, func: Any, *args: Any, timeout: float = SDK_TIMEOUT
+    ) -> Any:
         """Run sync SDK call in executor with timeout."""
         loop = asyncio.get_event_loop()
         async with asyncio.timeout(timeout):
@@ -192,7 +198,9 @@ class HyperliquidAdapter:
 
         return AccountState(
             equity=equity,
-            available_balance=Decimal(str(margin.get("totalRawUsd", "0"))) if equity > 0 else equity,
+            available_balance=Decimal(str(margin.get("totalRawUsd", "0")))
+            if equity > 0
+            else equity,
             total_margin_used=Decimal(str(margin.get("totalMarginUsed", "0"))),
             positions=positions,
         )
@@ -257,7 +265,11 @@ class HyperliquidAdapter:
 
         # IOC at 0.5% slippage
         snapshot = await self.get_market_snapshot(symbol)
-        px = float(snapshot.best_ask * Decimal("1.005")) if is_buy else float(snapshot.best_bid * Decimal("0.995"))
+        px = (
+            float(snapshot.best_ask * Decimal("1.005"))
+            if is_buy
+            else float(snapshot.best_bid * Decimal("0.995"))
+        )
         px_str = self._format_price(Decimal(str(px)))
 
         try:
@@ -273,7 +285,13 @@ class HyperliquidAdapter:
                 )
             return self._parse_order_result(result, symbol, is_buy, sz)
         except Exception as e:
-            logger.error("Market order failed: %s %s %s — %s", symbol, "BUY" if is_buy else "SELL", sz, e)
+            logger.error(
+                "Market order failed: %s %s %s — %s",
+                symbol,
+                "BUY" if is_buy else "SELL",
+                sz,
+                e,
+            )
             return OrderResult(order_id="", success=False, message=str(e))
 
     async def place_limit_order(
@@ -305,7 +323,14 @@ class HyperliquidAdapter:
                 )
             return self._parse_order_result(result, symbol, is_buy, sz)
         except Exception as e:
-            logger.error("Limit order failed: %s %s %s@%s — %s", symbol, "BUY" if is_buy else "SELL", sz, px_str, e)
+            logger.error(
+                "Limit order failed: %s %s %s@%s — %s",
+                symbol,
+                "BUY" if is_buy else "SELL",
+                sz,
+                px_str,
+                e,
+            )
             return OrderResult(order_id="", success=False, message=str(e))
 
     async def cancel_order(self, symbol: str, order_id: str) -> bool:
@@ -342,7 +367,9 @@ class HyperliquidAdapter:
                 async with self._order_lock:
                     result = await self._run_sync(self._exchange.bulk_cancel, batch)
                 if result.get("status") == "ok":
-                    statuses = result.get("response", {}).get("data", {}).get("statuses", [])
+                    statuses = (
+                        result.get("response", {}).get("data", {}).get("statuses", [])
+                    )
                     cancelled += sum(1 for s in statuses if s == "success")
             except Exception as e:
                 logger.error("Bulk cancel error: %s", e)
@@ -357,7 +384,9 @@ class HyperliquidAdapter:
             all_orders = [o for o in all_orders if o.get("coin") == symbol]
         return all_orders
 
-    async def set_leverage(self, symbol: str, leverage: int, cross: bool = True) -> bool:
+    async def set_leverage(
+        self, symbol: str, leverage: int, cross: bool = True
+    ) -> bool:
         try:
             result = await self._run_sync(
                 self._exchange.update_leverage,
@@ -366,7 +395,13 @@ class HyperliquidAdapter:
                 cross,
             )
             ok = result.get("status") == "ok"
-            logger.info("Set leverage %s %dx %s: %s", symbol, leverage, "cross" if cross else "isolated", ok)
+            logger.info(
+                "Set leverage %s %dx %s: %s",
+                symbol,
+                leverage,
+                "cross" if cross else "isolated",
+                ok,
+            )
             return ok
         except Exception as e:
             logger.error("Set leverage failed %s: %s", symbol, e)
@@ -407,13 +442,21 @@ class HyperliquidAdapter:
                 st = statuses[0]
                 if "resting" in st:
                     oid = str(st["resting"]["oid"])
-                    logger.info("Order resting: %s %s %s → %s", side_str, sz, symbol, oid)
+                    logger.info(
+                        "Order resting: %s %s %s → %s", side_str, sz, symbol, oid
+                    )
                     return OrderResult(order_id=oid, success=True, message="resting")
                 if "filled" in st:
                     oid = str(st["filled"]["oid"])
                     avg_px = float(st["filled"].get("avgPx", "0"))
                     total_sz = float(st["filled"].get("totalSz", "0"))
-                    logger.info("Order filled: %s %s %s @ %s", side_str, total_sz, symbol, avg_px)
+                    logger.info(
+                        "Order filled: %s %s %s @ %s",
+                        side_str,
+                        total_sz,
+                        symbol,
+                        avg_px,
+                    )
                     return OrderResult(
                         order_id=oid,
                         success=True,

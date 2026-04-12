@@ -16,7 +16,9 @@ def _make_curve(n: int = 100, trend: float = 0.001) -> list[tuple[datetime, floa
     equity = 10000.0
     for i in range(n):
         equity = equity * (1 + trend + np.random.normal(0, 0.01))
-        curve.append((datetime(2024, 1, 1, tzinfo=UTC) + timedelta(hours=i * 6), equity))
+        curve.append(
+            (datetime(2024, 1, 1, tzinfo=UTC) + timedelta(hours=i * 6), equity)
+        )
     return curve
 
 

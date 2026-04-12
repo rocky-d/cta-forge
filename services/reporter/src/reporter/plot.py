@@ -118,7 +118,13 @@ def plot_returns_distribution(trades: list[dict]) -> bytes:
     else:
         ax.hist(pnls, bins=50, color="#3498db", alpha=0.7, edgecolor="white")
         ax.axvline(x=0, color="#e74c3c", linestyle="--", linewidth=2)
-        ax.axvline(x=np.mean(pnls), color="#2ecc71", linestyle="-", linewidth=2, label=f"Mean: ${np.mean(pnls):.2f}")
+        ax.axvline(
+            x=np.mean(pnls),
+            color="#2ecc71",
+            linestyle="-",
+            linewidth=2,
+            label=f"Mean: ${np.mean(pnls):.2f}",
+        )
         ax.set_title("Trade P&L Distribution", fontsize=14, fontweight="bold")
         ax.set_xlabel("P&L ($)")
         ax.set_ylabel("Frequency")

@@ -63,7 +63,9 @@ async def select(req: SelectRequest) -> dict:
 
 @router.post("/allocate")
 async def allocate(req: AllocateRequest) -> dict:
-    positions = allocate_positions(req.signals, req.equity, req.long_ratio, req.short_ratio, req.max_position_pct)
+    positions = allocate_positions(
+        req.signals, req.equity, req.long_ratio, req.short_ratio, req.max_position_pct
+    )
     return {"positions": positions}
 
 
@@ -73,14 +75,18 @@ async def check_risk(req: RiskCheckRequest) -> dict:
 
     bars = {s: pl.DataFrame(b) for s, b in req.bars.items()}
     adjusted = apply_trailing_stops(req.positions, bars, req.entry_prices, req.atr_mult)
-    stopped = [s for s in req.positions if req.positions[s] != 0 and adjusted.get(s, 0) == 0]
+    stopped = [
+        s for s in req.positions if req.positions[s] != 0 and adjusted.get(s, 0) == 0
+    ]
     return {"positions": adjusted, "stopped_out": stopped}
 
 
 @router.post("/check-drawdown")
 async def drawdown_check(req: DrawdownCheckRequest) -> dict:
     ok = check_drawdown(req.equity, req.peak_equity, req.max_drawdown)
-    dd = (req.peak_equity - req.equity) / req.peak_equity if req.peak_equity > 0 else 0.0
+    dd = (
+        (req.peak_equity - req.equity) / req.peak_equity if req.peak_equity > 0 else 0.0
+    )
     return {"within_limits": ok, "current_drawdown": dd}
 
 

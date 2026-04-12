@@ -60,7 +60,11 @@ def calculate_metrics(
 
     # Sortino ratio (downside deviation)
     downside_returns = returns[returns < 0]
-    downside_std = downside_returns.std() * np.sqrt(periods_per_year) if len(downside_returns) > 1 else 0.0
+    downside_std = (
+        downside_returns.std() * np.sqrt(periods_per_year)
+        if len(downside_returns) > 1
+        else 0.0
+    )
     sortino = excess_return / downside_std if downside_std > 1e-10 else 0.0
 
     # Max drawdown
@@ -82,7 +86,13 @@ def calculate_metrics(
 
     gross_profit = sum(wins) if wins else 0.0
     gross_loss = abs(sum(losses)) if losses else 0.0
-    profit_factor = gross_profit / gross_loss if gross_loss > 1e-10 else float("inf") if gross_profit > 0 else 0.0
+    profit_factor = (
+        gross_profit / gross_loss
+        if gross_loss > 1e-10
+        else float("inf")
+        if gross_profit > 0
+        else 0.0
+    )
 
     return PerformanceMetrics(
         total_return=float(total_return),

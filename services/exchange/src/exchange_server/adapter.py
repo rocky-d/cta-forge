@@ -114,7 +114,9 @@ class ExchangeAdapter(Protocol):
         """Get open orders, optionally filtered by symbol."""
         ...
 
-    async def set_leverage(self, symbol: str, leverage: int, cross: bool = True) -> bool:
+    async def set_leverage(
+        self, symbol: str, leverage: int, cross: bool = True
+    ) -> bool:
         """Set leverage for a symbol."""
         ...
 

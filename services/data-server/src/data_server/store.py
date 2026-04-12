@@ -65,7 +65,9 @@ class ParquetStore:
 
         if path.exists():
             existing = pl.read_parquet(path)
-            df = pl.concat([existing, df]).unique(subset=["open_time"]).sort("open_time")
+            df = (
+                pl.concat([existing, df]).unique(subset=["open_time"]).sort("open_time")
+            )
 
         df.write_parquet(path, compression=PARQUET_COMPRESSION)
         logger.info("Wrote %d bars for %s/%s", len(df), symbol, interval)
@@ -96,11 +98,23 @@ class ParquetStore:
         """Get data coverage info for a symbol/interval."""
         path = self._path(symbol, interval)
         if not path.exists():
-            return {"symbol": symbol, "interval": interval, "bars": 0, "start": None, "end": None}
+            return {
+                "symbol": symbol,
+                "interval": interval,
+                "bars": 0,
+                "start": None,
+                "end": None,
+            }
 
         df = pl.read_parquet(path, columns=["open_time"])
         if df.is_empty():
-            return {"symbol": symbol, "interval": interval, "bars": 0, "start": None, "end": None}
+            return {
+                "symbol": symbol,
+                "interval": interval,
+                "bars": 0,
+                "start": None,
+                "end": None,
+            }
 
         return {
             "symbol": symbol,

@@ -45,7 +45,9 @@ async def fetch_symbols(client: httpx.AsyncClient) -> list[str]:
     symbols = [
         s["symbol"]
         for s in data["symbols"]
-        if s["contractType"] == "PERPETUAL" and s["quoteAsset"] == "USDT" and s["status"] == "TRADING"
+        if s["contractType"] == "PERPETUAL"
+        and s["quoteAsset"] == "USDT"
+        and s["status"] == "TRADING"
     ]
     logger.info("Fetched %d active USDT perpetual symbols", len(symbols))
     return sorted(symbols)

@@ -50,7 +50,9 @@ class MockExchangeAdapter:
         self, symbol: str, is_buy: bool, size: Decimal, *, reduce_only: bool = False
     ) -> OrderResult:
         self.orders.append({"symbol": symbol, "is_buy": is_buy, "size": size})
-        return OrderResult(order_id="mock-123", success=True, message="filled", avg_price=73000.0)
+        return OrderResult(
+            order_id="mock-123", success=True, message="filled", avg_price=73000.0
+        )
 
     async def place_limit_order(
         self,
@@ -62,7 +64,9 @@ class MockExchangeAdapter:
         reduce_only: bool = False,
         post_only: bool = False,
     ) -> OrderResult:
-        self.orders.append({"symbol": symbol, "is_buy": is_buy, "size": size, "price": price})
+        self.orders.append(
+            {"symbol": symbol, "is_buy": is_buy, "size": size, "price": price}
+        )
         return OrderResult(order_id="mock-456", success=True, message="resting")
 
     async def cancel_order(self, symbol: str, order_id: str) -> bool:
@@ -74,7 +78,9 @@ class MockExchangeAdapter:
     async def get_open_orders(self, symbol: str | None = None) -> list[dict]:
         return []
 
-    async def set_leverage(self, symbol: str, leverage: int, cross: bool = True) -> bool:
+    async def set_leverage(
+        self, symbol: str, leverage: int, cross: bool = True
+    ) -> bool:
         return True
 
     async def transfer_to_perp(self, amount: Decimal) -> bool:

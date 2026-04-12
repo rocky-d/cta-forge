@@ -60,7 +60,9 @@ async def compute(req: ComputeRequest) -> dict:
         signal_df = factor.compute(bars_df)
         # Serialize: convert datetime to string for JSON
         if not signal_df.is_empty() and "open_time" in signal_df.columns:
-            signal_df = signal_df.with_columns(pl.col("open_time").cast(pl.String).alias("open_time"))
+            signal_df = signal_df.with_columns(
+                pl.col("open_time").cast(pl.String).alias("open_time")
+            )
         results[fname] = signal_df.to_dicts()
 
     return {"symbol": req.symbol, "signals": results}
@@ -79,10 +81,14 @@ async def compute_batch(req: BatchComputeRequest) -> dict:
         for fname in factor_names:
             factor = registry.get(fname)
             if factor is None:
-                raise HTTPException(status_code=404, detail=f"Factor '{fname}' not found")
+                raise HTTPException(
+                    status_code=404, detail=f"Factor '{fname}' not found"
+                )
             signal_df = factor.compute(bars_df)
             if not signal_df.is_empty() and "open_time" in signal_df.columns:
-                signal_df = signal_df.with_columns(pl.col("open_time").cast(pl.String).alias("open_time"))
+                signal_df = signal_df.with_columns(
+                    pl.col("open_time").cast(pl.String).alias("open_time")
+                )
             symbol_signals[fname] = signal_df.to_dicts()
 
         results[symbol] = symbol_signals

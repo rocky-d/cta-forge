@@ -82,11 +82,16 @@ async def sync_data(
     if symbols is None:
         symbols = store.symbols()
         if not symbols:
-            return {"synced": 0, "message": "No symbols to sync. Provide a symbol list."}
+            return {
+                "synced": 0,
+                "message": "No symbols to sync. Provide a symbol list.",
+            }
 
     start_ms = None
     if start:
-        start_ms = int(datetime.fromisoformat(start).replace(tzinfo=UTC).timestamp() * 1000)
+        start_ms = int(
+            datetime.fromisoformat(start).replace(tzinfo=UTC).timestamp() * 1000
+        )
 
     results = {}
     async with httpx.AsyncClient(timeout=30) as client:

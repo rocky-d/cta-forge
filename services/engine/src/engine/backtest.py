@@ -96,7 +96,9 @@ class BacktestEngine:
             unrealized_pnl = 0.0
             for symbol, notional in positions.items():
                 if symbol in prices and symbol in entry_prices:
-                    price_change = (prices[symbol] - entry_prices[symbol]) / entry_prices[symbol]
+                    price_change = (
+                        prices[symbol] - entry_prices[symbol]
+                    ) / entry_prices[symbol]
                     unrealized_pnl += notional * price_change
 
             equity = self.initial_equity + unrealized_pnl
@@ -120,9 +122,15 @@ class BacktestEngine:
                     commission = abs(diff) * self.commission_rate
                     equity -= commission
 
-                    if symbol in positions and abs(current) > 1e-6 and symbol in entry_prices:
+                    if (
+                        symbol in positions
+                        and abs(current) > 1e-6
+                        and symbol in entry_prices
+                    ):
                         # Closing/reducing position → realize P&L
-                        price_change = (prices[symbol] - entry_prices[symbol]) / entry_prices[symbol]
+                        price_change = (
+                            prices[symbol] - entry_prices[symbol]
+                        ) / entry_prices[symbol]
                         pnl = current * price_change - commission
                         result.trades.append(
                             {
@@ -151,7 +159,11 @@ class BacktestEngine:
         result.final_equity = equity
         result.peak_equity = peak
         result.total_return = (equity - self.initial_equity) / self.initial_equity
-        result.max_drawdown = max((p - e) / p if p > 0 else 0.0 for _, e in result.equity_curve for p in [peak])
+        result.max_drawdown = max(
+            (p - e) / p if p > 0 else 0.0
+            for _, e in result.equity_curve
+            for p in [peak]
+        )
 
         # Recalculate max drawdown properly
         running_peak = 0.0

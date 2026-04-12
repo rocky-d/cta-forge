@@ -33,7 +33,9 @@ def main() -> None:
     # Setup Telegram notifications if configured
     tg_token = os.environ.get("TG_BOT_TOKEN", "")
     tg_chat = os.environ.get("TG_CHAT_ID", "")
-    notifier = TelegramNotifier(tg_token, tg_chat) if tg_token and tg_chat else _NullNotifier()
+    notifier = (
+        TelegramNotifier(tg_token, tg_chat) if tg_token and tg_chat else _NullNotifier()
+    )
 
     adapter = HyperliquidAdapter(pk, addr, testnet=testnet)
     engine = LiveEngine(

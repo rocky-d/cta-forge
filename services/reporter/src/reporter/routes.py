@@ -36,7 +36,9 @@ def _parse_curve(curve: list[tuple[str, float]]) -> list[tuple[datetime, float]]
 async def generate_report(req: ReportRequest) -> dict:
     """Generate performance report from backtest results."""
     curve = _parse_curve(req.equity_curve)
-    metrics = calculate_metrics(curve, req.trades, req.risk_free_rate, req.periods_per_year)
+    metrics = calculate_metrics(
+        curve, req.trades, req.risk_free_rate, req.periods_per_year
+    )
     return {
         "metrics": {
             "total_return": f"{metrics.total_return * 100:.2f}%",

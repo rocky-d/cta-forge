@@ -44,7 +44,9 @@ class TestBacktestEngine:
 
     def test_empty_bars(self):
         engine = BacktestEngine()
-        result = engine.run(bars={}, compute_signals=lambda s, b: 0, allocate=lambda s, e: {})
+        result = engine.run(
+            bars={}, compute_signals=lambda s, b: 0, allocate=lambda s, e: {}
+        )
         assert result.final_equity == 0.0
 
     def test_commission_applied(self):

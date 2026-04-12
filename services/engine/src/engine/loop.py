@@ -29,7 +29,9 @@ class EngineConfig:
     symbols: list[str] = field(default_factory=list)
     timeframe: str = "6h"
     factors: list[str] = field(default_factory=lambda: ["tsmom_30", "breakout_15"])
-    factor_weights: dict[str, float] = field(default_factory=lambda: {"tsmom_30": 2.0, "breakout_15": 1.0})
+    factor_weights: dict[str, float] = field(
+        default_factory=lambda: {"tsmom_30": 2.0, "breakout_15": 1.0}
+    )
     initial_equity: float = 10000.0
     data_server_url: str = DATA_SERVER_URL
     alpha_server_url: str = ALPHA_SERVER_URL
@@ -111,12 +113,19 @@ class TradingLoop:
                 signals["breakout_15"] = float(result["signal"][-1])
 
         # Compose
-        total_weight = sum(abs(self.config.factor_weights.get(f, 1.0)) for f in signals) or 1.0
-        composite = sum(signals[f] * self.config.factor_weights.get(f, 1.0) for f in signals) / total_weight
+        total_weight = (
+            sum(abs(self.config.factor_weights.get(f, 1.0)) for f in signals) or 1.0
+        )
+        composite = (
+            sum(signals[f] * self.config.factor_weights.get(f, 1.0) for f in signals)
+            / total_weight
+        )
 
         return float(max(-1.0, min(1.0, composite)))
 
-    def _allocate_sync(self, signals: dict[str, float], equity: float) -> dict[str, float]:
+    def _allocate_sync(
+        self, signals: dict[str, float], equity: float
+    ) -> dict[str, float]:
         """Allocate positions (sync wrapper for backtest)."""
         from strategy_server.allocator import allocate_positions
 

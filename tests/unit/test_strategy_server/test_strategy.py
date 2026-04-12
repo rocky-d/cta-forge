@@ -93,7 +93,13 @@ class TestAllocator:
 
     def test_asymmetric_allocation(self):
         signals = {"A": 0.5, "B": 0.5, "C": -0.5, "D": -0.5}
-        result = allocate_positions(signals, equity=10000.0, long_ratio=0.7, short_ratio=0.3, max_position_pct=0.5)
+        result = allocate_positions(
+            signals,
+            equity=10000.0,
+            long_ratio=0.7,
+            short_ratio=0.3,
+            max_position_pct=0.5,
+        )
         total_long = sum(v for v in result.values() if v > 0)
         total_short = abs(sum(v for v in result.values() if v < 0))
         assert total_long > total_short  # 70/30 split
@@ -113,14 +119,18 @@ class TestRisk:
         # Entry well above current → stop will trigger
         positions = {"BTCUSDT": 1000.0}
         entry_prices = {"BTCUSDT": last_price + atr * 5}
-        result = apply_trailing_stops(positions, {"BTCUSDT": bars}, entry_prices, atr_mult=2.0)
+        result = apply_trailing_stops(
+            positions, {"BTCUSDT": bars}, entry_prices, atr_mult=2.0
+        )
         assert result["BTCUSDT"] == 0.0  # stopped out
 
     def test_drawdown_within_limits(self):
         assert check_drawdown(equity=9500, peak_equity=10000, max_drawdown=0.15) is True
 
     def test_drawdown_exceeded(self):
-        assert check_drawdown(equity=8000, peak_equity=10000, max_drawdown=0.15) is False
+        assert (
+            check_drawdown(equity=8000, peak_equity=10000, max_drawdown=0.15) is False
+        )
 
 
 class TestRoutes:

@@ -15,7 +15,9 @@ from strategy_server.allocator import allocate_positions
 from strategy_server.composer import compose_signals
 
 
-def _generate_market_data(n_symbols: int = 5, n_bars: int = 200) -> dict[str, pl.DataFrame]:
+def _generate_market_data(
+    n_symbols: int = 5, n_bars: int = 200
+) -> dict[str, pl.DataFrame]:
     """Generate synthetic market data with varying trends."""
     np.random.seed(42)
     bars = {}
@@ -28,7 +30,8 @@ def _generate_market_data(n_symbols: int = 5, n_bars: int = 200) -> dict[str, pl
             price = price * (1 + trend + np.random.normal(0, 0.015))
             rows.append(
                 {
-                    "open_time": datetime(2024, 1, 1, tzinfo=UTC) + timedelta(hours=j * 6),
+                    "open_time": datetime(2024, 1, 1, tzinfo=UTC)
+                    + timedelta(hours=j * 6),
                     "open": price * 0.999,
                     "high": price * 1.01,
                     "low": price * 0.99,
@@ -109,7 +112,8 @@ class TestEndToEndPipeline:
                 price = price * (1 - 0.005 + np.random.normal(0, 0.01))
                 rows.append(
                     {
-                        "open_time": datetime(2024, 1, 1, tzinfo=UTC) + timedelta(hours=j * 6),
+                        "open_time": datetime(2024, 1, 1, tzinfo=UTC)
+                        + timedelta(hours=j * 6),
                         "open": price * 1.001,
                         "high": price * 1.02,
                         "low": price * 0.98,

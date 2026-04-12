@@ -184,7 +184,9 @@ class LiveEngine:
 
             self._state = restored
             # Update equity from exchange (ground truth)
-            self._state.peak_equity = max(self._state.peak_equity, float(account.equity))
+            self._state.peak_equity = max(
+                self._state.peak_equity, float(account.equity)
+            )
             logger.info(
                 "Restored state: bar #%d, %d positions, peak $%.2f",
                 self._state.bar_count,
@@ -195,7 +197,9 @@ class LiveEngine:
                 f"🔄 Engine restarted — restored {len(self._state.positions)} positions, bar #{self._state.bar_count}"
             )
         else:
-            await self._notify.send("🚀 Engine started — no prior state, starting fresh")
+            await self._notify.send(
+                "🚀 Engine started — no prior state, starting fresh"
+            )
 
         self._running = True
 
@@ -296,7 +300,9 @@ class LiveEngine:
                     cancelled = await self._exchange.cancel_all_orders()
                     logger.info("[✓] Cancelled %d stale orders", cancelled)
                 else:
-                    logger.info("[DRY RUN] Would cancel %d stale orders", len(open_orders))
+                    logger.info(
+                        "[DRY RUN] Would cancel %d stale orders", len(open_orders)
+                    )
             else:
                 logger.info("[✓] No open orders")
         except Exception:
@@ -342,16 +348,26 @@ class LiveEngine:
         """Sleep until next 6h candle close (UTC 00:00, 06:00, 12:00, 18:00)."""
         now = datetime.now(tz=UTC)
         hours_since_midnight = now.hour
-        next_close_hour = ((hours_since_midnight // TIMEFRAME_HOURS) + 1) * TIMEFRAME_HOURS
+        next_close_hour = (
+            (hours_since_midnight // TIMEFRAME_HOURS) + 1
+        ) * TIMEFRAME_HOURS
 
         if next_close_hour >= 24:
-            next_close = now.replace(hour=0, minute=0, second=30, microsecond=0) + timedelta(days=1)
+            next_close = now.replace(
+                hour=0, minute=0, second=30, microsecond=0
+            ) + timedelta(days=1)
         else:
-            next_close = now.replace(hour=next_close_hour, minute=0, second=30, microsecond=0)
+            next_close = now.replace(
+                hour=next_close_hour, minute=0, second=30, microsecond=0
+            )
 
         wait_seconds = (next_close - now).total_seconds()
         if wait_seconds > 0:
-            logger.info("Waiting %.0f seconds until next candle close (%s)", wait_seconds, next_close.strftime("%H:%M"))
+            logger.info(
+                "Waiting %.0f seconds until next candle close (%s)",
+                wait_seconds,
+                next_close.strftime("%H:%M"),
+            )
             await asyncio.sleep(wait_seconds)
 
     async def _tick(self) -> None:
@@ -367,12 +383,23 @@ class LiveEngine:
         equity = float(account.equity)
         self._state.peak_equity = max(self._state.peak_equity, equity)
 
-        drawdown_pct = (1 - equity / self._state.peak_equity) * 100 if self._state.peak_equity > 0 else 0
-        logger.info("Equity: $%.2f, Peak: $%.2f, DD: %.1f%%", equity, self._state.peak_equity, drawdown_pct)
+        drawdown_pct = (
+            (1 - equity / self._state.peak_equity) * 100
+            if self._state.peak_equity > 0
+            else 0
+        )
+        logger.info(
+            "Equity: $%.2f, Peak: $%.2f, DD: %.1f%%",
+            equity,
+            self._state.peak_equity,
+            drawdown_pct,
+        )
 
         # Hard stop
         if drawdown_pct >= MAX_DRAWDOWN_PCT:
-            logger.warning("MAX DRAWDOWN BREACHED (%.1f%%) — FLATTENING ALL", drawdown_pct)
+            logger.warning(
+                "MAX DRAWDOWN BREACHED (%.1f%%) — FLATTENING ALL", drawdown_pct
+            )
             await self._flatten_all()
             self._running = False
             return
@@ -380,7 +407,10 @@ class LiveEngine:
         # DD breaker
         self._state.dd_breaker_active = drawdown_pct >= DD_BREAKER_PCT
         if self._state.dd_breaker_active:
-            logger.warning("DD breaker active (%.1f%%): reducing position sizes by 50%%", drawdown_pct)
+            logger.warning(
+                "DD breaker active (%.1f%%): reducing position sizes by 50%%",
+                drawdown_pct,
+            )
 
         # 3. Compute signals
         signals = self._compute_all_signals()
@@ -394,7 +424,12 @@ class LiveEngine:
             await self._rebalance(signals, equity)
 
         # 6. Tick summary notification
-        pos_summary = ", ".join(f"{s} {p.side[0].upper()}" for s, p in self._state.positions.items()) or "flat"
+        pos_summary = (
+            ", ".join(
+                f"{s} {p.side[0].upper()}" for s, p in self._state.positions.items()
+            )
+            or "flat"
+        )
         await self._notify.send(
             f"⏰ Tick #{self._state.bar_count} | ${equity:.0f} | "
             f"DD {drawdown_pct:.1f}% | {len(signals)} signals | "
@@ -493,7 +528,9 @@ class LiveEngine:
         return float(np.clip(composite, -1, 1))
 
     @staticmethod
-    def _calc_adx(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int) -> float:
+    def _calc_adx(
+        high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int
+    ) -> float:
         """Calculate ADX indicator."""
         if len(close) < period * 2:
             return 0.0
@@ -519,7 +556,11 @@ class LiveEngine:
         minus_di = (minus_di / atr[: len(minus_di)]) * 100
 
         n = min(len(plus_di), len(minus_di))
-        dx = np.abs(plus_di[:n] - minus_di[:n]) / np.maximum(plus_di[:n] + minus_di[:n], 1e-10) * 100
+        dx = (
+            np.abs(plus_di[:n] - minus_di[:n])
+            / np.maximum(plus_di[:n] + minus_di[:n], 1e-10)
+            * 100
+        )
 
         if len(dx) < period:
             return 0.0
@@ -571,10 +612,18 @@ class LiveEngine:
 
             # Signal reversal check
             sig = self._state.last_signals.get(symbol, 0.0)
-            if pos.side == "long" and sig < -SIGNAL_THRESHOLD and pos.bars_held >= MIN_HOLD_BARS:
+            if (
+                pos.side == "long"
+                and sig < -SIGNAL_THRESHOLD
+                and pos.bars_held >= MIN_HOLD_BARS
+            ):
                 logger.info("Signal reversal: %s LONG → signal=%.2f", symbol, sig)
                 to_close.append(symbol)
-            elif pos.side == "short" and sig > SIGNAL_THRESHOLD and pos.bars_held >= MIN_HOLD_BARS:
+            elif (
+                pos.side == "short"
+                and sig > SIGNAL_THRESHOLD
+                and pos.bars_held >= MIN_HOLD_BARS
+            ):
                 logger.info("Signal reversal: %s SHORT → signal=%.2f", symbol, sig)
                 to_close.append(symbol)
 
@@ -589,7 +638,11 @@ class LiveEngine:
             return
 
         # Sort by signal strength
-        candidates = [(sym, sig) for sym, sig in signals.items() if sym not in self._state.positions]
+        candidates = [
+            (sym, sig)
+            for sym, sig in signals.items()
+            if sym not in self._state.positions
+        ]
         candidates.sort(key=lambda x: abs(x[1]), reverse=True)
 
         for symbol, signal in candidates[:available_slots]:
@@ -630,7 +683,13 @@ class LiveEngine:
         )
 
         if self._dry_run:
-            logger.info("[DRY RUN] Would place %s %s %.4f @ ~%.2f", side, symbol, float(size), current_price)
+            logger.info(
+                "[DRY RUN] Would place %s %s %.4f @ ~%.2f",
+                side,
+                symbol,
+                float(size),
+                current_price,
+            )
         else:
             result = await self._exchange.place_market_order(symbol, is_buy, size)
             if not result.success:
@@ -640,7 +699,11 @@ class LiveEngine:
                 current_price = result.avg_price
 
         # Set trailing stop
-        stop = (current_price - atr * TRAILING_STOP_ATR) if is_buy else (current_price + atr * TRAILING_STOP_ATR)
+        stop = (
+            (current_price - atr * TRAILING_STOP_ATR)
+            if is_buy
+            else (current_price + atr * TRAILING_STOP_ATR)
+        )
 
         self._state.positions[symbol] = LivePosition(
             symbol=symbol,
@@ -650,7 +713,13 @@ class LiveEngine:
             size=size,
             trailing_stop=stop,
         )
-        logger.info("Position opened: %s %s @ %.2f, stop=%.2f", side.upper(), symbol, current_price, stop)
+        logger.info(
+            "Position opened: %s %s @ %.2f, stop=%.2f",
+            side.upper(),
+            symbol,
+            current_price,
+            stop,
+        )
         await self._notify.send(
             f"📈 OPEN {side.upper()} {symbol} | size=${size_usd:.0f} | "
             f"entry={current_price:.2f} | stop={stop:.2f} | signal={signal:.2f}"
@@ -663,17 +732,27 @@ class LiveEngine:
             return
 
         is_buy = pos.side == "short"  # reverse to close
-        logger.info("Closing %s %s: size=%.4f, held=%d bars", pos.side.upper(), symbol, float(pos.size), pos.bars_held)
+        logger.info(
+            "Closing %s %s: size=%.4f, held=%d bars",
+            pos.side.upper(),
+            symbol,
+            float(pos.size),
+            pos.bars_held,
+        )
 
         if not self._dry_run:
-            result = await self._exchange.place_market_order(symbol, is_buy, pos.size, reduce_only=True)
+            result = await self._exchange.place_market_order(
+                symbol, is_buy, pos.size, reduce_only=True
+            )
             if not result.success:
                 logger.error("Failed to close %s: %s", symbol, result.message)
                 return
 
         del self._state.positions[symbol]
         logger.info("Position closed: %s %s", pos.side.upper(), symbol)
-        await self._notify.send(f"📉 CLOSE {pos.side.upper()} {symbol} | held={pos.bars_held} bars")
+        await self._notify.send(
+            f"📉 CLOSE {pos.side.upper()} {symbol} | held={pos.bars_held} bars"
+        )
 
     async def _flatten_all(self) -> None:
         """Emergency: close all positions."""

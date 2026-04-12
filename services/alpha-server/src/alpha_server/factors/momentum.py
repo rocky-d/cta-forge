@@ -42,7 +42,12 @@ class TSMOMFactor:
 
         # Rolling std of log returns for normalization
         log_ret = np.diff(np.log(close))
-        rolling_std = np.array([log_ret[max(0, i - self.lookback + 1) : i + 1].std() for i in range(len(log_ret))])
+        rolling_std = np.array(
+            [
+                log_ret[max(0, i - self.lookback + 1) : i + 1].std()
+                for i in range(len(log_ret))
+            ]
+        )
         # Align: rolling_std starts at index 0 of log_ret, returns starts at index (lookback-1)
         rolling_std_aligned = rolling_std[self.lookback - 1 :]
 

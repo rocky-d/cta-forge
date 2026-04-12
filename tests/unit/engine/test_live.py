@@ -71,7 +71,9 @@ class FakeExchange:
     async def get_open_orders(self, symbol: str | None = None) -> list[dict]:
         return self._open_orders
 
-    async def set_leverage(self, symbol: str, leverage: int, cross: bool = True) -> bool:
+    async def set_leverage(
+        self, symbol: str, leverage: int, cross: bool = True
+    ) -> bool:
         return True
 
     async def transfer_to_perp(self, amount: Decimal) -> bool:
@@ -110,7 +112,11 @@ async def test_preflight_stale_positions() -> None:
 
     positions = [
         Position(
-            symbol="BTC", size=Decimal("0.01"), entry_price=Decimal("70000"), unrealized_pnl=Decimal("10"), leverage=1
+            symbol="BTC",
+            size=Decimal("0.01"),
+            entry_price=Decimal("70000"),
+            unrealized_pnl=Decimal("10"),
+            leverage=1,
         ),
     ]
     exchange = FakeExchange(positions=positions)

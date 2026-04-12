@@ -40,7 +40,9 @@ def _make_mock_adapter() -> AsyncMock:
     adapter.place_market_order.return_value = OrderResult(
         order_id="test-123", success=True, message="filled", avg_price=73500.0
     )
-    adapter.place_limit_order.return_value = OrderResult(order_id="test-456", success=True, message="resting")
+    adapter.place_limit_order.return_value = OrderResult(
+        order_id="test-456", success=True, message="resting"
+    )
     adapter.cancel_order.return_value = True
     adapter.set_leverage.return_value = True
     return adapter
@@ -150,7 +152,9 @@ async def test_set_leverage(client: AsyncClient, mock_adapter: AsyncMock) -> Non
 
 
 @pytest.mark.asyncio
-async def test_order_failure_returns_400(client: AsyncClient, mock_adapter: AsyncMock) -> None:
+async def test_order_failure_returns_400(
+    client: AsyncClient, mock_adapter: AsyncMock
+) -> None:
     """POST /order returns 400 when order fails."""
     mock_adapter.place_market_order.return_value = OrderResult(
         order_id="", success=False, message="insufficient margin"

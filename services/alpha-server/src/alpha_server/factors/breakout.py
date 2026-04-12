@@ -65,7 +65,9 @@ class DonchianBreakoutFactor:
             }
         )
 
-    def _compute_adx(self, high: np.ndarray, low: np.ndarray, close: np.ndarray) -> np.ndarray:
+    def _compute_adx(
+        self, high: np.ndarray, low: np.ndarray, close: np.ndarray
+    ) -> np.ndarray:
         """Compute ADX indicator."""
         n = len(high)
         adx = np.zeros(n)
@@ -79,7 +81,11 @@ class DonchianBreakoutFactor:
         minus_dm = np.zeros(n)
 
         for i in range(1, n):
-            tr[i] = max(high[i] - low[i], abs(high[i] - close[i - 1]), abs(low[i] - close[i - 1]))
+            tr[i] = max(
+                high[i] - low[i],
+                abs(high[i] - close[i - 1]),
+                abs(low[i] - close[i - 1]),
+            )
             up_move = high[i] - high[i - 1]
             down_move = low[i - 1] - low[i]
             plus_dm[i] = up_move if up_move > down_move and up_move > 0 else 0

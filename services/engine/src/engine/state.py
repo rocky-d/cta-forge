@@ -61,7 +61,9 @@ def save_state(state: LiveState, path: str | Path = DEFAULT_STATE_FILE) -> None:
     tmp_path = path.with_suffix(".tmp")
     tmp_path.write_text(json.dumps(data, indent=2, cls=_DecimalEncoder))
     tmp_path.rename(path)
-    logger.info("State saved: %d positions, bar #%d", len(state.positions), state.bar_count)
+    logger.info(
+        "State saved: %d positions, bar #%d", len(state.positions), state.bar_count
+    )
 
 
 def load_state(path: str | Path = DEFAULT_STATE_FILE) -> LiveState | None:
