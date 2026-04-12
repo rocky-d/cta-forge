@@ -156,16 +156,23 @@ class HyperliquidAdapter:
         state = await self._run_sync(self._info.user_state, self._address)
         margin = state.get("marginSummary", {})
 
-        # Unified account: perp clearinghouseState may show 0 equity,
-        # but spot USDC is usable as collateral. Check both.
-        equity = Decimal(str(margin.get("accountValue", "0")))
-        if equity == 0:
-            # Fallback: check spot balance for unified accounts
+        # Unified account: perp marginSummary.accountValue only reflects
+        # perp-side margin. Spot USDC also serves as collateral, so we
+        # must sum both to get the true equity.
+        perp_equity = Decimal(str(margin.get("accountValue", "0")))
+
+        # Always check spot balance for unified accounts
+        spot_usdc = Decimal("0")
+        try:
             spot = await self._run_sync(self._info.spot_user_state, self._address)
             for bal in spot.get("balances", []):
                 if bal.get("coin") == "USDC":
-                    equity = Decimal(str(bal.get("total", "0")))
+                    spot_usdc = Decimal(str(bal.get("total", "0")))
                     break
+        except Exception as e:
+            logger.warning("Failed to fetch spot balance: %s", e)
+
+        equity = perp_equity + spot_usdc
 
         positions = []
         for p in state.get("assetPositions", []):

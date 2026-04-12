@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "saved_at": "2026-04-12T00:00:37.745249+00:00",
+  "bar_count": 2,
+  "initial_equity": 2009.332256,
+  "peak_equity": 2009.332256,
+  "dd_breaker_active": false,
+  "last_signals": {
+    "BTC": 0.5625650483637655,
+    "ETH": 0.5866557640578878,
+    "NEAR": 0.7492686272709799
+  },
+  "positions": {}
+}
