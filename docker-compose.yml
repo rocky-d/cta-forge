@@ -1,6 +1,8 @@
 services:
   data-service:
-    build: services/data-service
+    build:
+      context: .
+      target: data-service
     ports:
       - "8001:8001"
     volumes:
@@ -9,30 +11,38 @@ services:
       - DATA_DIR=/app/data
 
   alpha-service:
-    build: services/alpha-service
+    build:
+      context: .
+      target: alpha-service
     ports:
       - "8002:8002"
 
   strategy-service:
-    build: services/strategy-service
+    build:
+      context: .
+      target: strategy-service
     ports:
       - "8003:8003"
 
   executor:
-    build: services/executor
+    build:
+      context: .
+      target: executor
     ports:
       - "8004:8004"
     depends_on:
       - data-service
-      - alpha-service
       - strategy-service
+    env_file:
+      - .env
     environment:
       - DATA_SERVICE_URL=http://data-service:8001
-      - ALPHA_SERVICE_URL=http://alpha-service:8002
       - STRATEGY_SERVICE_URL=http://strategy-service:8003
       - REPORT_SERVICE_URL=http://report-service:8005
 
   report-service:
-    build: services/report-service
+    build:
+      context: .
+      target: report-service
     ports:
       - "8005:8005"

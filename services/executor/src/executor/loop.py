@@ -8,10 +8,8 @@ from enum import StrEnum
 
 import httpx
 import polars as pl
-from alpha_service.factors.breakout import DonchianBreakoutFactor
-from alpha_service.factors.momentum import TSMOMFactor
+from alpha_service.factors.v10g_composite import V10GCompositeFactor
 from core.constants import (
-    ALPHA_SERVICE_URL,
     DATA_SERVICE_URL,
     REPORT_SERVICE_URL,
     STRATEGY_SERVICE_URL,
@@ -33,13 +31,8 @@ class EngineConfig:
     mode: EngineMode = EngineMode.BACKTEST
     symbols: list[str] = field(default_factory=list)
     timeframe: str = "6h"
-    factors: list[str] = field(default_factory=lambda: ["tsmom_30", "breakout_15"])
-    factor_weights: dict[str, float] = field(
-        default_factory=lambda: {"tsmom_30": 2.0, "breakout_15": 1.0}
-    )
     initial_equity: float = 10000.0
     data_service_url: str = DATA_SERVICE_URL
-    alpha_service_url: str = ALPHA_SERVICE_URL
     strategy_service_url: str = STRATEGY_SERVICE_URL
     report_service_url: str = REPORT_SERVICE_URL
 
@@ -50,6 +43,7 @@ class TradingLoop:
     def __init__(self, config: EngineConfig) -> None:
         self.config = config
         self._running = False
+        self._factor = V10GCompositeFactor()
 
     async def run_backtest(self) -> dict:
         """Execute a complete backtest run."""
@@ -98,30 +92,8 @@ class TradingLoop:
         return bars
 
     def _compute_signal_sync(self, symbol: str, bars: pl.DataFrame) -> float:
-        """Compute composite signal for a symbol (sync wrapper for backtest)."""
-        # In backtest mode, compute signals locally to avoid HTTP overhead
-        signals = {}
-        if "tsmom_30" in self.config.factors:
-            factor = TSMOMFactor(lookback=30)
-            result = factor.compute(bars)
-            if not result.is_empty():
-                signals["tsmom_30"] = float(result["signal"][-1])
-        if "breakout_15" in self.config.factors:
-            factor = DonchianBreakoutFactor(period=15)
-            result = factor.compute(bars)
-            if not result.is_empty():
-                signals["breakout_15"] = float(result["signal"][-1])
-
-        # Compose
-        total_weight = (
-            sum(abs(self.config.factor_weights.get(f, 1.0)) for f in signals) or 1.0
-        )
-        composite = (
-            sum(signals[f] * self.config.factor_weights.get(f, 1.0) for f in signals)
-            / total_weight
-        )
-
-        return float(max(-1.0, min(1.0, composite)))
+        """Compute v10g composite signal for a symbol."""
+        return self._factor.compute_latest(bars)
 
     def _allocate_sync(
         self, signals: dict[str, float], equity: float
