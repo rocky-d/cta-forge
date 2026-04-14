@@ -31,3 +31,24 @@ DEFAULT_TRAILING_STOP_ATR_MULT = 2.0
 
 # Data
 PARQUET_COMPRESSION = "zstd"
+
+# ── v10g strategy parameters ─────────────────────────────────────
+# Source of truth for the v10g CTA strategy (previously in engine/live.py).
+
+V10G_SYMBOLS = [
+    "BTC", "ETH", "SOL", "BNB", "XRP", "DOGE",
+    "AVAX", "LINK", "ADA", "DOT", "ATOM", "NEAR",
+]
+V10G_TIMEFRAME_HOURS = 6
+V10G_ADX_PERIODS = [22, 27, 32]  # ensemble ADX
+V10G_ADX_THRESHOLD = 25
+V10G_SIGNAL_THRESHOLD = 0.35
+V10G_MIN_HOLD_BARS = 12
+V10G_TRAILING_STOP_ATR = 4.5
+V10G_RISK_PER_TRADE = 0.015  # 1.5% of equity
+V10G_MAX_POSITIONS = 5
+V10G_REBALANCE_EVERY = 4  # bars between rebalance checks
+
+# v10g risk limits (decimal fractions, NOT percentages)
+V10G_MAX_DRAWDOWN = 0.15  # hard stop: flatten everything
+V10G_DD_BREAKER = 0.08  # reduce position sizes by 50%

@@ -21,6 +21,21 @@ import polars as pl
 if TYPE_CHECKING:
     from exchange_server.adapter import ExchangeAdapter
 
+from cta_core.constants import (
+    V10G_ADX_PERIODS,
+    V10G_ADX_THRESHOLD,
+    V10G_DD_BREAKER,
+    V10G_MAX_DRAWDOWN,
+    V10G_MAX_POSITIONS,
+    V10G_MIN_HOLD_BARS,
+    V10G_REBALANCE_EVERY,
+    V10G_RISK_PER_TRADE,
+    V10G_SIGNAL_THRESHOLD,
+    V10G_SYMBOLS,
+    V10G_TIMEFRAME_HOURS,
+    V10G_TRAILING_STOP_ATR,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -68,34 +83,23 @@ class TelegramNotifier(_Notifier):
 
 # ── v10g strategy parameters (from backtest champion) ────────────
 
-SYMBOLS = [
-    "BTC",
-    "ETH",
-    "SOL",
-    "BNB",
-    "XRP",
-    "DOGE",
-    "AVAX",
-    "LINK",
-    "ADA",
-    "DOT",
-    "ATOM",
-    "NEAR",
-]
+# ── v10g strategy parameters (from cta_core.constants) ───────────
+# All V10G_* constants are imported from cta_core.constants.
+# Local aliases for brevity:
+SYMBOLS = V10G_SYMBOLS
+TIMEFRAME_HOURS = V10G_TIMEFRAME_HOURS
+ADX_PERIODS = V10G_ADX_PERIODS
+ADX_THRESHOLD = V10G_ADX_THRESHOLD
+SIGNAL_THRESHOLD = V10G_SIGNAL_THRESHOLD
+MIN_HOLD_BARS = V10G_MIN_HOLD_BARS
+TRAILING_STOP_ATR = V10G_TRAILING_STOP_ATR
+RISK_PER_TRADE = V10G_RISK_PER_TRADE
+MAX_POSITIONS = V10G_MAX_POSITIONS
+REBALANCE_EVERY = V10G_REBALANCE_EVERY
 
-TIMEFRAME_HOURS = 6
-ADX_PERIODS = [22, 27, 32]  # ensemble ADX
-ADX_THRESHOLD = 25
-SIGNAL_THRESHOLD = 0.35
-MIN_HOLD_BARS = 12
-TRAILING_STOP_ATR = 4.5
-RISK_PER_TRADE = 0.015  # 1.5%
-MAX_POSITIONS = 5
-REBALANCE_EVERY = 4  # bars between rebalance checks
-
-# Risk limits
-MAX_DRAWDOWN_PCT = 15.0  # hard stop: flatten everything
-DD_BREAKER_PCT = 8.0  # reduce position sizes by 50%
+# Risk limits (converted to percentage for existing comparison logic)
+MAX_DRAWDOWN_PCT = V10G_MAX_DRAWDOWN * 100  # 0.15 → 15.0
+DD_BREAKER_PCT = V10G_DD_BREAKER * 100  # 0.08 → 8.0
 INITIAL_EQUITY_KEY = "initial_equity"
 
 
