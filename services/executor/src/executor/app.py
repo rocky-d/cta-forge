@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 from .routes import router
 
-app = FastAPI(title="engine-service", version="0.1.0")
+app = FastAPI(title="executor", version="0.1.0")
 app.include_router(router)
 
 

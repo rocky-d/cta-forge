@@ -4,14 +4,14 @@
 DATA_SERVICE_PORT = 8001
 ALPHA_SERVICE_PORT = 8002
 STRATEGY_SERVICE_PORT = 8003
-ENGINE_PORT = 8004
+EXECUTOR_PORT = 8004
 REPORT_SERVICE_PORT = 8005
 
 # Default service URLs (local development)
 DATA_SERVICE_URL = f"http://localhost:{DATA_SERVICE_PORT}"
 ALPHA_SERVICE_URL = f"http://localhost:{ALPHA_SERVICE_PORT}"
 STRATEGY_SERVICE_URL = f"http://localhost:{STRATEGY_SERVICE_PORT}"
-ENGINE_URL = f"http://localhost:{ENGINE_PORT}"
+EXECUTOR_URL = f"http://localhost:{EXECUTOR_PORT}"
 REPORT_SERVICE_URL = f"http://localhost:{REPORT_SERVICE_PORT}"
 
 # Binance API
@@ -36,8 +36,18 @@ PARQUET_COMPRESSION = "zstd"
 # Source of truth for the v10g CTA strategy (previously in engine/live.py).
 
 V10G_SYMBOLS = [
-    "BTC", "ETH", "SOL", "BNB", "XRP", "DOGE",
-    "AVAX", "LINK", "ADA", "DOT", "ATOM", "NEAR",
+    "BTC",
+    "ETH",
+    "SOL",
+    "BNB",
+    "XRP",
+    "DOGE",
+    "AVAX",
+    "LINK",
+    "ADA",
+    "DOT",
+    "ATOM",
+    "NEAR",
 ]
 V10G_TIMEFRAME_HOURS = 6
 V10G_ADX_PERIODS = [22, 27, 32]  # ensemble ADX

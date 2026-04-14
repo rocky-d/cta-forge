@@ -1,5 +1,5 @@
 [project]
-name = "engine-service"
+name = "executor"
 version = "0.1.0"
 description = "Backtest & live execution engine"
 requires-python = ">=3.12"

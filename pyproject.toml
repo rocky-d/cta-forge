@@ -16,7 +16,7 @@ dev = [
     "data-service",
     "alpha-service",
     "strategy-service",
-    "engine-service",
+    "executor",
     "report-service",
     "exchange",
 ]
@@ -25,7 +25,7 @@ dev = [
 data-service = { workspace = true }
 alpha-service = { workspace = true }
 strategy-service = { workspace = true }
-engine-service = { workspace = true }
+executor = { workspace = true }
 report-service = { workspace = true }
 exchange = { workspace = true }
 
@@ -36,7 +36,7 @@ members = [
     "services/data-service",
     "services/alpha-service",
     "services/strategy-service",
-    "services/engine-service",
+    "services/executor",
     "services/report-service",
 ]
 

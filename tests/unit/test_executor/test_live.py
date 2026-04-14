@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from engine_service.live import LiveEngine
+from executor.live import LiveEngine
 from exchange.adapter import AccountState, MarketSnapshot, OrderResult, Position
 
 

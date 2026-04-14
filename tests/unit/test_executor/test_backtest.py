@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import polars as pl
-from engine_service.backtest import BacktestEngine
+from executor.backtest import BacktestEngine
 
 
 def _make_bars(n: int = 100, base: float = 100.0, trend: float = 0.001) -> pl.DataFrame:
