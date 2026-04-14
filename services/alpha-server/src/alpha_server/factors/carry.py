@@ -1,4 +1,9 @@
-"""Funding rate carry alpha factor."""
+"""Funding rate carry alpha factor.
+
+NOTE: This factor is not currently used by any strategy
+(v10g uses TSMOM + Donchian + Vol Regime).
+Kept as a placeholder for future carry-based strategies.
+"""
 
 from __future__ import annotations
 
