@@ -2,22 +2,32 @@
 
 Usage: uv run python scripts/backtest/chart_walkforward.py
 """
-import asyncio, json, copy
+
+from __future__ import annotations
+
+import asyncio
+import copy
+import json
 from datetime import UTC, datetime
 from pathlib import Path
-import numpy as np
-
-from v10g_maxrange import (
-    SYMBOLS, START_TS, INITIAL_EQUITY,
-    fetch_klines_from, precompute, build_timeline,
-    align_data, compute_signals, run_backtest
-)
 
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from matplotlib.patches import Rectangle
+import matplotlib.pyplot as plt
+import numpy as np
+
+matplotlib.use("Agg")
+
+from v10g_maxrange import (  # noqa: E402
+    SYMBOLS,
+    START_TS,
+    align_data,
+    build_timeline,
+    compute_signals,
+    fetch_klines_from,
+    precompute,
+    run_backtest,
+)
 
 OUT = Path(__file__).resolve().parents[2] / "backtest-results"
 
@@ -58,6 +68,7 @@ FOLDS = [
 
 async def main():
     import httpx
+
     print("Fetching data...", flush=True)
     async with httpx.AsyncClient(timeout=30) as client:
         bars = {}
@@ -77,15 +88,20 @@ async def main():
         params = copy.deepcopy(BASE_PARAMS)
         params["target_vol"] = tv
         sigs = compute_signals(data, timeline, params)
-        curve, trades = run_backtest(data, sigs, timeline, 200, len(timeline) - 1, params)
+        curve, trades = run_backtest(
+            data, sigs, timeline, 200, len(timeline) - 1, params
+        )
         curves[label] = curve
         final = curve[-1][1]
         print(f"  {label}: final=${final:,.0f}, trades={len(trades)}", flush=True)
 
     # ── Chart ──
     fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(24, 12), height_ratios=[3, 1],
-        gridspec_kw={"hspace": 0.15}
+        2,
+        1,
+        figsize=(24, 12),
+        height_ratios=[3, 1],
+        gridspec_kw={"hspace": 0.15},
     )
     fig.patch.set_facecolor("white")
     fig.subplots_adjust(left=0.06, right=0.94, top=0.93)
@@ -95,8 +111,15 @@ async def main():
         c = curves[label]
         dates = [ts for ts, _ in c]
         eqs = [eq for _, eq in c]
-        ax1.plot(dates, eqs, color=color, linewidth=1.8 if "v10g" in label else 1.2,
-                 linestyle=ls, label=label, alpha=0.9)
+        ax1.plot(
+            dates,
+            eqs,
+            color=color,
+            linewidth=1.8 if "v10g" in label else 1.2,
+            linestyle=ls,
+            label=label,
+            alpha=0.9,
+        )
 
     # Shade OOS regions for Fold 3 (most recent)
     oos3_start = datetime.fromisoformat("2024-10-01").replace(tzinfo=UTC)
@@ -111,44 +134,55 @@ async def main():
     ax1.xaxis.set_major_locator(mdates.MonthLocator(interval=6))
 
     # Bottom: bar chart of OOS Sharpe by fold
-    TARGET_VOLS_BAR = [0.0, 0.12, 0.20, 0.30]
+    target_vols_bar = [0.0, 0.12, 0.20, 0.30]
     labels_bar = ["vol=OFF", "vol=0.12", "vol=0.20", "vol=0.30"]
     colors_bar = ["#95a5a6", "#2ecc71", "#e74c3c", "#f39c12"]
 
-    # Load walk-forward results
     wf = json.loads((OUT / "walk_forward_target_vol.json").read_text())
 
     x = np.arange(3)  # 3 folds
     width = 0.18
-    for i, (tv, lbl, col) in enumerate(zip(TARGET_VOLS_BAR, labels_bar, colors_bar)):
+    for i, (tv, lbl, col) in enumerate(zip(target_vols_bar, labels_bar, colors_bar)):
         key_part = f"vol={tv:.2f}" if tv > 0 else "vol=OFF"
         sharpes = []
         for fi in range(3):
-            k = f"Fold{fi+1}_{key_part}"
+            k = f"Fold{fi + 1}_{key_part}"
             r = wf.get(k, {}).get("oos")
             sharpes.append(r["sharpe"] if r else 0)
         offset = (i - 1.5) * width
-        bars = ax2.bar(x + offset, sharpes, width, label=lbl, color=col, alpha=0.85)
-        for bar, s in zip(bars, sharpes):
-            ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.03,
-                     f"{s:.2f}", ha="center", va="bottom", fontsize=7.5)
+        bar_group = ax2.bar(
+            x + offset, sharpes, width, label=lbl, color=col, alpha=0.85
+        )
+        for bar, s in zip(bar_group, sharpes):
+            ax2.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.03,
+                f"{s:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=7.5,
+            )
 
     ax2.set_xticks(x)
-    ax2.set_xticklabels([
-        "Fold 1 OOS\n(2022-04 → 2023-06)",
-        "Fold 2 OOS\n(2023-07 → 2024-09)",
-        "Fold 3 OOS\n(2024-10 → 2026-04)"
-    ], fontsize=9)
+    ax2.set_xticklabels(
+        [
+            "Fold 1 OOS\n(2022-04 → 2023-06)",
+            "Fold 2 OOS\n(2023-07 → 2024-09)",
+            "Fold 3 OOS\n(2024-10 → 2026-04)",
+        ],
+        fontsize=9,
+    )
     ax2.set_ylabel("OOS Sharpe", fontsize=10)
     ax2.set_title("Out-of-Sample Sharpe by Fold", fontsize=12, pad=8)
     ax2.legend(loc="upper right", fontsize=8)
     ax2.grid(True, axis="y", alpha=0.3)
     ax2.axhline(y=0, color="black", linewidth=0.5)
 
-    # Info strip
-    info = ("Walk-Forward Validation  │  3 Folds (expanding window)  │  "
-            "OOS avg Sharpe: vol=OFF 1.36  vol=0.12 1.15  vol=0.20 1.14  vol=0.30 1.21  │  "
-            "Conclusion: vol=0.20 fails Fold 3 OOS (Sharpe -0.21), v10g vol=0.12 is robust")
+    info = (
+        "Walk-Forward Validation  │  3 Folds (expanding window)  │  "
+        "OOS avg Sharpe: vol=OFF 1.36  vol=0.12 1.15  vol=0.20 1.14  vol=0.30 1.21  │  "
+        "Conclusion: vol=0.20 fails Fold 3 OOS (Sharpe -0.21), v10g vol=0.12 is robust"
+    )
     ax2.set_xlabel(info, fontsize=7.5, family="monospace", color="#2c3e50", labelpad=8)
 
     out_path = OUT / "walk_forward_target_vol.png"
