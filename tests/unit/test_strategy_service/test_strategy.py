@@ -1,4 +1,4 @@
-"""Tests for strategy-server modules."""
+"""Tests for strategy-service modules."""
 
 from __future__ import annotations
 

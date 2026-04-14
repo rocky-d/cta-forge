@@ -1,4 +1,4 @@
-"""exchange-server: Hyperliquid exchange connectivity service."""
+"""exchange: Hyperliquid exchange connectivity library."""
 
 import dttb
 

@@ -1,4 +1,4 @@
-"""alpha-server: Alpha factor computation service."""
+"""alpha-service: Alpha factor computation service."""
 
 import dttb
 

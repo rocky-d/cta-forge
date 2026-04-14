@@ -1,4 +1,4 @@
-"""Tests for data-server REST API routes."""
+"""Tests for data-service REST API routes."""
 
 from __future__ import annotations
 

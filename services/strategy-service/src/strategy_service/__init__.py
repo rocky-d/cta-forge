@@ -1,4 +1,4 @@
-"""strategy-server: Signal composition, asset selection, allocation, risk."""
+"""strategy-service: Signal composition, asset selection, allocation, risk."""
 
 import dttb
 

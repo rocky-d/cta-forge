@@ -3,20 +3,23 @@
 ## Project Overview
 
 Crypto CTA (Commodity Trading Advisor) trend-following strategy engine.
-Monorepo with 5 microservices + shared library, targeting Binance USDS-M perpetual futures.
+Monorepo with 5 microservices + 2 shared libraries, targeting Binance USDS-M perpetual futures.
 
 ## Architecture
 
 ```
-libs/cta-core/       — shared types, protocols, constants
+libs/
+  core/              — shared types, protocols, constants
+  exchange/          — exchange connectivity (Hyperliquid adapter)
 services/
-  data-server/       — Binance kline fetcher, parquet store, REST API (:8001)
-  alpha-server/      — factor computation (TSMOM, Donchian, VolRegime) (:8002)
-  strategy-server/   — signal composition, allocation, risk (:8003)
-  engine/            — backtest engine (:8004)
-  reporter/          — metrics calculation, chart generation (:8005)
+  data-service/      — Binance kline fetcher, parquet store, REST API (:8001)
+  alpha-service/     — factor computation (TSMOM, Donchian, VolRegime) (:8002)
+  strategy-service/  — signal composition, allocation, risk (:8003)
+  executor/          — backtest & live execution engine (:8004)
+  report-service/    — metrics calculation, chart generation (:8005)
 scripts/backtest/    — standalone backtest scripts (v10 sweep, long-term)
 backtest-results/    — output charts, metrics JSON, sweep results
+docs/                — project documentation
 ```
 
 ## Strategy: v10g (current best)
@@ -75,9 +78,9 @@ Yearly: 2021 +17.3% | 2022 +6.8% | 2023 +7.5% | 2024 +20.8% | 2025 +5.7% | 2026 
 |---------|-------------|--------|--------|------------|
 | v1      | -1.23       | 4690   | 19.8%  | Baseline (4 raw factors) |
 | v2      | -0.20       | 464    | 34.6%  | Signal threshold, min hold, ATR sizing |
-| v3-v5   | 0.2–0.8     | ~200   | ~15%   | Parameter tuning, Donchian confirm |
+| v3-v5   | 0.2-0.8     | ~200   | ~15%   | Parameter tuning, Donchian confirm |
 | v6      | 1.96        | 88     | 6.3%   | Cross-sectional signal, vol filter |
-| v7      | 1.05 (OOS)  | —      | —      | IS/OOS validation |
+| v7      | 1.05 (OOS)  | -      | -      | IS/OOS validation |
 | v8      | 1.37        | 462    | 13.6%  | Walk-forward 5-window |
 | v9      | 1.11        | 430    | 9.8%   | Ensemble ADX, lowest OOS variance |
 | v10g    | 1.14 (893d) | 471    | 14.7%  | Adaptive + risk parity + DD breaker + persistence |
@@ -92,15 +95,14 @@ Yearly: 2021 +17.3% | 2022 +6.8% | 2023 +7.5% | 2024 +20.8% | 2025 +5.7% | 2026 
 - Parquet storage: `{data_dir}/{symbol}/{interval}.parquet` (zstd)
 - Signal range: normalized to [-1, +1]
 
-## Phase 4: Live Trading (Hyperliquid Testnet)
+## Live Trading (Hyperliquid Testnet)
 
 Architecture:
-- `services/exchange/` — new microservice (:8006), HL SDK wrapper
+- `libs/exchange/` — HL SDK wrapper library
   - `ExchangeAdapter` Protocol interface (structural subtyping)
   - `HyperliquidAdapter` implementation (safe init, unified account, async executor)
-  - REST routes: /account, /market/{symbol}, /order, /cancel, /leverage
-- `services/engine/live.py` — LiveEngine (v10g strategy, 6h candle-aligned loop)
-- `services/engine/run_live.py` — CLI entry point
+- `services/executor/src/executor/live.py` — LiveEngine (v10g strategy, 6h candle-aligned loop)
+- `services/executor/src/executor/run_live.py` — CLI entry point
 
 Preflight checks (must all pass before trading):
 1. Exchange connectivity
@@ -117,22 +119,13 @@ Risk controls:
 - 20% max per-position equity
 
 Testnet wallet: `0xe9bfE8DF9277ACafA19667bA64aD617413D70B71`
-Testnet balance: ~$2009 USDC (unified account, spot = perp collateral)
 
 Ops:
-- Use tmux for long-running engine process
-- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN
-
-Commits:
-- `3616ad2` feat: exchange-server
-- `b71a928` feat: live engine (v10g)
-- `7545cf1` feat: preflight checks
+- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID
+- State persistence: engine-state.json (auto-generated, gitignored)
 
 ## Next Steps
 
-- Run engine continuously in tmux (6h rebalance loop)
-- Telegram notifications on trades
-- State persistence (survive restarts)
-- Exchange-server test suite
-- Further parameter stability analysis (Monte Carlo?)
+- Deploy to cloud server (systemd service)
+- CI/CD pipeline for deployment
 - Transaction cost sensitivity analysis

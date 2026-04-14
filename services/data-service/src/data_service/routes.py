@@ -1,4 +1,4 @@
-"""REST API routes for data-server."""
+"""REST API routes for data-service."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""data-server: Binance historical data provider."""
+"""data-service: Binance historical data provider."""
 
 import dttb
 

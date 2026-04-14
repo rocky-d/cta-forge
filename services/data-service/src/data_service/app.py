@@ -1,4 +1,4 @@
-"""FastAPI application for data-server."""
+"""FastAPI application for data-service."""
 
 from __future__ import annotations
 

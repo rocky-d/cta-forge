@@ -6,15 +6,18 @@ Crypto CTA strategy forge — monorepo microservices architecture.
 
 | Service | Port | Description |
 |---|---|---|
-| data-server | 8001 | Binance historical data provider |
-| alpha-server | 8002 | Alpha factor computation |
-| strategy-server | 8003 | Signal composition, asset selection, allocation, risk |
-| engine | 8004 | Backtest & live execution |
-| reporter | 8005 | Performance metrics & visualization |
+| data-service | 8001 | Binance historical data provider |
+| alpha-service | 8002 | Alpha factor computation |
+| strategy-service | 8003 | Signal composition, asset selection, allocation, risk |
+| executor | 8004 | Backtest & live execution |
+| report-service | 8005 | Performance metrics & visualization |
 
-## Shared Library
+## Libraries
 
-- `cta-core` — types, protocols, constants
+| Library | Description |
+|---|---|
+| core | Shared types, protocols, constants |
+| exchange | Exchange connectivity (Hyperliquid adapter) |
 
 ## Quick Start
 
@@ -23,10 +26,10 @@ Crypto CTA strategy forge — monorepo microservices architecture.
 uv sync
 
 # Run a single service (dev)
-cd services/data-server && uv run uvicorn data_server.app:app --reload --port 8001
+cd services/data-service && uv run uvicorn data_service.app:app --reload --port 8001
 
-# Run backtest
-cd services/engine && uv run python -m engine --mode backtest
+# Run backtest script
+uv run python scripts/backtest/v10g_maxrange.py
 
 # Full stack
 docker compose up

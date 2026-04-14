@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 class DataProvider(Protocol):
-    """Contract for data-server client."""
+    """Contract for data-service client."""
 
     def get_symbols(self) -> list[str]: ...
     def get_bars(self, symbol: str, tf: str, start: str, end: str) -> pl.DataFrame: ...

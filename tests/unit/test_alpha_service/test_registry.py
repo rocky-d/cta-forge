@@ -1,4 +1,4 @@
-"""Tests for alpha-server registry and routes."""
+"""Tests for alpha-service registry and routes."""
 
 from __future__ import annotations
 

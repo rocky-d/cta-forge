@@ -1,4 +1,4 @@
-"""FastAPI application for strategy-server."""
+"""FastAPI application for strategy-service."""
 
 from fastapi import FastAPI
 

@@ -84,7 +84,7 @@ class TradingLoop:
             }
 
     async def _fetch_data(self, client: httpx.AsyncClient) -> dict[str, pl.DataFrame]:
-        """Fetch historical bars from data-server."""
+        """Fetch historical bars from data-service."""
         bars = {}
         for symbol in self.config.symbols:
             resp = await client.get(

@@ -2,7 +2,7 @@
 
 Runs the v10g CTA strategy on real market data:
 - Every 6h (aligned to candle close): fetch bars → compute signals → rebalance
-- Uses exchange-server adapter for all HL interactions
+- Uses exchange adapter for all HL interactions
 - Risk controls: max drawdown, max positions, position sizing via ATR
 """
 
