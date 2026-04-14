@@ -1,24 +1,31 @@
-# Data
-data/
-
 # Python
 __pycache__/
 *.pyc
 *.pyo
-.pytest_cache/
-.ruff_cache/
-coverage.xml
-htmlcov/
 *.egg-info/
 dist/
 build/
 
-# Environment
-.env
+# Virtual environment
 .venv/
 
-# Runtime state
+# Testing & linting
+.pytest_cache/
+.ruff_cache/
+coverage.xml
+htmlcov/
+
+# Environment & secrets
+.env
+
+# Runtime artifacts
 engine-state.json
+engine.log
+
+# Data & backtest output
+data/
+backtest-results/*.png
+backtest-results/*.json
 
 # IDE
 .idea/
@@ -28,6 +35,3 @@ engine-state.json
 # OS
 .DS_Store
 Thumbs.db
-backtest-results/*.png
-backtest-results/*.json
-engine.log
