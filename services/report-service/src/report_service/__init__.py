@@ -1,4 +1,4 @@
-"""reporter: Performance metrics & visualization."""
+"""report-service: Performance metrics & visualization."""
 
 import dttb
 

@@ -1,4 +1,4 @@
-"""FastAPI application for reporter."""
+"""FastAPI application for report-service."""
 
 from fastapi import FastAPI
 

@@ -130,7 +130,7 @@ class TradingLoop:
         return allocate_positions(signals, equity)
 
     async def _generate_report(self, client: httpx.AsyncClient, result) -> dict:
-        """Send results to reporter for metrics."""
+        """Send results to report-service for metrics."""
         try:
             curve_data = [(str(t), e) for t, e in result.equity_curve]
             resp = await client.post(

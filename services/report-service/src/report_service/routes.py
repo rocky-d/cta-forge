@@ -1,4 +1,4 @@
-"""REST API routes for reporter."""
+"""REST API routes for report-service."""
 
 from __future__ import annotations
 

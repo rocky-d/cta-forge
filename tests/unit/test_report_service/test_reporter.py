@@ -1,4 +1,4 @@
-"""Tests for reporter metrics and routes."""
+"""Tests for report-service metrics and routes."""
 
 from __future__ import annotations
 
