@@ -36,6 +36,8 @@ from cta_core.constants import (
     V10G_TRAILING_STOP_ATR,
 )
 
+from .indicators import calc_adx, calc_atr
+
 logger = logging.getLogger(__name__)
 
 
@@ -494,7 +496,15 @@ class LiveEngine:
         return signals
 
     def _compute_signal(self, bars: pl.DataFrame) -> float:
-        """Compute v10g composite signal: ensemble ADX + TSMOM + Donchian."""
+        """Compute v10g composite signal: ensemble ADX + TSMOM + Donchian.
+
+        NOTE: This is a simplified/optimized signal computation for live trading.
+        It differs from the factor classes in alpha_server/factors/:
+        - TSMOM: uses raw return * 5 instead of z-score normalization
+        - Donchian: uses continuous (close - mid) / range mapping instead of discrete +1/0/-1
+        - ADX: uses SMA smoothing instead of Wilder's smoothing
+        These differences are intentional to match the v10g backtest champion parameters.
+        """
         close = bars["close"].to_numpy()
         high = bars["high"].to_numpy()
         low = bars["low"].to_numpy()
@@ -502,7 +512,7 @@ class LiveEngine:
         # Ensemble ADX filter
         adx_pass = False
         for period in ADX_PERIODS:
-            adx = self._calc_adx(high, low, close, period)
+            adx = calc_adx(high, low, close, period)
             if adx > ADX_THRESHOLD:
                 adx_pass = True
                 break
@@ -531,47 +541,6 @@ class LiveEngine:
         composite = (tsmom * 2.0 + breakout * 1.5) / 3.5
         return float(np.clip(composite, -1, 1))
 
-    @staticmethod
-    def _calc_adx(
-        high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int
-    ) -> float:
-        """Calculate ADX indicator."""
-        if len(close) < period * 2:
-            return 0.0
-
-        # True Range
-        tr = np.maximum(high[1:] - low[1:], np.abs(high[1:] - close[:-1]))
-        tr = np.maximum(tr, np.abs(low[1:] - close[:-1]))
-
-        # Directional Movement
-        up = high[1:] - high[:-1]
-        down = low[:-1] - low[1:]
-        plus_dm = np.where((up > down) & (up > 0), up, 0.0)
-        minus_dm = np.where((down > up) & (down > 0), down, 0.0)
-
-        # Smoothed averages
-        atr = np.convolve(tr, np.ones(period) / period, mode="valid")
-        plus_di = np.convolve(plus_dm, np.ones(period) / period, mode="valid")
-        minus_di = np.convolve(minus_dm, np.ones(period) / period, mode="valid")
-
-        # Avoid division by zero
-        atr = np.maximum(atr, 1e-10)
-        plus_di = (plus_di / atr[: len(plus_di)]) * 100
-        minus_di = (minus_di / atr[: len(minus_di)]) * 100
-
-        n = min(len(plus_di), len(minus_di))
-        dx = (
-            np.abs(plus_di[:n] - minus_di[:n])
-            / np.maximum(plus_di[:n] + minus_di[:n], 1e-10)
-            * 100
-        )
-
-        if len(dx) < period:
-            return 0.0
-
-        adx = float(np.mean(dx[-period:]))
-        return adx
-
     # ── Position management ──────────────────────────────────────
 
     async def _update_positions(self, equity: float) -> None:
@@ -589,7 +558,7 @@ class LiveEngine:
             # Update trailing stop
             if pos.side == "long":
                 pnl_pct = (current_price - pos.entry_price) / pos.entry_price
-                new_stop = current_price - self._calc_atr(bars) * TRAILING_STOP_ATR
+                new_stop = current_price - calc_atr(bars) * TRAILING_STOP_ATR
                 pos.trailing_stop = max(pos.trailing_stop, new_stop)
                 if current_price <= pos.trailing_stop:
                     logger.info(
@@ -601,7 +570,7 @@ class LiveEngine:
                     to_close.append(symbol)
             else:
                 pnl_pct = (pos.entry_price - current_price) / pos.entry_price
-                new_stop = current_price + self._calc_atr(bars) * TRAILING_STOP_ATR
+                new_stop = current_price + calc_atr(bars) * TRAILING_STOP_ATR
                 pos.trailing_stop = min(pos.trailing_stop, new_stop)
                 if current_price >= pos.trailing_stop:
                     logger.info(
@@ -658,7 +627,7 @@ class LiveEngine:
         if bars is None:
             return
 
-        atr = self._calc_atr(bars)
+        atr = calc_atr(bars)
         if atr <= 0:
             return
 
@@ -768,15 +737,3 @@ class LiveEngine:
         # Also cancel any open orders
         if not self._dry_run:
             await self._exchange.cancel_all_orders()
-
-    @staticmethod
-    def _calc_atr(bars: pl.DataFrame, period: int = 14) -> float:
-        """Calculate ATR from bars."""
-        if len(bars) < period + 1:
-            return 0.0
-        high = bars["high"].to_numpy()
-        low = bars["low"].to_numpy()
-        close = bars["close"].to_numpy()
-        tr = np.maximum(high[1:] - low[1:], np.abs(high[1:] - close[:-1]))
-        tr = np.maximum(tr, np.abs(low[1:] - close[:-1]))
-        return float(np.mean(tr[-period:]))
