@@ -33,7 +33,7 @@ DEFAULT_TRAILING_STOP_ATR_MULT = 2.0
 PARQUET_COMPRESSION = "zstd"
 
 # ── v10g strategy parameters ─────────────────────────────────────
-# Source of truth for the v10g CTA strategy (previously in engine/live.py).
+# Source of truth for the v10g CTA strategy (previously in executor/live.py).
 
 V10G_SYMBOLS = [
     "BTC",

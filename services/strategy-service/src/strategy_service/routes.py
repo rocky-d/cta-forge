@@ -1,4 +1,4 @@
-"""REST API routes for strategy service."""
+"""REST API routes for strategy-service."""
 
 from __future__ import annotations
 

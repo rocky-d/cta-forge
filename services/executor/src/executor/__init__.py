@@ -1,4 +1,4 @@
-"""engine: Backtest & live execution engine."""
+"""executor: Backtest & live execution engine."""
 
 import dttb
 

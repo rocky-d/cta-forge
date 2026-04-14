@@ -1,4 +1,4 @@
-"""REST API routes for engine."""
+"""REST API routes for executor."""
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
-"""Shared technical indicators used across engine modules.
+"""Shared technical indicators used across executor modules.
 
-Extracted from live.py to avoid duplication with loop.py and risk.py.
+Extracted from live.py to deduplicate ADX/ATR calculations with loop.py.
 """
 
 from __future__ import annotations

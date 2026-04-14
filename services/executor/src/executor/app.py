@@ -1,4 +1,4 @@
-"""FastAPI application for engine."""
+"""FastAPI application for executor."""
 
 from fastapi import FastAPI
 
