@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from data_server.app import app
-from data_server.store import ParquetStore
+from data.app import app
+from data.store import ParquetStore
 from fastapi.testclient import TestClient
 
 

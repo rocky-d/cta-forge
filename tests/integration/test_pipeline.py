@@ -8,11 +8,11 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 import polars as pl
 import pytest
-from alpha_server.factors.momentum import TSMOMFactor
+from alpha.factors.momentum import TSMOMFactor
 from engine.backtest import BacktestEngine
 from reporter.metrics import calculate_metrics
-from strategy_server.allocator import allocate_positions
-from strategy_server.composer import compose_signals
+from strategy.allocator import allocate_positions
+from strategy.composer import compose_signals
 
 
 def _generate_market_data(

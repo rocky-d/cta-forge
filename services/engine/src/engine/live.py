@@ -499,7 +499,7 @@ class LiveEngine:
         """Compute v10g composite signal: ensemble ADX + TSMOM + Donchian.
 
         NOTE: This is a simplified/optimized signal computation for live trading.
-        It differs from the factor classes in alpha_server/factors/:
+        It differs from the factor classes in alpha/factors/:
         - TSMOM: uses raw return * 5 instead of z-score normalization
         - Donchian: uses continuous (close - mid) / range mapping instead of discrete +1/0/-1
         - ADX: uses SMA smoothing instead of Wilder's smoothing

@@ -7,11 +7,11 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 import polars as pl
 from fastapi.testclient import TestClient
-from strategy_server.allocator import allocate_positions
-from strategy_server.app import app
-from strategy_server.composer import compose_signals
-from strategy_server.risk import apply_trailing_stops, check_drawdown, compute_atr
-from strategy_server.selector import select_assets
+from strategy.allocator import allocate_positions
+from strategy.app import app
+from strategy.composer import compose_signals
+from strategy.risk import apply_trailing_stops, check_drawdown, compute_atr
+from strategy.selector import select_assets
 
 
 def _make_bars(n: int = 100, base: float = 100.0, trend: float = 0.0) -> pl.DataFrame:

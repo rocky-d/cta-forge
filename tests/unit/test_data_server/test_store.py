@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import polars as pl
 import pytest
-from data_server.store import ParquetStore
+from data.store import ParquetStore
 
 
 @pytest.fixture()

@@ -6,10 +6,10 @@ from datetime import UTC, datetime, timedelta
 
 import numpy as np
 import polars as pl
-from alpha_server.factors.breakout import DonchianBreakoutFactor
-from alpha_server.factors.carry import FundingRateCarryFactor
-from alpha_server.factors.momentum import TSMOMFactor
-from alpha_server.factors.volatility import VolatilityRegimeFactor
+from alpha.factors.breakout import DonchianBreakoutFactor
+from alpha.factors.carry import FundingRateCarryFactor
+from alpha.factors.momentum import TSMOMFactor
+from alpha.factors.volatility import VolatilityRegimeFactor
 
 
 def _make_trending_bars(n: int = 100, direction: float = 1.0) -> pl.DataFrame:

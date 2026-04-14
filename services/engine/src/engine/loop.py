@@ -97,8 +97,8 @@ class TradingLoop:
     def _compute_signal_sync(self, symbol: str, bars: pl.DataFrame) -> float:
         """Compute composite signal for a symbol (sync wrapper for backtest)."""
         # In backtest mode, compute signals locally to avoid HTTP overhead
-        from alpha_server.factors.breakout import DonchianBreakoutFactor
-        from alpha_server.factors.momentum import TSMOMFactor
+        from alpha.factors.breakout import DonchianBreakoutFactor
+        from alpha.factors.momentum import TSMOMFactor
 
         signals = {}
         if "tsmom_30" in self.config.factors:
@@ -127,7 +127,7 @@ class TradingLoop:
         self, signals: dict[str, float], equity: float
     ) -> dict[str, float]:
         """Allocate positions (sync wrapper for backtest)."""
-        from strategy_server.allocator import allocate_positions
+        from strategy.allocator import allocate_positions
 
         return allocate_positions(signals, equity)
 
