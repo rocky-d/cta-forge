@@ -5,4 +5,5 @@ description = "Shared types, protocols, and constants for cta-forge"
 requires-python = ">=3.12"
 dependencies = [
     "polars>=1.0.0",
+    "tzdata>=2024.1",
 ]
