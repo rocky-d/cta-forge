@@ -15,7 +15,7 @@ from v10g_maxrange import (
     align_data, compute_signals, run_backtest
 )
 
-OUT_DIR = Path("/home/node/.openclaw/workspace/cta-forge-dev/backtest-results")
+OUT_DIR = Path(__file__).resolve().parents[3] / "backtest-results"
 
 FOLDS = [
     {"name": "Fold1", "is_start": "2019-10-28", "is_end": "2022-03-31",

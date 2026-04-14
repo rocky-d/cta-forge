@@ -20,7 +20,7 @@ from v10g_maxrange import (
     align_data, compute_signals
 )
 
-OUT_DIR = Path("/home/node/.openclaw/workspace/cta-forge-dev/backtest-results")
+OUT_DIR = Path(__file__).resolve().parents[3] / "backtest-results"
 
 # Walk-forward folds
 FOLDS = [

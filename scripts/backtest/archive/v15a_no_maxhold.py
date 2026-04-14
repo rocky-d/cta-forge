@@ -16,9 +16,7 @@ import polars as pl
 from report_service.metrics import calculate_metrics
 
 BINANCE_URL = "https://fapi.binance.com"
-OUT_DIR = Path(
-    "/home/node/.openclaw/workspace/cta-forge-dev/backtest-results"
-)
+OUT_DIR = Path(__file__).resolve().parents[3] / "backtest-results"
 
 # All 19 symbols — each will start from its own earliest available data
 SYMBOLS = [
