@@ -14,6 +14,13 @@ import polars as pl
 
 from core.metrics import calculate_metrics
 
+from alpha_service.factors.v10g_composite import (
+    V10GCompositeFactor,
+    V10GCompositeParams,
+    _compute_adx,
+    _compute_atr,
+)
+
 BINANCE_URL = "https://fapi.binance.com"
 OUT_DIR = Path(
     "/home/node/.openclaw/workspace/cta-forge-dev/backtest-results"
@@ -112,96 +119,81 @@ async def fetch_all():
 
 
 def compute_adx(high, low, close, period=14):
-    n = len(close)
-    adx = np.zeros(n)
-    dip_o = np.zeros(n)
-    dim_o = np.zeros(n)
-    if n < period * 2:
-        return adx, dip_o, dim_o
-    tr = np.zeros(n)
-    pdm = np.zeros(n)
-    mdm = np.zeros(n)
-    for i in range(1, n):
-        tr[i] = max(
-            high[i] - low[i],
-            abs(high[i] - close[i - 1]),
-            abs(low[i] - close[i - 1]),
-        )
-        up = high[i] - high[i - 1]
-        down = low[i - 1] - low[i]
-        pdm[i] = up if up > down and up > 0 else 0
-        mdm[i] = down if down > up and down > 0 else 0
-    atr_s = np.zeros(n)
-    pdm_s = np.zeros(n)
-    mdm_s = np.zeros(n)
-    atr_s[period] = tr[1 : period + 1].sum()
-    pdm_s[period] = pdm[1 : period + 1].sum()
-    mdm_s[period] = mdm[1 : period + 1].sum()
-    for i in range(period + 1, n):
-        atr_s[i] = atr_s[i - 1] - atr_s[i - 1] / period + tr[i]
-        pdm_s[i] = pdm_s[i - 1] - pdm_s[i - 1] / period + pdm[i]
-        mdm_s[i] = mdm_s[i - 1] - mdm_s[i - 1] / period + mdm[i]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        dip_o = np.where(atr_s > 0, 100 * pdm_s / atr_s, 0)
-        dim_o = np.where(atr_s > 0, 100 * mdm_s / atr_s, 0)
-        ds = dip_o + dim_o
-        dx = np.where(ds > 0, 100 * np.abs(dip_o - dim_o) / ds, 0)
-    if period * 2 < n:
-        adx[period * 2] = np.nanmean(dx[period + 1 : period * 2 + 1])
-        for i in range(period * 2 + 1, n):
-            adx[i] = (adx[i - 1] * (period - 1) + dx[i]) / period
-    return adx, dip_o, dim_o
+    """Compute ADX via shared factor implementation."""
+    return _compute_adx(high, low, close, period)
 
 
 def compute_atr(high, low, close, period=14):
-    n = len(close)
-    atr = np.zeros(n)
-    for i in range(1, n):
-        tr = max(
-            high[i] - low[i],
-            abs(high[i] - close[i - 1]),
-            abs(low[i] - close[i - 1]),
-        )
-        atr[i] = (
-            (atr[i - 1] * (period - 1) + tr) / period
-            if i >= period
-            else tr
-        )
-    return atr
+    """Compute ATR via shared factor implementation."""
+    return _compute_atr(high, low, close, period)
+
+
+# Shared factor instance
+_v10g_factor = V10GCompositeFactor()
 
 
 def precompute(bars_dict):
-    """Precompute indicators per symbol (variable length)."""
+    """Precompute indicators per symbol using V10GCompositeFactor."""
     data = {}
     for sym, df in bars_dict.items():
-        c = df["close"].to_numpy()
-        h = df["high"].to_numpy()
-        lo = df["low"].to_numpy()
-        vol = df["volume"].to_numpy()
-        atr = compute_atr(h, lo, c)
-        adx, dip, dim = compute_adx(h, lo, c)
-        rets = np.zeros(len(c))
-        for i in range(1, len(c)):
-            rets[i] = (
-                (c[i] - c[i - 1]) / c[i - 1] if c[i - 1] > 0 else 0
-            )
-        rvol = np.zeros(len(c))
-        for i in range(20, len(c)):
-            rvol[i] = np.std(rets[i - 20 : i])
-        data[sym] = {
-            "close": c,
-            "high": h,
-            "low": lo,
-            "volume": vol,
-            "atr": atr,
-            "adx": adx,
-            "dip": dip,
-            "dim": dim,
-            "rvol": rvol,
-            "start_idx": 0,  # global index where this symbol's data starts
-            "length": len(c),
-        }
+        ind = _v10g_factor.precompute(df)
+        ind["atr"] = _compute_atr(ind["high"], ind["low"], ind["close"])
+        ind["start_idx"] = 0
+        ind["length"] = len(ind["close"])
+        data[sym] = ind
     return data
+
+
+def compute_signals(data, timeline, params):
+    """Compute signals on global timeline using V10GCompositeFactor."""
+    n_global = len(timeline)
+    use_btc = params.get("btc_filter", False)
+
+    # Build per-symbol indicator dicts (factor expects local arrays)
+    btc_ind = None
+    if use_btc and "BTCUSDT" in data:
+        btc_ind = data["BTCUSDT"]
+
+    sigs = {sym: np.zeros(n_global) for sym in data}
+
+    for sym, d in data.items():
+        start = d["start_idx"]
+        n = d["length"]
+
+        # Factor computes on local arrays
+        btc_ref = btc_ind if (use_btc and sym != "BTCUSDT") else None
+
+        # For BTC filter, we need aligned arrays. The factor expects
+        # btc_indicators to be indexed in parallel with the symbol.
+        # When symbols have different start_idx, we need to build
+        # an aligned BTC indicator slice.
+        if btc_ref is not None and btc_ref["start_idx"] != start:
+            btc_start = btc_ref["start_idx"]
+            btc_len = btc_ref["length"]
+            # Build aligned BTC close array (same global timeline mapping)
+            aligned_btc = {}
+            for key in btc_ref:
+                if key in ("start_idx", "length"):
+                    continue
+                arr = btc_ref[key]
+                aligned = np.zeros(n)
+                for li in range(n):
+                    gi = start + li
+                    btc_li = gi - btc_start
+                    if 0 <= btc_li < btc_len:
+                        aligned[li] = arr[btc_li]
+                aligned_btc[key] = aligned
+            local_sigs = _v10g_factor.compute_signal_array(d, aligned_btc)
+        else:
+            local_sigs = _v10g_factor.compute_signal_array(d, btc_ref)
+
+        # Map local signals to global timeline
+        for li in range(n):
+            gi = start + li
+            if gi < n_global:
+                sigs[sym][gi] = local_sigs[li]
+
+    return sigs
 
 
 def build_timeline(bars_dict):
@@ -228,152 +220,6 @@ def sym_local_idx(data, sym, global_t):
     if local < 0 or local >= data[sym]["length"]:
         return None
     return local
-
-
-def compute_signals(data, timeline, params):
-    """Compute signals on global timeline (variable-length symbols)."""
-    adx_ens = params["adx_ensemble"]
-    MOM_LBS = params["mom_lookbacks"]
-    use_btc = params.get("btc_filter", False)
-    persistence = params.get("signal_persistence", 1)
-    n_global = len(timeline)
-
-    sigs = {sym: np.zeros(n_global) for sym in data}
-
-    for sym, d in data.items():
-        c = d["close"]
-        h = d["high"]
-        lo = d["low"]
-        vol = d["volume"]
-        adx = d["adx"]
-        dip = d["dip"]
-        dim = d["dim"]
-        rvol = d["rvol"]
-        start = d["start_idx"]
-        n = d["length"]
-        raw_sig = np.zeros(n_global)
-
-        for gt in range(start + max(MOM_LBS) + 1, start + n):
-            i = gt - start  # local index
-
-            raw_signals = []
-            for adx_t in adx_ens:
-                if adx[i] < adx_t:
-                    raw_signals.append(0.0)
-                    continue
-                di_long = dip[i] > dim[i]
-                di_short = dim[i] > dip[i]
-
-                # Adaptive lookback weighting
-                median_rvol = (
-                    np.median(rvol[max(0, i - 120) : i])
-                    if i > 120
-                    else rvol[i]
-                )
-                vol_ratio = (
-                    rvol[i] / median_rvol if median_rvol > 0 else 1.0
-                )
-
-                votes = 0
-                tw = 0
-                for j, lb in enumerate(MOM_LBS):
-                    base_w = 1.0 / (j + 1)
-                    if j == 0:
-                        w = base_w * min(vol_ratio, 2.0)
-                    elif j == len(MOM_LBS) - 1:
-                        w = base_w * min(
-                            1.0 / max(vol_ratio, 0.5), 2.0
-                        )
-                    else:
-                        w = base_w
-                    ret = (
-                        (c[i] - c[i - lb]) / c[i - lb]
-                        if c[i - lb] > 0
-                        else 0
-                    )
-                    votes += (
-                        np.sign(ret)
-                        * w
-                        * min(abs(ret) * 20, 1.0)
-                    )
-                    tw += w
-                raw = votes / tw if tw > 0 else 0
-
-                dh = h[i - 20 : i].max()
-                dl = lo[i - 20 : i].min()
-                dm = (dh + dl) / 2
-                dr = dh - dl
-                if dr > 1e-10:
-                    dp = (c[i] - dm) / (dr / 2)
-                    if raw > 0 and dp < 0:
-                        raw *= 0.2
-                    elif raw < 0 and dp > 0:
-                        raw *= 0.2
-                if i >= 20:
-                    avg_vol = vol[i - 20 : i].mean()
-                    if avg_vol > 0:
-                        vr = vol[i] / avg_vol
-                        if vr < 0.8:
-                            raw *= 0.5
-                        elif vr > 1.5:
-                            raw *= 1.2
-                if raw > 0 and not di_long:
-                    raw *= 0.3
-                elif raw < 0 and not di_short:
-                    raw *= 0.3
-
-                # BTC filter
-                if (
-                    use_btc
-                    and "BTCUSDT" in data
-                    and sym != "BTCUSDT"
-                ):
-                    btc_d = data["BTCUSDT"]
-                    btc_li = gt - btc_d["start_idx"]
-                    if (
-                        0 <= btc_li < btc_d["length"]
-                        and btc_li >= 60
-                    ):
-                        bc = btc_d["close"]
-                        br = (
-                            (bc[btc_li] - bc[btc_li - 60])
-                            / bc[btc_li - 60]
-                            if bc[btc_li - 60] > 0
-                            else 0
-                        )
-                        if raw > 0 and br < -0.05:
-                            raw *= 0.5
-                        elif raw < 0 and br > 0.05:
-                            raw *= 0.5
-
-                raw_signals.append(np.clip(raw, -1, 1))
-
-            raw_sig[gt] = (
-                np.mean(raw_signals) if raw_signals else 0
-            )
-
-        if persistence > 1:
-            filtered = np.zeros(n_global)
-            streak = 0
-            last_dir = 0
-            for gt in range(n_global):
-                d_now = np.sign(raw_sig[gt])
-                if d_now == last_dir and d_now != 0:
-                    streak += 1
-                elif d_now != 0:
-                    streak = 1
-                    last_dir = d_now
-                else:
-                    streak = 0
-                    last_dir = 0
-                filtered[gt] = (
-                    raw_sig[gt] if streak >= persistence else 0
-                )
-            sigs[sym] = filtered
-        else:
-            sigs[sym] = raw_sig
-
-    return sigs
 
 
 def run_backtest(data, sigs, timeline, start_idx, end_idx, params):
