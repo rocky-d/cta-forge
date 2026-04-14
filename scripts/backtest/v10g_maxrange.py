@@ -22,9 +22,7 @@ from alpha_service.factors.v10g_composite import (
 )
 
 BINANCE_URL = "https://fapi.binance.com"
-OUT_DIR = Path(
-    "/home/node/.openclaw/workspace/cta-forge-dev/backtest-results"
-)
+OUT_DIR = Path(__file__).resolve().parents[2] / "backtest-results"
 
 # All 19 symbols — each will start from its own earliest available data
 SYMBOLS = [

@@ -16,7 +16,7 @@ from v10g_maxrange import (
     align_data, compute_signals, run_backtest, calc_ulcer
 )
 
-OUT_DIR = Path("/home/node/.openclaw/workspace/cta-forge-dev/backtest-results")
+OUT_DIR = Path(__file__).resolve().parents[2] / "backtest-results"
 
 
 async def fetch_price_series(client, symbol):

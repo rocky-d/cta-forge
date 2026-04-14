@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.patches import Rectangle
 
-OUT = Path("/home/node/.openclaw/workspace/cta-forge-dev/backtest-results")
+OUT = Path(__file__).resolve().parents[2] / "backtest-results"
 
 BASE_PARAMS = {
     "mom_lookbacks": [20, 60, 120],
