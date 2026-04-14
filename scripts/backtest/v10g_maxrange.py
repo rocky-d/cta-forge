@@ -16,7 +16,7 @@ from core.metrics import calculate_metrics
 
 BINANCE_URL = "https://fapi.binance.com"
 OUT_DIR = Path(
-    "/home/node/.openclaw/workspace/cta-forge/backtest-results"
+    "/home/node/.openclaw/workspace/cta-forge-dev/backtest-results"
 )
 
 # All 19 symbols — each will start from its own earliest available data

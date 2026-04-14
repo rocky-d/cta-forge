@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,7 +13,7 @@ import numpy as np
 import polars as pl
 
 
-from reporter.metrics import calculate_metrics
+from report_service.metrics import calculate_metrics
 
 BINANCE_URL = "https://fapi.binance.com"
 OUT_DIR = Path("/home/node/.openclaw/workspace/cta-forge-dev/backtest-results")

@@ -23,7 +23,7 @@ import polars as pl
 from core.metrics import calculate_metrics
 
 BINANCE_URL = "https://fapi.binance.com"
-OUT_DIR = Path("/home/node/.openclaw/workspace/cta-forge/backtest-results")
+OUT_DIR = Path("/home/node/.openclaw/workspace/cta-forge-dev/backtest-results")
 
 SYMBOLS = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",

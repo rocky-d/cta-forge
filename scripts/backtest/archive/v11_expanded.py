@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,16 +12,12 @@ import httpx
 import numpy as np
 import polars as pl
 
-    0, "/home/node/.openclaw/workspace/cta-forge/libs/cta-core/src"
-)
-    0, "/home/node/.openclaw/workspace/cta-forge/services/reporter/src"
-)
 
-from reporter.metrics import calculate_metrics
+from report_service.metrics import calculate_metrics
 
 BINANCE_URL = "https://fapi.binance.com"
 OUT_DIR = Path(
-    "/home/node/.openclaw/workspace/cta-forge/backtest-results"
+    "/home/node/.openclaw/workspace/cta-forge-dev/backtest-results"
 )
 
 # 42 symbols: Tier 1 (OG 2019-2020) + Tier 2 (established 2021-2023)
