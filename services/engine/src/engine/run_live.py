@@ -26,7 +26,7 @@ def main() -> None:
     dry_run = os.environ.get("DRY_RUN", "false").lower() in ("true", "1", "yes")
     state_file = os.environ.get("STATE_FILE", "engine-state.json")
 
-    from exchange_server.hyperliquid import HyperliquidAdapter
+    from exchange.hyperliquid import HyperliquidAdapter
 
     from .live import LiveEngine, TelegramNotifier, _NullNotifier
 

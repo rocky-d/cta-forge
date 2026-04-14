@@ -18,7 +18,7 @@ dev = [
     "strategy-server",
     "engine",
     "reporter",
-    "exchange-server",
+    "exchange",
 ]
 
 [tool.uv.sources]
@@ -27,17 +27,17 @@ alpha-server = { workspace = true }
 strategy-server = { workspace = true }
 engine = { workspace = true }
 reporter = { workspace = true }
-exchange-server = { workspace = true }
+exchange = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "libs/cta-core",
+    "libs/exchange",
     "services/data-server",
     "services/alpha-server",
     "services/strategy-server",
     "services/engine",
     "services/reporter",
-    "services/exchange",
 ]
 
 [tool.ruff]

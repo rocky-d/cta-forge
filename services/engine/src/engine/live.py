@@ -19,7 +19,7 @@ import numpy as np
 import polars as pl
 
 if TYPE_CHECKING:
-    from exchange_server.adapter import ExchangeAdapter
+    from exchange.adapter import ExchangeAdapter
 
 from cta_core.constants import (
     V10G_ADX_PERIODS,

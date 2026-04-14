@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from exchange_server.adapter import AccountState, MarketSnapshot, OrderResult, Position
+from exchange.adapter import AccountState, MarketSnapshot, OrderResult, Position
 
 
 class FakeExchange:

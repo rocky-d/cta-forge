@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from exchange_server.adapter import (
+from exchange.adapter import (
     AccountState,
     ExchangeAdapter,
     MarketSnapshot,
