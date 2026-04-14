@@ -21,8 +21,6 @@ _engine_state: dict[str, Any] = {
 class BacktestRequest(BaseModel):
     symbols: list[str]
     timeframe: str = "6h"
-    factors: list[str] = ["tsmom_30", "breakout_15"]
-    factor_weights: dict[str, float] = {"tsmom_30": 2.0, "breakout_15": 1.0}
     initial_equity: float = 10000.0
 
 
@@ -41,8 +39,6 @@ async def run_backtest(req: BacktestRequest, background_tasks: BackgroundTasks) 
         mode=EngineMode.BACKTEST,
         symbols=req.symbols,
         timeframe=req.timeframe,
-        factors=req.factors,
-        factor_weights=req.factor_weights,
         initial_equity=req.initial_equity,
     )
 
@@ -66,8 +62,6 @@ async def run_backtest_sync(req: BacktestRequest) -> dict:
         mode=EngineMode.BACKTEST,
         symbols=req.symbols,
         timeframe=req.timeframe,
-        factors=req.factors,
-        factor_weights=req.factor_weights,
         initial_equity=req.initial_equity,
     )
 
