@@ -762,6 +762,7 @@ name = "executor"
 version = "0.1.0"
 source = { editable = "services/executor" }
 dependencies = [
+    { name = "alpha-service" },
     { name = "core" },
     { name = "dttb" },
     { name = "exchange" },
@@ -774,6 +775,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "alpha-service", editable = "services/alpha-service" },
     { name = "core", editable = "libs/core" },
     { name = "dttb", specifier = ">=0.3.2" },
     { name = "exchange", editable = "libs/exchange" },

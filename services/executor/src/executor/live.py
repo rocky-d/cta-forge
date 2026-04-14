@@ -23,8 +23,6 @@ if TYPE_CHECKING:
     from exchange.adapter import ExchangeAdapter
 
 from core.constants import (
-    V10G_ADX_PERIODS,
-    V10G_ADX_THRESHOLD,
     V10G_DD_BREAKER,
     V10G_MAX_DRAWDOWN,
     V10G_MAX_POSITIONS,
@@ -37,7 +35,9 @@ from core.constants import (
     V10G_TRAILING_STOP_ATR,
 )
 
-from .indicators import calc_adx, calc_atr
+from alpha_service.factors.v10g_composite import V10GCompositeFactor
+
+from .indicators import calc_atr
 
 # Note: state module imports are kept lazy to avoid circular import
 # (state.py imports LivePosition/LiveState from this module)
@@ -89,8 +89,6 @@ class TelegramNotifier(_Notifier):
 # Local aliases for brevity:
 SYMBOLS = V10G_SYMBOLS
 TIMEFRAME_HOURS = V10G_TIMEFRAME_HOURS
-ADX_PERIODS = V10G_ADX_PERIODS
-ADX_THRESHOLD = V10G_ADX_THRESHOLD
 SIGNAL_THRESHOLD = V10G_SIGNAL_THRESHOLD
 MIN_HOLD_BARS = V10G_MIN_HOLD_BARS
 TRAILING_STOP_ATR = V10G_TRAILING_STOP_ATR
@@ -153,6 +151,7 @@ class LiveEngine:
         self._bars_cache: dict[str, pl.DataFrame] = {}
         self._state_file = state_file
         self._notify = notify or _NullNotifier()
+        self._factor = V10GCompositeFactor()
 
     # ── Minimum equity to start trading ────────────────────────────
     MIN_EQUITY = 100.0  # USD
@@ -481,63 +480,28 @@ class LiveEngine:
     # ── Signal computation (v10g) ────────────────────────────────
 
     def _compute_all_signals(self) -> dict[str, float]:
-        """Compute composite signals for all symbols."""
-        signals = {}
+        """Compute composite signals for all symbols using V10GCompositeFactor."""
+        # Precompute indicators for all symbols
+        indicator_cache: dict[str, dict[str, np.ndarray]] = {}
         for symbol in self._symbols:
             bars = self._bars_cache.get(symbol)
             if bars is None or len(bars) < 50:
                 continue
-            sig = self._compute_signal(bars)
+            indicator_cache[symbol] = self._factor.precompute(bars)
+
+        # BTC indicators for regime filter
+        btc_ind = indicator_cache.get("BTCUSDT")
+
+        signals = {}
+        for symbol, indicators in indicator_cache.items():
+            btc_ref = btc_ind if symbol != "BTCUSDT" else None
+            sig_array = self._factor.compute_signal_array(indicators, btc_ref)
+            sig = float(sig_array[-1]) if len(sig_array) > 0 else 0.0
             if abs(sig) >= SIGNAL_THRESHOLD:
                 signals[symbol] = sig
+
         logger.info("Signals: %d symbols above threshold", len(signals))
         return signals
-
-    def _compute_signal(self, bars: pl.DataFrame) -> float:
-        """Compute v10g composite signal: ensemble ADX + TSMOM + Donchian.
-
-        NOTE: This is a simplified/optimized signal computation for live trading.
-        It differs from the factor classes in alpha_service/factors/:
-        - TSMOM: uses raw return * 5 instead of z-score normalization
-        - Donchian: uses continuous (close - mid) / range mapping instead of discrete +1/0/-1
-        - ADX: uses SMA smoothing instead of Wilder's smoothing
-        These differences are intentional to match the v10g backtest champion parameters.
-        """
-        close = bars["close"].to_numpy()
-        high = bars["high"].to_numpy()
-        low = bars["low"].to_numpy()
-
-        # Ensemble ADX filter
-        adx_pass = False
-        for period in ADX_PERIODS:
-            adx = calc_adx(high, low, close, period)
-            if adx > ADX_THRESHOLD:
-                adx_pass = True
-                break
-
-        if not adx_pass:
-            return 0.0
-
-        # TSMOM signal (lookback=30)
-        if len(close) > 30:
-            ret = (close[-1] - close[-31]) / close[-31]
-            tsmom = float(np.clip(ret * 5, -1, 1))
-        else:
-            tsmom = 0.0
-
-        # Donchian breakout (period=15)
-        if len(high) > 15:
-            hh = float(np.max(high[-16:-1]))
-            ll = float(np.min(low[-16:-1]))
-            mid = (hh + ll) / 2
-            rng = hh - ll if hh != ll else 1.0
-            breakout = float(np.clip((close[-1] - mid) / rng * 2, -1, 1))
-        else:
-            breakout = 0.0
-
-        # Weighted composite
-        composite = (tsmom * 2.0 + breakout * 1.5) / 3.5
-        return float(np.clip(composite, -1, 1))
 
     # ── Position management ──────────────────────────────────────
 
