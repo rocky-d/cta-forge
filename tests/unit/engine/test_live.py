@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from engine.live import LiveEngine
 from exchange.adapter import AccountState, MarketSnapshot, OrderResult, Position
 
 
@@ -86,7 +87,6 @@ class FakeExchange:
 @pytest.mark.asyncio
 async def test_preflight_clean_account() -> None:
     """Preflight passes on clean account."""
-    from engine.live import LiveEngine
 
     exchange = FakeExchange()
     engine = LiveEngine(exchange, dry_run=True)
@@ -97,7 +97,6 @@ async def test_preflight_clean_account() -> None:
 @pytest.mark.asyncio
 async def test_preflight_low_equity() -> None:
     """Preflight fails on insufficient equity."""
-    from engine.live import LiveEngine
 
     exchange = FakeExchange(equity=Decimal("50"))
     engine = LiveEngine(exchange, dry_run=True)
@@ -108,7 +107,6 @@ async def test_preflight_low_equity() -> None:
 @pytest.mark.asyncio
 async def test_preflight_stale_positions() -> None:
     """Preflight closes stale positions."""
-    from engine.live import LiveEngine
 
     positions = [
         Position(
@@ -129,7 +127,6 @@ async def test_preflight_stale_positions() -> None:
 @pytest.mark.asyncio
 async def test_preflight_stale_orders() -> None:
     """Preflight cancels stale open orders."""
-    from engine.live import LiveEngine
 
     orders = [{"coin": "ETH", "oid": "123"}]
     exchange = FakeExchange(open_orders=orders)

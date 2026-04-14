@@ -5,10 +5,14 @@ from __future__ import annotations
 import io
 from typing import TYPE_CHECKING
 
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 
 if TYPE_CHECKING:
     from datetime import datetime
+
+matplotlib.use("Agg")
 
 
 def plot_equity_curve(
@@ -19,14 +23,7 @@ def plot_equity_curve(
 
     Returns PNG image bytes that can be saved or sent via HTTP.
     """
-    # Import matplotlib only when needed
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
     if not equity_curve:
-        # Return empty plot
         fig, ax = plt.subplots(figsize=(12, 6))
         ax.set_title("No data")
         buf = io.BytesIO()
@@ -47,7 +44,6 @@ def plot_equity_curve(
     ax.set_ylabel("Equity")
     ax.grid(True, alpha=0.3)
 
-    # Format y-axis as currency
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"${x:,.0f}"))
 
     fig.autofmt_xdate()
@@ -62,11 +58,6 @@ def plot_equity_curve(
 
 def plot_drawdown(equity_curve: list[tuple[datetime, float]]) -> bytes:
     """Generate drawdown chart as PNG bytes."""
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
     if not equity_curve:
         fig, ax = plt.subplots(figsize=(12, 4))
         ax.set_title("No data")
@@ -104,11 +95,6 @@ def plot_drawdown(equity_curve: list[tuple[datetime, float]]) -> bytes:
 
 def plot_returns_distribution(trades: list[dict]) -> bytes:
     """Generate trade returns distribution histogram as PNG bytes."""
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
     pnls = [t.get("pnl", 0.0) for t in trades if "pnl" in t]
 
     fig, ax = plt.subplots(figsize=(10, 5))

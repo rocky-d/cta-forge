@@ -8,12 +8,17 @@ from enum import StrEnum
 
 import httpx
 import polars as pl
+from alpha.factors.breakout import DonchianBreakoutFactor
+from alpha.factors.momentum import TSMOMFactor
 from cta_core.constants import (
     ALPHA_SERVER_URL,
     DATA_SERVER_URL,
     REPORTER_URL,
     STRATEGY_SERVER_URL,
 )
+from strategy.allocator import allocate_positions
+
+from .backtest import BacktestEngine
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +53,6 @@ class TradingLoop:
 
     async def run_backtest(self) -> dict:
         """Execute a complete backtest run."""
-        from .backtest import BacktestEngine
-
         async with httpx.AsyncClient(timeout=60) as client:
             # 1. Fetch data
             bars = await self._fetch_data(client)
@@ -97,9 +100,6 @@ class TradingLoop:
     def _compute_signal_sync(self, symbol: str, bars: pl.DataFrame) -> float:
         """Compute composite signal for a symbol (sync wrapper for backtest)."""
         # In backtest mode, compute signals locally to avoid HTTP overhead
-        from alpha.factors.breakout import DonchianBreakoutFactor
-        from alpha.factors.momentum import TSMOMFactor
-
         signals = {}
         if "tsmom_30" in self.config.factors:
             factor = TSMOMFactor(lookback=30)
@@ -127,8 +127,6 @@ class TradingLoop:
         self, signals: dict[str, float], equity: float
     ) -> dict[str, float]:
         """Allocate positions (sync wrapper for backtest)."""
-        from strategy.allocator import allocate_positions
-
         return allocate_positions(signals, equity)
 
     async def _generate_report(self, client: httpx.AsyncClient, result) -> dict:

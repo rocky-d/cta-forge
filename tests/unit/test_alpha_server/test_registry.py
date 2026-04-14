@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from alpha.app import app
-from alpha.registry import FactorRegistry
+from alpha.registry import FactorRegistry, registry
 from fastapi.testclient import TestClient
 
 
@@ -36,8 +36,6 @@ class TestRoutes:
     def setup_method(self):
         self.client = TestClient(app, raise_server_exceptions=True)
         # Ensure factors are discovered (lifespan may not run in all TestClient modes)
-        from alpha.registry import registry
-
         if not registry.list_factors():
             registry.auto_discover()
 

@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+import httpx
 import numpy as np
 import polars as pl
 
@@ -37,6 +38,9 @@ from cta_core.constants import (
 )
 
 from .indicators import calc_adx, calc_atr
+
+# Note: state module imports are kept lazy to avoid circular import
+# (state.py imports LivePosition/LiveState from this module)
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +70,6 @@ class TelegramNotifier(_Notifier):
         self._chat_id = chat_id
 
     async def send(self, message: str) -> None:
-        import httpx
-
         url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -172,6 +174,7 @@ class LiveEngine:
             return
 
         # Try to restore state from disk
+        # Import here to avoid circular import (state.py imports LivePosition/LiveState)
         from .state import load_state, save_state
 
         restored = load_state(self._state_file)
@@ -446,8 +449,6 @@ class LiveEngine:
 
     async def _fetch_bars(self) -> None:
         """Fetch latest bars from Binance for all symbols."""
-        import httpx
-
         url = "https://fapi.binance.com/fapi/v1/klines"
         async with httpx.AsyncClient(timeout=30) as client:
             for symbol in self._symbols:
