@@ -7,6 +7,10 @@ import logging
 import os
 import sys
 
+from exchange.hyperliquid import HyperliquidAdapter
+
+from .live import LiveEngine, TelegramNotifier, _NullNotifier
+
 
 def main() -> None:
     """Start the live trading engine."""
@@ -25,10 +29,6 @@ def main() -> None:
     testnet = os.environ.get("HL_NETWORK", "testnet") == "testnet"
     dry_run = os.environ.get("DRY_RUN", "false").lower() in ("true", "1", "yes")
     state_file = os.environ.get("STATE_FILE", "engine-state.json")
-
-    from exchange.hyperliquid import HyperliquidAdapter
-
-    from .live import LiveEngine, TelegramNotifier, _NullNotifier
 
     # Setup Telegram notifications if configured
     tg_token = os.environ.get("TG_BOT_TOKEN", "")

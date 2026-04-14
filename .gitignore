@@ -17,6 +17,9 @@ build/
 .env
 .venv/
 
+# Runtime state
+engine-state.json
+
 # IDE
 .idea/
 .vscode/
