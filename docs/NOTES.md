@@ -9,7 +9,7 @@ Monorepo with 5 microservices + 2 shared libraries, targeting Binance USDS-M per
 
 ```
 libs/
-  core/              — shared types, protocols, constants
+  core/              — shared protocols, constants, metrics
   exchange/          — exchange connectivity (Hyperliquid adapter)
 services/
   data-service/      — Binance kline fetcher, parquet store, REST API (:8001)

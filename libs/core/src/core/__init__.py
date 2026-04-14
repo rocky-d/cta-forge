@@ -1,1 +1,1 @@
-"""core: shared types, protocols, and constants for cta-forge."""
+"""core: shared protocols, constants, and metrics for cta-forge."""

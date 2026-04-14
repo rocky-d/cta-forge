@@ -85,10 +85,7 @@ class TelegramNotifier(_Notifier):
             logger.warning("Telegram notification failed: %s", e)
 
 
-# ── v10g strategy parameters (from backtest champion) ────────────
-
 # ── v10g strategy parameters (from core.constants) ───────────
-# All V10G_* constants are imported from core.constants.
 # Local aliases for brevity:
 SYMBOLS = V10G_SYMBOLS
 TIMEFRAME_HOURS = V10G_TIMEFRAME_HOURS

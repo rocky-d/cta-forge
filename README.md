@@ -16,7 +16,7 @@ Crypto CTA strategy forge — monorepo microservices architecture.
 
 | Library | Description |
 |---|---|
-| core | Shared types, protocols, constants |
+| core | Shared protocols, constants, metrics |
 | exchange | Exchange connectivity (Hyperliquid adapter) |
 
 ## Quick Start
