@@ -27,3 +27,4 @@ build/
 Thumbs.db
 backtest-results/*.png
 backtest-results/*.json
+engine.log
