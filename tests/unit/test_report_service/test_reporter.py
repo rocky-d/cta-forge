@@ -6,8 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 import numpy as np
 from fastapi.testclient import TestClient
-from reporter_service.app import app
-from reporter_service.metrics import calculate_metrics
+from report_service.app import app
+from report_service.metrics import calculate_metrics
 
 
 def _make_curve(n: int = 100, trend: float = 0.001) -> list[tuple[datetime, float]]:

@@ -1,5 +1,5 @@
 [project]
-name = "reporter-service"
+name = "report-service"
 version = "0.1.0"
 description = "Performance metrics & visualization"
 requires-python = ">=3.12"

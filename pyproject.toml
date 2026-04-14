@@ -17,7 +17,7 @@ dev = [
     "alpha-service",
     "strategy-service",
     "engine-service",
-    "reporter-service",
+    "report-service",
     "exchange",
 ]
 
@@ -26,7 +26,7 @@ data-service = { workspace = true }
 alpha-service = { workspace = true }
 strategy-service = { workspace = true }
 engine-service = { workspace = true }
-reporter-service = { workspace = true }
+report-service = { workspace = true }
 exchange = { workspace = true }
 
 [tool.uv.workspace]
@@ -37,7 +37,7 @@ members = [
     "services/alpha-service",
     "services/strategy-service",
     "services/engine-service",
-    "services/reporter-service",
+    "services/report-service",
 ]
 
 [tool.ruff]

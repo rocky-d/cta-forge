@@ -13,7 +13,7 @@ from alpha_service.factors.momentum import TSMOMFactor
 from core.constants import (
     ALPHA_SERVICE_URL,
     DATA_SERVICE_URL,
-    REPORTER_SERVICE_URL,
+    REPORT_SERVICE_URL,
     STRATEGY_SERVICE_URL,
 )
 from strategy_service.allocator import allocate_positions
@@ -41,7 +41,7 @@ class EngineConfig:
     data_service_url: str = DATA_SERVICE_URL
     alpha_service_url: str = ALPHA_SERVICE_URL
     strategy_service_url: str = STRATEGY_SERVICE_URL
-    reporter_service_url: str = REPORTER_SERVICE_URL
+    report_service_url: str = REPORT_SERVICE_URL
 
 
 class TradingLoop:
@@ -134,7 +134,7 @@ class TradingLoop:
         try:
             curve_data = [(str(t), e) for t, e in result.equity_curve]
             resp = await client.post(
-                f"{self.config.reporter_service_url}/report",
+                f"{self.config.report_service_url}/report",
                 json={"equity_curve": curve_data, "trades": result.trades},
             )
             if resp.status_code == 200:

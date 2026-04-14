@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 import httpx, numpy as np, polars as pl
 
-from reporter_service.metrics import calculate_metrics
+from report_service.metrics import calculate_metrics
 
 from v10g_maxrange import (
     SYMBOLS, TIMEFRAME, INITIAL_EQUITY, COMMISSION, START_TS,

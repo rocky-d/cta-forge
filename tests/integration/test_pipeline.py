@@ -10,7 +10,7 @@ import polars as pl
 import pytest
 from alpha_service.factors.momentum import TSMOMFactor
 from engine_service.backtest import BacktestEngine
-from reporter_service.metrics import calculate_metrics
+from report_service.metrics import calculate_metrics
 from strategy_service.allocator import allocate_positions
 from strategy_service.composer import compose_signals
 

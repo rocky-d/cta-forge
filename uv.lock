@@ -10,7 +10,7 @@ members = [
     "data-service",
     "engine-service",
     "exchange",
-    "reporter-service",
+    "report-service",
     "strategy-service",
 ]
 
@@ -447,7 +447,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
-    { name = "reporter-service" },
+    { name = "report-service" },
     { name = "ruff" },
     { name = "strategy-service" },
     { name = "ty" },
@@ -465,7 +465,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0.0" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "reporter-service", editable = "services/reporter-service" },
+    { name = "report-service", editable = "services/report-service" },
     { name = "ruff", specifier = ">=0.15.0" },
     { name = "strategy-service", editable = "services/strategy-service" },
     { name = "ty", specifier = ">=0.0.22" },
@@ -1571,9 +1571,9 @@ wheels = [
 ]
 
 [[package]]
-name = "reporter-service"
+name = "report-service"
 version = "0.1.0"
-source = { editable = "services/reporter-service" }
+source = { editable = "services/report-service" }
 dependencies = [
     { name = "core" },
     { name = "dttb" },
