@@ -4,22 +4,22 @@ requires-python = ">=3.12"
 
 [manifest]
 members = [
-    "alpha-server",
-    "cta-core",
+    "alpha-service",
+    "core",
     "cta-forge",
-    "data-server",
-    "engine",
+    "data-service",
+    "engine-service",
     "exchange",
-    "reporter",
-    "strategy-server",
+    "reporter-service",
+    "strategy-service",
 ]
 
 [[package]]
-name = "alpha-server"
+name = "alpha-service"
 version = "0.1.0"
-source = { editable = "services/alpha-server" }
+source = { editable = "services/alpha-service" }
 dependencies = [
-    { name = "cta-core" },
+    { name = "core" },
     { name = "dttb" },
     { name = "fastapi" },
     { name = "numpy" },
@@ -29,7 +29,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cta-core", editable = "libs/cta-core" },
+    { name = "core", editable = "libs/core" },
     { name = "dttb", specifier = ">=0.3.2" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "numpy", specifier = ">=2.0.0" },
@@ -338,6 +338,17 @@ wheels = [
 ]
 
 [[package]]
+name = "core"
+version = "0.1.0"
+source = { editable = "libs/core" }
+dependencies = [
+    { name = "polars" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "polars", specifier = ">=1.0.0" }]
+
+[[package]]
 name = "coverage"
 version = "7.13.5"
 source = { registry = "https://pypi.org/simple" }
@@ -422,34 +433,23 @@ wheels = [
 ]
 
 [[package]]
-name = "cta-core"
-version = "0.1.0"
-source = { editable = "libs/cta-core" }
-dependencies = [
-    { name = "polars" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "polars", specifier = ">=1.0.0" }]
-
-[[package]]
 name = "cta-forge"
 version = "0.1.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
-    { name = "alpha-server" },
-    { name = "data-server" },
-    { name = "engine" },
+    { name = "alpha-service" },
+    { name = "data-service" },
+    { name = "engine-service" },
     { name = "exchange" },
     { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
-    { name = "reporter" },
+    { name = "reporter-service" },
     { name = "ruff" },
-    { name = "strategy-server" },
+    { name = "strategy-service" },
     { name = "ty" },
 ]
 
@@ -457,17 +457,17 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "alpha-server", editable = "services/alpha-server" },
-    { name = "data-server", editable = "services/data-server" },
-    { name = "engine", editable = "services/engine" },
+    { name = "alpha-service", editable = "services/alpha-service" },
+    { name = "data-service", editable = "services/data-service" },
+    { name = "engine-service", editable = "services/engine-service" },
     { name = "exchange", editable = "libs/exchange" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "pytest", specifier = ">=9.0.0" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "reporter", editable = "services/reporter" },
+    { name = "reporter-service", editable = "services/reporter-service" },
     { name = "ruff", specifier = ">=0.15.0" },
-    { name = "strategy-server", editable = "services/strategy-server" },
+    { name = "strategy-service", editable = "services/strategy-service" },
     { name = "ty", specifier = ">=0.0.22" },
 ]
 
@@ -598,11 +598,11 @@ wheels = [
 ]
 
 [[package]]
-name = "data-server"
+name = "data-service"
 version = "0.1.0"
-source = { editable = "services/data-server" }
+source = { editable = "services/data-service" }
 dependencies = [
-    { name = "cta-core" },
+    { name = "core" },
     { name = "dttb" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -612,7 +612,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cta-core", editable = "libs/cta-core" },
+    { name = "core", editable = "libs/core" },
     { name = "dttb", specifier = ">=0.3.2" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.28.0" },
@@ -630,11 +630,11 @@ wheels = [
 ]
 
 [[package]]
-name = "engine"
+name = "engine-service"
 version = "0.1.0"
-source = { editable = "services/engine" }
+source = { editable = "services/engine-service" }
 dependencies = [
-    { name = "cta-core" },
+    { name = "core" },
     { name = "dttb" },
     { name = "exchange" },
     { name = "fastapi" },
@@ -646,7 +646,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cta-core", editable = "libs/cta-core" },
+    { name = "core", editable = "libs/core" },
     { name = "dttb", specifier = ">=0.3.2" },
     { name = "exchange", editable = "libs/exchange" },
     { name = "fastapi", specifier = ">=0.115.0" },
@@ -774,13 +774,13 @@ name = "exchange"
 version = "0.1.0"
 source = { editable = "libs/exchange" }
 dependencies = [
-    { name = "cta-core" },
+    { name = "core" },
     { name = "hyperliquid-python-sdk" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "cta-core", editable = "libs/cta-core" },
+    { name = "core", editable = "libs/core" },
     { name = "hyperliquid-python-sdk", specifier = ">=0.9.0" },
 ]
 
@@ -1571,11 +1571,11 @@ wheels = [
 ]
 
 [[package]]
-name = "reporter"
+name = "reporter-service"
 version = "0.1.0"
-source = { editable = "services/reporter" }
+source = { editable = "services/reporter-service" }
 dependencies = [
-    { name = "cta-core" },
+    { name = "core" },
     { name = "dttb" },
     { name = "fastapi" },
     { name = "matplotlib" },
@@ -1586,7 +1586,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cta-core", editable = "libs/cta-core" },
+    { name = "core", editable = "libs/core" },
     { name = "dttb", specifier = ">=0.3.2" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "matplotlib", specifier = ">=3.9.0" },
@@ -1670,11 +1670,11 @@ wheels = [
 ]
 
 [[package]]
-name = "strategy-server"
+name = "strategy-service"
 version = "0.1.0"
-source = { editable = "services/strategy-server" }
+source = { editable = "services/strategy-service" }
 dependencies = [
-    { name = "cta-core" },
+    { name = "core" },
     { name = "dttb" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -1685,7 +1685,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cta-core", editable = "libs/cta-core" },
+    { name = "core", editable = "libs/core" },
     { name = "dttb", specifier = ">=0.3.2" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.28.0" },

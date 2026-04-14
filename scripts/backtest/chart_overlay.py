@@ -1,16 +1,15 @@
-"""Re-chart v10g with BTC & ETH price overlay. Runs full backtest to get curve."""
+"""Re-chart v10g with BTC & ETH price overlay. Runs full backtest to get curve.
+
+Usage: uv run python scripts/backtest/chart_overlay.py
+"""
 from __future__ import annotations
-import asyncio, json, sys, time
+import asyncio, json, time
 from datetime import UTC, datetime
 from pathlib import Path
 import httpx, numpy as np, polars as pl
 
-sys.path.insert(0, "/home/node/.openclaw/workspace/cta-forge-dev/libs/cta-core/src")
-sys.path.insert(0, "/home/node/.openclaw/workspace/cta-forge-dev/services/reporter/src")
-from reporter.metrics import calculate_metrics
+from reporter_service.metrics import calculate_metrics
 
-# Import everything from v10g_maxrange
-sys.path.insert(0, "/home/node/.openclaw/workspace/cta-forge-dev/scripts/backtest")
 from v10g_maxrange import (
     SYMBOLS, TIMEFRAME, INITIAL_EQUITY, COMMISSION, START_TS,
     BINANCE_URL, fetch_klines_from, precompute, build_timeline,

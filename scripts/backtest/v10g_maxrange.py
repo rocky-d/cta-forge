@@ -12,7 +12,7 @@ import httpx
 import numpy as np
 import polars as pl
 
-from cta_core.metrics import calculate_metrics
+from core.metrics import calculate_metrics
 
 BINANCE_URL = "https://fapi.binance.com"
 OUT_DIR = Path(

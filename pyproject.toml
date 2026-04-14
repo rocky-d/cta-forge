@@ -13,31 +13,31 @@ dev = [
     "ruff>=0.15.0",
     "ty>=0.0.22",
     "httpx>=0.28.0",
-    "data-server",
-    "alpha-server",
-    "strategy-server",
-    "engine",
-    "reporter",
+    "data-service",
+    "alpha-service",
+    "strategy-service",
+    "engine-service",
+    "reporter-service",
     "exchange",
 ]
 
 [tool.uv.sources]
-data-server = { workspace = true }
-alpha-server = { workspace = true }
-strategy-server = { workspace = true }
-engine = { workspace = true }
-reporter = { workspace = true }
+data-service = { workspace = true }
+alpha-service = { workspace = true }
+strategy-service = { workspace = true }
+engine-service = { workspace = true }
+reporter-service = { workspace = true }
 exchange = { workspace = true }
 
 [tool.uv.workspace]
 members = [
-    "libs/cta-core",
+    "libs/core",
     "libs/exchange",
-    "services/data-server",
-    "services/alpha-server",
-    "services/strategy-server",
-    "services/engine",
-    "services/reporter",
+    "services/data-service",
+    "services/alpha-service",
+    "services/strategy-service",
+    "services/engine-service",
+    "services/reporter-service",
 ]
 
 [tool.ruff]

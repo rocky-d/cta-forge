@@ -1,0 +1,17 @@
+[project]
+name = "strategy-service"
+version = "0.1.0"
+description = "Signal composition, asset selection, allocation, risk"
+requires-python = ">=3.12"
+dependencies = [
+    "core",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "httpx>=0.28.0",
+    "polars>=1.0.0",
+    "numpy>=2.0.0",
+    "dttb>=0.3.2",
+]
+
+[tool.uv.sources]
+core = { workspace = true }

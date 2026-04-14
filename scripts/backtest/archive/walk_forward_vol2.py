@@ -8,9 +8,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 import numpy as np
 
-sys.path.insert(0, "/home/node/.openclaw/workspace/cta-forge-dev/libs/cta-core/src")
-sys.path.insert(0, "/home/node/.openclaw/workspace/cta-forge-dev/services/reporter/src")
-sys.path.insert(0, "/home/node/.openclaw/workspace/cta-forge-dev/scripts/backtest")
 
 from v10g_maxrange import (
     SYMBOLS, START_TS, INITIAL_EQUITY,

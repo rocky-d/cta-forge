@@ -13,10 +13,8 @@ import httpx
 import numpy as np
 import polars as pl
 
-sys.path.insert(
     0, "/home/node/.openclaw/workspace/cta-forge/libs/cta-core/src"
 )
-sys.path.insert(
     0, "/home/node/.openclaw/workspace/cta-forge/services/reporter/src"
 )
 
