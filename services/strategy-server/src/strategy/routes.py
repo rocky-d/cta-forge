@@ -1,9 +1,17 @@
-"""REST API routes for strategy-server."""
+"""REST API routes for strategy service."""
 
 from __future__ import annotations
 
+import polars as pl
 from fastapi import APIRouter
 from pydantic import BaseModel
+
+from cta_core.constants import (
+    DEFAULT_LONG_RATIO,
+    DEFAULT_MAX_DRAWDOWN,
+    DEFAULT_SHORT_RATIO,
+    DEFAULT_TRAILING_STOP_ATR_MULT,
+)
 
 from .allocator import allocate_positions
 from .composer import compose_signals
@@ -12,10 +20,25 @@ from .selector import select_assets
 
 router = APIRouter()
 
+# ── Signal routes ────────────────────────────────────────────────
+
+signal_router = APIRouter(prefix="/signal", tags=["signal"])
+
 
 class ComposeRequest(BaseModel):
     signals: dict[str, dict[str, float]]  # {symbol: {factor: signal}}
     weights: dict[str, float]  # {factor: weight}
+
+
+@signal_router.post("/compose")
+async def compose(req: ComposeRequest) -> dict:
+    result = compose_signals(req.signals, req.weights)
+    return {"composite_signals": result}
+
+
+# ── Portfolio routes ─────────────────────────────────────────────
+
+portfolio_router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
 
 class SelectRequest(BaseModel):
@@ -33,6 +56,26 @@ class AllocateRequest(BaseModel):
     max_position_pct: float = 0.1
 
 
+@portfolio_router.post("/select")
+async def select(req: SelectRequest) -> dict:
+    universe = {s: pl.DataFrame(bars) for s, bars in req.universe.items()}
+    selected = select_assets(universe, req.top_n, req.lookback, req.min_volume)
+    return {"selected": selected, "count": len(selected)}
+
+
+@portfolio_router.post("/allocate")
+async def allocate(req: AllocateRequest) -> dict:
+    positions = allocate_positions(
+        req.signals, req.equity, req.long_ratio, req.short_ratio, req.max_position_pct
+    )
+    return {"positions": positions}
+
+
+# ── Risk routes ──────────────────────────────────────────────────
+
+risk_router = APIRouter(prefix="/risk", tags=["risk"])
+
+
 class RiskCheckRequest(BaseModel):
     positions: dict[str, float]
     bars: dict[str, list[dict]]
@@ -46,33 +89,8 @@ class DrawdownCheckRequest(BaseModel):
     max_drawdown: float = 0.15
 
 
-@router.post("/compose")
-async def compose(req: ComposeRequest) -> dict:
-    result = compose_signals(req.signals, req.weights)
-    return {"composite_signals": result}
-
-
-@router.post("/select")
-async def select(req: SelectRequest) -> dict:
-    import polars as pl
-
-    universe = {s: pl.DataFrame(bars) for s, bars in req.universe.items()}
-    selected = select_assets(universe, req.top_n, req.lookback, req.min_volume)
-    return {"selected": selected, "count": len(selected)}
-
-
-@router.post("/allocate")
-async def allocate(req: AllocateRequest) -> dict:
-    positions = allocate_positions(
-        req.signals, req.equity, req.long_ratio, req.short_ratio, req.max_position_pct
-    )
-    return {"positions": positions}
-
-
-@router.post("/check-risk")
+@risk_router.post("/check")
 async def check_risk(req: RiskCheckRequest) -> dict:
-    import polars as pl
-
     bars = {s: pl.DataFrame(b) for s, b in req.bars.items()}
     adjusted = apply_trailing_stops(req.positions, bars, req.entry_prices, req.atr_mult)
     stopped = [
@@ -81,7 +99,7 @@ async def check_risk(req: RiskCheckRequest) -> dict:
     return {"positions": adjusted, "stopped_out": stopped}
 
 
-@router.post("/check-drawdown")
+@risk_router.post("/drawdown")
 async def drawdown_check(req: DrawdownCheckRequest) -> dict:
     ok = check_drawdown(req.equity, req.peak_equity, req.max_drawdown)
     dd = (
@@ -90,18 +108,21 @@ async def drawdown_check(req: DrawdownCheckRequest) -> dict:
     return {"within_limits": ok, "current_drawdown": dd}
 
 
+# ── Config ───────────────────────────────────────────────────────
+
+
 @router.get("/config")
 async def get_config() -> dict:
-    from cta_core.constants import (
-        DEFAULT_LONG_RATIO,
-        DEFAULT_MAX_DRAWDOWN,
-        DEFAULT_SHORT_RATIO,
-        DEFAULT_TRAILING_STOP_ATR_MULT,
-    )
-
     return {
         "long_ratio": DEFAULT_LONG_RATIO,
         "short_ratio": DEFAULT_SHORT_RATIO,
         "max_drawdown": DEFAULT_MAX_DRAWDOWN,
         "trailing_stop_atr_mult": DEFAULT_TRAILING_STOP_ATR_MULT,
     }
+
+
+# ── Register sub-routers ────────────────────────────────────────
+
+router.include_router(signal_router)
+router.include_router(portfolio_router)
+router.include_router(risk_router)

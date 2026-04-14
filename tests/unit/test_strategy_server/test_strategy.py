@@ -142,7 +142,7 @@ class TestRoutes:
 
     def test_compose_endpoint(self):
         resp = self.client.post(
-            "/compose",
+            "/signal/compose",
             json={
                 "signals": {"BTC": {"m": 0.5, "b": 0.3}},
                 "weights": {"m": 2.0, "b": 1.0},
@@ -153,7 +153,7 @@ class TestRoutes:
 
     def test_allocate_endpoint(self):
         resp = self.client.post(
-            "/allocate",
+            "/portfolio/allocate",
             json={
                 "signals": {"BTC": 0.8, "ETH": -0.5},
                 "equity": 10000,
@@ -164,7 +164,7 @@ class TestRoutes:
 
     def test_drawdown_endpoint(self):
         resp = self.client.post(
-            "/check-drawdown",
+            "/risk/drawdown",
             json={
                 "equity": 9000,
                 "peak_equity": 10000,
