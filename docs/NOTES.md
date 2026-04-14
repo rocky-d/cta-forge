@@ -1,4 +1,4 @@
-# cta-forge — NOTES.md
+# cta-forge -- NOTES.md
 
 ## Project Overview
 
@@ -9,22 +9,24 @@ Monorepo with 5 microservices + 2 shared libraries, targeting Binance USDS-M per
 
 ```
 libs/
-  core/              — shared protocols, constants, metrics
-  exchange/          — exchange connectivity (Hyperliquid adapter)
+  core/              -- shared protocols, constants, metrics
+  exchange/          -- exchange connectivity (Hyperliquid adapter)
 services/
-  data-service/      — Binance kline fetcher, parquet store, REST API (:8001)
-  alpha-service/     — factor computation (TSMOM, Donchian, VolRegime) (:8002)
-  strategy-service/  — signal composition, allocation, risk (:8003)
-  executor/          — backtest & live execution engine (:8004)
-  report-service/    — metrics calculation, chart generation (:8005)
-scripts/backtest/    — standalone backtest scripts (v10 sweep, long-term)
-backtest-results/    — output charts, metrics JSON, sweep results
-docs/                — project documentation
+  data-service/      -- Binance kline fetcher, parquet store, REST API
+  alpha-service/     -- factor computation (TSMOM, Donchian, VolRegime, V10GComposite)
+  strategy-service/  -- signal composition, allocation, risk
+  executor/          -- backtest & live execution engine
+  report-service/    -- metrics calculation, chart generation
+scripts/backtest/    -- standalone backtest scripts
+backtest-results/    -- output charts, metrics JSON
+docs/                -- project documentation
 ```
 
-## Strategy: v10g (current best)
+Ports and service URLs have sensible defaults in `core/constants.py`, overridable via environment variables.
 
-Multi-factor trend-following with adaptive features:
+## Strategy: v10g
+
+Multi-factor trend-following with adaptive features.
 
 Signals:
 - Multi-timeframe momentum (lookbacks: 20/60/120 bars)
@@ -33,7 +35,7 @@ Signals:
 - Volume confirmation (20-bar avg ratio)
 - DI directional filter (+DI/-DI)
 - BTC correlation filter (dampen alt signals contradicting BTC trend)
-- Adaptive lookback weighting (high vol → favor short lookback)
+- Adaptive lookback weighting (high vol favors short lookback)
 - Signal persistence (require 2 consecutive bars same direction)
 
 Position management:
@@ -47,45 +49,6 @@ Position management:
 - Rebalance every 4 bars
 - 8% drawdown circuit breaker (halves new position size)
 
-## Backtest Results (v10g, 2021-01 → 2026-04, 12 symbols)
-
-| Metric        | Value   |
-|---------------|---------|
-| Period        | 1888 days (5.2 years) |
-| Symbols       | 12 (BTC, ETH, SOL, BNB, XRP, DOGE, AVAX, LINK, ADA, DOT, ATOM, NEAR) |
-| Return        | +67.5%  |
-| Ann. Return   | +10.5%  |
-| Sharpe        | 0.89    |
-| Sortino       | 1.10    |
-| Max DD        | 11.3%   |
-| Calmar        | 0.92    |
-| Profit Factor | 1.36    |
-| Win Rate      | 61.3%   |
-| Trades        | 899     |
-| Ulcer Index   | 0.046   |
-
-Yearly: 2021 +17.3% | 2022 +6.8% | 2023 +7.5% | 2024 +20.8% | 2025 +5.7% | 2026 YTD -2.9%
-
-## Walk-Forward Validation (v10g, 893d window, 6 folds)
-
-- Avg OOS Sharpe: 2.04 (±1.58)
-- OOS positive: 5/6 windows
-- Composite score: 1.35 (rank #1 out of 10 configs)
-
-## Iteration History
-
-| Version | Full Sharpe | Trades | Max DD | Key Change |
-|---------|-------------|--------|--------|------------|
-| v1      | -1.23       | 4690   | 19.8%  | Baseline (4 raw factors) |
-| v2      | -0.20       | 464    | 34.6%  | Signal threshold, min hold, ATR sizing |
-| v3-v5   | 0.2-0.8     | ~200   | ~15%   | Parameter tuning, Donchian confirm |
-| v6      | 1.96        | 88     | 6.3%   | Cross-sectional signal, vol filter |
-| v7      | 1.05 (OOS)  | -      | -      | IS/OOS validation |
-| v8      | 1.37        | 462    | 13.6%  | Walk-forward 5-window |
-| v9      | 1.11        | 430    | 9.8%   | Ensemble ADX, lowest OOS variance |
-| v10g    | 1.14 (893d) | 471    | 14.7%  | Adaptive + risk parity + DD breaker + persistence |
-| v10g-LT | 0.89 (5yr)  | 899    | 11.3%  | 5-year validation, no re-tuning |
-
 ## Design Principles
 
 - Protocol + composition over ABC/inheritance
@@ -95,30 +58,28 @@ Yearly: 2021 +17.3% | 2022 +6.8% | 2023 +7.5% | 2024 +20.8% | 2025 +5.7% | 2026 
 - Parquet storage: `{data_dir}/{symbol}/{interval}.parquet` (zstd)
 - Signal range: normalized to [-1, +1]
 
-## Live Trading (Hyperliquid Testnet)
+## Live Trading (Hyperliquid)
 
 Architecture:
-- `libs/exchange/` — HL SDK wrapper library
+- `libs/exchange/` -- HL SDK wrapper library
   - `ExchangeAdapter` Protocol interface (structural subtyping)
   - `HyperliquidAdapter` implementation (safe init, unified account, async executor)
-- `services/executor/src/executor/live.py` — LiveEngine (v10g strategy, 6h candle-aligned loop)
-- `services/executor/src/executor/run_live.py` — CLI entry point
+- `services/executor/src/executor/live.py` -- LiveEngine (v10g strategy, 6h candle-aligned loop)
+- `services/executor/src/executor/run_live.py` -- CLI entry point
 
 Preflight checks (must all pass before trading):
 1. Exchange connectivity
 2. Minimum equity ($100)
-3. Stale positions → auto-flatten
-4. Stale open orders → auto-cancel
+3. Stale positions -> auto-flatten
+4. Stale open orders -> auto-cancel
 5. Market data spot check
 
 Risk controls:
-- 15% max drawdown → hard stop (flatten all)
-- 8% drawdown → DD breaker (50% position size reduction)
+- 15% max drawdown -> hard stop (flatten all)
+- 8% drawdown -> DD breaker (50% position size reduction)
 - ATR trailing stops (4.5x)
 - Max 5 concurrent positions
 - 20% max per-position equity
-
-Testnet wallet: `0xe9bfE8DF9277ACafA19667bA64aD617413D70B71`
 
 Ops:
 - Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID
@@ -126,6 +87,5 @@ Ops:
 
 ## Next Steps
 
-- Deploy to cloud server (systemd service)
-- CI/CD pipeline for deployment
+- Deploy to cloud server (systemd service + CI/CD)
 - Transaction cost sensitivity analysis

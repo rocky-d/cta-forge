@@ -1,18 +1,28 @@
 """Constants and configuration defaults for cta-forge."""
 
-# Default service ports
-DATA_SERVICE_PORT = 8001
-ALPHA_SERVICE_PORT = 8002
-STRATEGY_SERVICE_PORT = 8003
-EXECUTOR_PORT = 8004
-REPORT_SERVICE_PORT = 8005
+import os
 
-# Default service URLs (local development)
-DATA_SERVICE_URL = f"http://localhost:{DATA_SERVICE_PORT}"
-ALPHA_SERVICE_URL = f"http://localhost:{ALPHA_SERVICE_PORT}"
-STRATEGY_SERVICE_URL = f"http://localhost:{STRATEGY_SERVICE_PORT}"
-EXECUTOR_URL = f"http://localhost:{EXECUTOR_PORT}"
-REPORT_SERVICE_URL = f"http://localhost:{REPORT_SERVICE_PORT}"
+# Default service ports (overridable via env)
+DATA_SERVICE_PORT = int(os.getenv("DATA_SERVICE_PORT", "8001"))
+ALPHA_SERVICE_PORT = int(os.getenv("ALPHA_SERVICE_PORT", "8002"))
+STRATEGY_SERVICE_PORT = int(os.getenv("STRATEGY_SERVICE_PORT", "8003"))
+EXECUTOR_PORT = int(os.getenv("EXECUTOR_PORT", "8004"))
+REPORT_SERVICE_PORT = int(os.getenv("REPORT_SERVICE_PORT", "8005"))
+
+# Default service URLs (overridable via env, for k8s/docker-compose)
+DATA_SERVICE_URL = os.getenv(
+    "DATA_SERVICE_URL", f"http://localhost:{DATA_SERVICE_PORT}"
+)
+ALPHA_SERVICE_URL = os.getenv(
+    "ALPHA_SERVICE_URL", f"http://localhost:{ALPHA_SERVICE_PORT}"
+)
+STRATEGY_SERVICE_URL = os.getenv(
+    "STRATEGY_SERVICE_URL", f"http://localhost:{STRATEGY_SERVICE_PORT}"
+)
+EXECUTOR_URL = os.getenv("EXECUTOR_URL", f"http://localhost:{EXECUTOR_PORT}")
+REPORT_SERVICE_URL = os.getenv(
+    "REPORT_SERVICE_URL", f"http://localhost:{REPORT_SERVICE_PORT}"
+)
 
 # Binance API
 BINANCE_FUTURES_BASE = "https://fapi.binance.com"
