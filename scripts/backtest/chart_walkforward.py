@@ -152,6 +152,7 @@ async def main():
     ax2.set_xlabel(info, fontsize=7.5, family="monospace", color="#2c3e50", labelpad=8)
 
     out_path = OUT / "walk_forward_target_vol.png"
+    OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor="white")
     plt.close()
     print(f"\n✅ Chart: {out_path}", flush=True)

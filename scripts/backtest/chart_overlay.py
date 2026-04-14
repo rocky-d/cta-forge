@@ -223,6 +223,7 @@ async def main():
     fig.autofmt_xdate()
 
     out_path = OUT_DIR / "backtest_v10g_maxrange_overlay.png"
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     print(f"\n✅ Done in {time.time()-t0:.0f}s → {out_path}", flush=True)
