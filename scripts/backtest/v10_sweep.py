@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,10 +20,7 @@ import httpx
 import numpy as np
 import polars as pl
 
-sys.path.insert(0, "/home/node/.openclaw/workspace/cta-forge/libs/cta-core/src")
-sys.path.insert(0, "/home/node/.openclaw/workspace/cta-forge/services/reporter/src")
-
-from reporter.metrics import calculate_metrics
+from cta_core.metrics import calculate_metrics
 
 BINANCE_URL = "https://fapi.binance.com"
 OUT_DIR = Path("/home/node/.openclaw/workspace/cta-forge/backtest-results")
