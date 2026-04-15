@@ -43,7 +43,8 @@ DEFAULT_TRAILING_STOP_ATR_MULT = 2.0
 PARQUET_COMPRESSION = "zstd"
 
 # ── v10g strategy parameters ─────────────────────────────────────
-# Source of truth for the v10g CTA strategy (previously in executor/live.py).
+# Source of truth for the v10g CTA strategy.
+# MUST match V10GStrategyParams defaults in executor/decision.py.
 
 V10G_SYMBOLS = [
     "BTC",
@@ -62,13 +63,24 @@ V10G_SYMBOLS = [
 V10G_TIMEFRAME_HOURS = 6
 V10G_ADX_PERIODS = [22, 27, 32]  # ensemble ADX
 V10G_ADX_THRESHOLD = 25
-V10G_SIGNAL_THRESHOLD = 0.35
-V10G_MIN_HOLD_BARS = 12
-V10G_TRAILING_STOP_ATR = 4.5
+
+# Core strategy params (aligned with backtest v10g_maxrange.py)
+V10G_SIGNAL_THRESHOLD = 0.40  # was 0.35
+V10G_MIN_HOLD_BARS = 16  # was 12
+V10G_ATR_STOP_MULT = 5.0  # was 4.5 (renamed from TRAILING_STOP_ATR)
 V10G_RISK_PER_TRADE = 0.015  # 1.5% of equity
 V10G_MAX_POSITIONS = 5
 V10G_REBALANCE_EVERY = 4  # bars between rebalance checks
 
-# v10g risk limits (decimal fractions, NOT percentages)
+# Advanced features (new — aligned with backtest)
+V10G_PARTIAL_TP = 2.5  # ATR multiplier for partial take profit
+V10G_TARGET_VOL = 0.12  # annualized target volatility
+V10G_MAX_HOLD_BARS = 100  # force close after N bars
+V10G_TIGHTEN_AFTER_ATR = 2.0  # tighten stop after this unrealized ATR
+V10G_TIGHTENED_STOP_MULT = 3.0  # tightened stop multiplier
+V10G_RISK_PARITY = True  # use risk parity sizing
+V10G_SIGNAL_REVERSAL_THRESHOLD = 0.15  # signal reversal close threshold
+
+# Risk limits (decimal fractions, NOT percentages)
 V10G_MAX_DRAWDOWN = 0.15  # hard stop: flatten everything
 V10G_DD_BREAKER = 0.08  # reduce position sizes by 50%

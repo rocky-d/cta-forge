@@ -1,9 +1,9 @@
-"""Live execution engine for Hyperliquid testnet.
+"""Live execution engine for Hyperliquid.
 
 Runs the v10g CTA strategy on real market data:
-- Every 6h (aligned to candle close): fetch bars → compute signals → rebalance
+- Every 6h (aligned to candle close): fetch bars → compute signals → decide → execute
+- Uses V10GDecisionEngine for all trade decisions (shared with backtest)
 - Uses exchange adapter for all HL interactions
-- Risk controls: max drawdown, max positions, position sizing via ATR
 """
 
 from __future__ import annotations
@@ -23,25 +23,17 @@ from lark_bots import ABot
 if TYPE_CHECKING:
     from exchange.adapter import ExchangeAdapter
 
-from core.constants import (
-    V10G_DD_BREAKER,
-    V10G_MAX_DRAWDOWN,
-    V10G_MAX_POSITIONS,
-    V10G_MIN_HOLD_BARS,
-    V10G_REBALANCE_EVERY,
-    V10G_RISK_PER_TRADE,
-    V10G_SIGNAL_THRESHOLD,
-    V10G_SYMBOLS,
-    V10G_TIMEFRAME_HOURS,
-    V10G_TRAILING_STOP_ATR,
-)
-
 from alpha_service.factors.v10g_composite import V10GCompositeFactor
 
-from .indicators import calc_atr
-
-# Note: state module imports are kept lazy to avoid circular import
-# (state.py imports LivePosition/LiveState from this module)
+from .decision import (
+    ActionKind,
+    BarSnapshot,
+    EngineState,
+    PositionState,
+    TradeAction,
+    V10GDecisionEngine,
+    V10GStrategyParams,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -114,26 +106,37 @@ class MultiNotifier(_Notifier):
         )
 
 
-# ── v10g strategy parameters (from core.constants) ───────────
-# Local aliases for brevity:
-SYMBOLS = V10G_SYMBOLS
-TIMEFRAME_HOURS = V10G_TIMEFRAME_HOURS
-SIGNAL_THRESHOLD = V10G_SIGNAL_THRESHOLD
-MIN_HOLD_BARS = V10G_MIN_HOLD_BARS
-TRAILING_STOP_ATR = V10G_TRAILING_STOP_ATR
-RISK_PER_TRADE = V10G_RISK_PER_TRADE
-MAX_POSITIONS = V10G_MAX_POSITIONS
-REBALANCE_EVERY = V10G_REBALANCE_EVERY
+# ── v10g strategy defaults ───────────────────────────────────────
 
-# Risk limits (converted to percentage for existing comparison logic)
-MAX_DRAWDOWN_PCT = V10G_MAX_DRAWDOWN * 100  # 0.15 → 15.0
-DD_BREAKER_PCT = V10G_DD_BREAKER * 100  # 0.08 → 8.0
-INITIAL_EQUITY_KEY = "initial_equity"
+# Symbols to trade (12 main symbols, the full 19-symbol backtest adds more)
+V10G_SYMBOLS = [
+    "BTC",
+    "ETH",
+    "SOL",
+    "BNB",
+    "XRP",
+    "DOGE",
+    "AVAX",
+    "LINK",
+    "ADA",
+    "DOT",
+    "ATOM",
+    "NEAR",
+]
+
+TIMEFRAME_HOURS = 6
+
+
+# ── Legacy types for state persistence compatibility ─────────────
+# These are re-exported for state.py which imports them.
 
 
 @dataclass
 class LivePosition:
-    """Tracked live position with strategy metadata."""
+    """Tracked live position with strategy metadata.
+
+    Note: This is kept for state.py backward compat. Internally we use PositionState.
+    """
 
     symbol: str
     side: str  # "long" or "short"
@@ -147,7 +150,10 @@ class LivePosition:
 
 @dataclass
 class LiveState:
-    """Persistent state for the live trading loop."""
+    """Persistent state for the live trading loop.
+
+    Note: This is kept for state.py backward compat. Internally we use EngineState.
+    """
 
     positions: dict[str, LivePosition] = field(default_factory=dict)
     bar_count: int = 0
@@ -157,11 +163,56 @@ class LiveState:
     last_signals: dict[str, float] = field(default_factory=dict)
 
 
+def _engine_to_live_state(engine_state: EngineState) -> LiveState:
+    """Convert internal EngineState to LiveState for persistence."""
+    live_state = LiveState(
+        bar_count=engine_state.bar_count,
+        initial_equity=engine_state.initial_equity,
+        peak_equity=engine_state.peak_equity,
+    )
+    for sym, pos in engine_state.positions.items():
+        side = "long" if pos.qty > 0 else "short"
+        live_state.positions[sym] = LivePosition(
+            symbol=sym,
+            side=side,
+            entry_price=pos.entry_price,
+            entry_bar=pos.entry_bar,
+            size=Decimal(str(abs(pos.qty))),
+            trailing_stop=pos.best_price,  # best_price used as trailing ref
+            bars_held=engine_state.bar_count - pos.entry_bar,
+        )
+    return live_state
+
+
+def _live_to_engine_state(live_state: LiveState) -> EngineState:
+    """Convert persisted LiveState to internal EngineState."""
+    engine_state = EngineState(
+        bar_count=live_state.bar_count,
+        initial_equity=live_state.initial_equity,
+        peak_equity=live_state.peak_equity,
+    )
+    for sym, pos in live_state.positions.items():
+        qty = float(pos.size) if pos.side == "long" else -float(pos.size)
+        engine_state.positions[sym] = PositionState(
+            symbol=sym,
+            qty=qty,
+            entry_price=pos.entry_price,
+            entry_bar=pos.entry_bar,
+            best_price=pos.trailing_stop,  # trailing_stop was best_price
+        )
+    return engine_state
+
+
+# ── Live engine ──────────────────────────────────────────────────
+
+
 class LiveEngine:
     """Live CTA trading engine for Hyperliquid.
 
-    Runs the v10g strategy: ensemble ADX + adaptive signals + DD breaker.
+    Runs the v10g strategy using V10GDecisionEngine for all trade logic.
     """
+
+    MIN_EQUITY = 100.0  # USD
 
     def __init__(
         self,
@@ -171,19 +222,18 @@ class LiveEngine:
         dry_run: bool = False,
         state_file: str = "engine-state.json",
         notify: _Notifier | None = None,
+        params: V10GStrategyParams | None = None,
     ) -> None:
         self._exchange = exchange
-        self._symbols = symbols or SYMBOLS
+        self._symbols = symbols or V10G_SYMBOLS
         self._dry_run = dry_run
         self._running = False
-        self._state = LiveState()
+        self._state = EngineState()
         self._bars_cache: dict[str, pl.DataFrame] = {}
         self._state_file = state_file
         self._notify = notify or _NullNotifier()
         self._factor = V10GCompositeFactor()
-
-    # ── Minimum equity to start trading ────────────────────────────
-    MIN_EQUITY = 100.0  # USD
+        self._decision = V10GDecisionEngine(params)
 
     async def start(self) -> None:
         """Start the live trading loop."""
@@ -193,31 +243,18 @@ class LiveEngine:
             self._dry_run,
         )
 
-        # Preflight checks — must pass before trading
+        # Preflight checks
         if not await self._preflight():
             logger.error("Preflight checks FAILED — aborting")
             return
 
         # Try to restore state from disk
-        # Import here to avoid circular import (state.py imports LivePosition/LiveState)
         from .state import load_state, save_state
 
         restored = load_state(self._state_file)
         if restored:
-            # Validate restored positions against exchange
+            self._state = _live_to_engine_state(restored)
             account = await self._exchange.get_account_state()
-            exchange_syms = {p.symbol for p in account.positions}
-            restored_syms = set(restored.positions.keys())
-
-            # Only keep positions that still exist on exchange
-            stale = restored_syms - exchange_syms
-            if stale:
-                logger.warning("Dropping stale restored positions: %s", stale)
-                for sym in stale:
-                    del restored.positions[sym]
-
-            self._state = restored
-            # Update equity from exchange (ground truth)
             self._state.peak_equity = max(
                 self._state.peak_equity, float(account.equity)
             )
@@ -242,28 +279,23 @@ class LiveEngine:
                 await self._wait_for_candle_close()
                 await self._tick()
                 # Persist state after each tick
-                save_state(self._state, self._state_file)
+                live_state = _engine_to_live_state(self._state)
+                save_state(live_state, self._state_file)
             except asyncio.CancelledError:
                 logger.info("LiveEngine cancelled")
-                save_state(self._state, self._state_file)
+                live_state = _engine_to_live_state(self._state)
+                save_state(live_state, self._state_file)
                 break
             except Exception:
                 logger.exception("LiveEngine tick error")
-                save_state(self._state, self._state_file)
-                await asyncio.sleep(60)  # backoff on error
+                live_state = _engine_to_live_state(self._state)
+                save_state(live_state, self._state_file)
+                await asyncio.sleep(60)
 
         logger.info("LiveEngine stopped")
 
     async def _preflight(self) -> bool:
-        """Run preflight checks before trading. Returns True if all pass.
-
-        Checks:
-        1. Exchange connectivity (can reach API)
-        2. Account equity (minimum threshold)
-        3. No stale positions (clean slate or adopt existing)
-        4. No stale open orders (cancel or abort)
-        5. Market data available (can fetch at least one symbol)
-        """
+        """Run preflight checks before trading. Returns True if all pass."""
         logger.info("=== Preflight Checks ===")
         passed = True
 
@@ -296,11 +328,10 @@ class LiveEngine:
                 len(account.positions),
                 ", ".join(symbols_with_pos),
             )
-            # In non-dry-run mode, flatten stale positions
             if not self._dry_run:
                 logger.info("Closing stale positions before starting...")
                 for pos in account.positions:
-                    is_buy = pos.size < 0  # reverse to close
+                    is_buy = pos.size < 0
                     result = await self._exchange.place_market_order(
                         pos.symbol,
                         is_buy,
@@ -308,16 +339,10 @@ class LiveEngine:
                         reduce_only=True,
                     )
                     if result.success:
-                        logger.info(
-                            "[✓] Closed %s position: %s",
-                            pos.symbol,
-                            result.message,
-                        )
+                        logger.info("[✓] Closed %s position", pos.symbol)
                     else:
                         logger.error(
-                            "[✗] Failed to close %s: %s",
-                            pos.symbol,
-                            result.message,
+                            "[✗] Failed to close %s: %s", pos.symbol, result.message
                         )
                         passed = False
             else:
@@ -343,7 +368,7 @@ class LiveEngine:
             logger.exception("[✗] Failed to check open orders")
             passed = False
 
-        # 5. Market data spot check (fetch one symbol)
+        # 5. Market data spot check
         test_symbol = self._symbols[0] if self._symbols else "BTC"
         try:
             snap = await self._exchange.get_market_snapshot(test_symbol)
@@ -374,7 +399,8 @@ class LiveEngine:
 
     @property
     def state(self) -> LiveState:
-        return self._state
+        """Return state in legacy format for external consumers."""
+        return _engine_to_live_state(self._state)
 
     # ── Core loop ────────────────────────────────────────────────
 
@@ -406,68 +432,46 @@ class LiveEngine:
 
     async def _tick(self) -> None:
         """One iteration of the trading loop."""
-        self._state.bar_count += 1
-        logger.info("=== Tick #%d ===", self._state.bar_count)
+        logger.info("=== Tick #%d ===", self._state.bar_count + 1)
 
         # 1. Fetch latest bars
         await self._fetch_bars()
 
-        # 2. Check account state & risk
+        # 2. Get current equity
         account = await self._exchange.get_account_state()
         equity = float(account.equity)
-        self._state.peak_equity = max(self._state.peak_equity, equity)
 
+        # Track returns for vol scaling
+        if self._state.peak_equity > 0:
+            ret = (equity - self._state.peak_equity) / self._state.peak_equity
+            self._state.recent_returns.append(ret)
+
+        # 3. Build snapshots for decision engine
+        snapshots = self._build_snapshots()
+
+        # 4. Get decisions from the unified engine
+        actions = self._decision.tick(self._state, equity, snapshots)
+
+        # 5. Execute actions
+        for action in actions:
+            await self._execute_action(action, equity)
+
+        # 6. Summary
         drawdown_pct = (
             (1 - equity / self._state.peak_equity) * 100
             if self._state.peak_equity > 0
             else 0
         )
-        logger.info(
-            "Equity: $%.2f, Peak: $%.2f, DD: %.1f%%",
-            equity,
-            self._state.peak_equity,
-            drawdown_pct,
-        )
-
-        # Hard stop
-        if drawdown_pct >= MAX_DRAWDOWN_PCT:
-            logger.warning(
-                "MAX DRAWDOWN BREACHED (%.1f%%) — FLATTENING ALL", drawdown_pct
-            )
-            await self._flatten_all()
-            self._running = False
-            return
-
-        # DD breaker
-        self._state.dd_breaker_active = drawdown_pct >= DD_BREAKER_PCT
-        if self._state.dd_breaker_active:
-            logger.warning(
-                "DD breaker active (%.1f%%): reducing position sizes by 50%%",
-                drawdown_pct,
-            )
-
-        # 3. Compute signals
-        signals = self._compute_all_signals()
-        self._state.last_signals = signals
-
-        # 4. Update existing positions (trailing stops, min hold)
-        await self._update_positions(equity)
-
-        # 5. Rebalance (only every N bars)
-        if self._state.bar_count % REBALANCE_EVERY == 0 or self._state.bar_count == 1:
-            await self._rebalance(signals, equity)
-
-        # 6. Tick summary notification
         pos_summary = (
             ", ".join(
-                f"{s} {p.side[0].upper()}" for s, p in self._state.positions.items()
+                f"{s} {'L' if p.qty > 0 else 'S'}"
+                for s, p in self._state.positions.items()
             )
             or "flat"
         )
         await self._notify.send(
             f"⏰ Tick #{self._state.bar_count} | ${equity:.0f} | "
-            f"DD {drawdown_pct:.1f}% | {len(signals)} signals | "
-            f"pos: {pos_summary}"
+            f"DD {drawdown_pct:.1f}% | {len(actions)} actions | pos: {pos_summary}"
         )
 
     # ── Data fetching ────────────────────────────────────────────
@@ -481,11 +485,7 @@ class LiveEngine:
                     pair = f"{symbol}USDT"
                     resp = await client.get(
                         url,
-                        params={
-                            "symbol": pair,
-                            "interval": "6h",
-                            "limit": 200,
-                        },
+                        params={"symbol": pair, "interval": "6h", "limit": 200},
                     )
                     if resp.status_code != 200:
                         logger.warning("Failed to fetch %s: %d", pair, resp.status_code)
@@ -506,10 +506,10 @@ class LiveEngine:
                 except Exception:
                     logger.exception("Error fetching %s", symbol)
 
-    # ── Signal computation (v10g) ────────────────────────────────
+    # ── Build market snapshots ───────────────────────────────────
 
-    def _compute_all_signals(self) -> dict[str, float]:
-        """Compute composite signals for all symbols using V10GCompositeFactor."""
+    def _build_snapshots(self) -> dict[str, BarSnapshot]:
+        """Build BarSnapshot for each symbol from cached bars."""
         # Precompute indicators for all symbols
         indicator_cache: dict[str, dict[str, np.ndarray]] = {}
         for symbol in self._symbols:
@@ -519,203 +519,179 @@ class LiveEngine:
             indicator_cache[symbol] = self._factor.precompute(bars)
 
         # BTC indicators for regime filter
-        btc_ind = indicator_cache.get("BTCUSDT")
+        btc_ind = indicator_cache.get("BTC")
 
-        signals = {}
+        snapshots = {}
         for symbol, indicators in indicator_cache.items():
-            btc_ref = btc_ind if symbol != "BTCUSDT" else None
+            btc_ref = btc_ind if symbol != "BTC" else None
             sig_array = self._factor.compute_signal_array(indicators, btc_ref)
             sig = float(sig_array[-1]) if len(sig_array) > 0 else 0.0
-            if abs(sig) >= SIGNAL_THRESHOLD:
-                signals[symbol] = sig
 
-        logger.info("Signals: %d symbols above threshold", len(signals))
-        return signals
+            c = indicators["close"]
+            atr_arr = indicators["atr"]
+            rvol_arr = indicators["rvol"]
 
-    # ── Position management ──────────────────────────────────────
+            snapshots[symbol] = BarSnapshot(
+                close=float(c[-1]),
+                atr=float(atr_arr[-1]),
+                rvol=float(rvol_arr[-1]),
+                signal=sig,
+            )
 
-    async def _update_positions(self, equity: float) -> None:
-        """Update trailing stops and close expired positions."""
-        to_close = []
+        return snapshots
 
-        for symbol, pos in self._state.positions.items():
-            pos.bars_held += 1
-            bars = self._bars_cache.get(symbol)
-            if bars is None:
-                continue
+    # ── Action execution ─────────────────────────────────────────
 
-            current_price = float(bars["close"][-1])
+    async def _execute_action(self, action: TradeAction, equity: float) -> None:
+        """Execute a single trade action."""
+        logger.info(
+            "Executing: %s %s qty=%.4f (%s)",
+            action.kind,
+            action.symbol,
+            action.qty,
+            action.reason,
+        )
 
-            # Update trailing stop
-            if pos.side == "long":
-                pnl_pct = (current_price - pos.entry_price) / pos.entry_price
-                new_stop = current_price - calc_atr(bars) * TRAILING_STOP_ATR
-                pos.trailing_stop = max(pos.trailing_stop, new_stop)
-                if current_price <= pos.trailing_stop:
-                    logger.info(
-                        "Trailing stop hit: %s LONG @ %.2f (stop=%.2f)",
-                        symbol,
-                        current_price,
-                        pos.trailing_stop,
-                    )
-                    to_close.append(symbol)
-            else:
-                pnl_pct = (pos.entry_price - current_price) / pos.entry_price
-                new_stop = current_price + calc_atr(bars) * TRAILING_STOP_ATR
-                pos.trailing_stop = min(pos.trailing_stop, new_stop)
-                if current_price >= pos.trailing_stop:
-                    logger.info(
-                        "Trailing stop hit: %s SHORT @ %.2f (stop=%.2f)",
-                        symbol,
-                        current_price,
-                        pos.trailing_stop,
-                    )
-                    to_close.append(symbol)
-
-            pos.highest_pnl = max(pos.highest_pnl, pnl_pct)
-
-            # Signal reversal check
-            sig = self._state.last_signals.get(symbol, 0.0)
-            if (
-                pos.side == "long"
-                and sig < -SIGNAL_THRESHOLD
-                and pos.bars_held >= MIN_HOLD_BARS
-            ):
-                logger.info("Signal reversal: %s LONG → signal=%.2f", symbol, sig)
-                to_close.append(symbol)
-            elif (
-                pos.side == "short"
-                and sig > SIGNAL_THRESHOLD
-                and pos.bars_held >= MIN_HOLD_BARS
-            ):
-                logger.info("Signal reversal: %s SHORT → signal=%.2f", symbol, sig)
-                to_close.append(symbol)
-
-        for symbol in set(to_close):
-            await self._close_position(symbol)
-
-    async def _rebalance(self, signals: dict[str, float], equity: float) -> None:
-        """Open new positions based on signals."""
-        current_count = len(self._state.positions)
-        available_slots = MAX_POSITIONS - current_count
-        if available_slots <= 0:
+        if action.kind == ActionKind.FLATTEN_ALL:
+            await self._flatten_all()
+            self._running = False
             return
 
-        # Sort by signal strength
-        candidates = [
-            (sym, sig)
-            for sym, sig in signals.items()
-            if sym not in self._state.positions
-        ]
-        candidates.sort(key=lambda x: abs(x[1]), reverse=True)
+        if action.kind == ActionKind.CLOSE:
+            await self._close_position(action.symbol, action.reason)
+            return
 
-        for symbol, signal in candidates[:available_slots]:
-            await self._open_position(symbol, signal, equity)
+        if action.kind == ActionKind.PARTIAL_CLOSE:
+            await self._partial_close(action.symbol, action.qty, action.reason)
+            return
 
-    async def _open_position(self, symbol: str, signal: float, equity: float) -> None:
+        if action.kind in (ActionKind.OPEN_LONG, ActionKind.OPEN_SHORT):
+            await self._open_position(action, equity)
+            return
+
+    async def _open_position(self, action: TradeAction, equity: float) -> None:
         """Open a new position."""
-        bars = self._bars_cache.get(symbol)
+        bars = self._bars_cache.get(action.symbol)
         if bars is None:
             return
 
-        atr = calc_atr(bars)
-        if atr <= 0:
-            return
-
         current_price = float(bars["close"][-1])
-
-        # Position sizing: risk-based (ATR)
-        risk_amount = equity * RISK_PER_TRADE
-        if self._state.dd_breaker_active:
-            risk_amount *= 0.5
-
-        size_usd = risk_amount / (atr * TRAILING_STOP_ATR / current_price)
-        size_usd = min(size_usd, equity * 0.2)  # max 20% per position
-        size = Decimal(str(size_usd / current_price))
-
-        is_buy = signal > 0
+        is_buy = action.kind == ActionKind.OPEN_LONG
         side = "long" if is_buy else "short"
+        size = Decimal(str(action.qty))
+        size_usd = action.qty * current_price
 
         logger.info(
-            "Opening %s %s: size=$%.0f (%.4f), signal=%.2f, ATR=%.2f",
+            "Opening %s %s: size=$%.0f (%.6f), reason=%s",
             side.upper(),
-            symbol,
+            action.symbol,
             size_usd,
-            float(size),
-            signal,
-            atr,
+            action.qty,
+            action.reason,
         )
 
         if self._dry_run:
             logger.info(
-                "[DRY RUN] Would place %s %s %.4f @ ~%.2f",
+                "[DRY RUN] Would place %s %s %.6f @ ~%.2f",
                 side,
-                symbol,
-                float(size),
+                action.symbol,
+                action.qty,
                 current_price,
             )
         else:
-            result = await self._exchange.place_market_order(symbol, is_buy, size)
+            result = await self._exchange.place_market_order(
+                action.symbol, is_buy, size
+            )
             if not result.success:
-                logger.error("Failed to open %s %s: %s", side, symbol, result.message)
+                logger.error(
+                    "Failed to open %s %s: %s", side, action.symbol, result.message
+                )
                 return
             if result.avg_price > 0:
                 current_price = result.avg_price
 
-        # Set trailing stop
-        stop = (
-            (current_price - atr * TRAILING_STOP_ATR)
-            if is_buy
-            else (current_price + atr * TRAILING_STOP_ATR)
-        )
-
-        self._state.positions[symbol] = LivePosition(
-            symbol=symbol,
-            side=side,
+        # Update internal state
+        qty = action.qty if is_buy else -action.qty
+        self._state.positions[action.symbol] = PositionState(
+            symbol=action.symbol,
+            qty=qty,
             entry_price=current_price,
             entry_bar=self._state.bar_count,
-            size=size,
-            trailing_stop=stop,
-        )
-        logger.info(
-            "Position opened: %s %s @ %.2f, stop=%.2f",
-            side.upper(),
-            symbol,
-            current_price,
-            stop,
-        )
-        await self._notify.send(
-            f"📈 OPEN {side.upper()} {symbol} | size=${size_usd:.0f} | "
-            f"entry={current_price:.2f} | stop={stop:.2f} | signal={signal:.2f}"
+            best_price=current_price,
         )
 
-    async def _close_position(self, symbol: str) -> None:
+        await self._notify.send(
+            f"📈 OPEN {side.upper()} {action.symbol} | size=${size_usd:.0f} | "
+            f"entry={current_price:.2f} | {action.reason}"
+        )
+
+    async def _close_position(self, symbol: str, reason: str) -> None:
         """Close an existing position."""
         pos = self._state.positions.get(symbol)
         if pos is None:
             return
 
-        is_buy = pos.side == "short"  # reverse to close
+        is_buy = pos.qty < 0  # reverse to close
+        size = Decimal(str(abs(pos.qty)))
+        side = "long" if pos.qty > 0 else "short"
+
         logger.info(
-            "Closing %s %s: size=%.4f, held=%d bars",
-            pos.side.upper(),
+            "Closing %s %s: size=%.6f, reason=%s",
+            side.upper(),
             symbol,
-            float(pos.size),
-            pos.bars_held,
+            abs(pos.qty),
+            reason,
         )
 
         if not self._dry_run:
             result = await self._exchange.place_market_order(
-                symbol, is_buy, pos.size, reduce_only=True
+                symbol, is_buy, size, reduce_only=True
             )
             if not result.success:
                 logger.error("Failed to close %s: %s", symbol, result.message)
                 return
 
         del self._state.positions[symbol]
-        logger.info("Position closed: %s %s", pos.side.upper(), symbol)
+        held = self._state.bar_count - pos.entry_bar
         await self._notify.send(
-            f"📉 CLOSE {pos.side.upper()} {symbol} | held={pos.bars_held} bars"
+            f"📉 CLOSE {side.upper()} {symbol} | held={held} bars | {reason}"
+        )
+
+    async def _partial_close(self, symbol: str, qty: float, reason: str) -> None:
+        """Partial close a position."""
+        pos = self._state.positions.get(symbol)
+        if pos is None:
+            return
+
+        is_buy = pos.qty < 0
+        size = Decimal(str(qty))
+        side = "long" if pos.qty > 0 else "short"
+
+        logger.info(
+            "Partial close %s %s: qty=%.6f, reason=%s",
+            side.upper(),
+            symbol,
+            qty,
+            reason,
+        )
+
+        if not self._dry_run:
+            result = await self._exchange.place_market_order(
+                symbol, is_buy, size, reduce_only=True
+            )
+            if not result.success:
+                logger.error("Failed to partial close %s: %s", symbol, result.message)
+                return
+
+        # Update position qty
+        if pos.qty > 0:
+            pos.qty -= qty
+        else:
+            pos.qty += qty
+        pos.partial_taken = True
+
+        await self._notify.send(
+            f"📊 PARTIAL {side.upper()} {symbol} | closed {qty:.6f} | {reason}"
         )
 
     async def _flatten_all(self) -> None:
@@ -724,7 +700,6 @@ class LiveEngine:
         await self._notify.send("🚨 MAX DRAWDOWN — FLATTENING ALL POSITIONS")
         symbols = list(self._state.positions.keys())
         for symbol in symbols:
-            await self._close_position(symbol)
-        # Also cancel any open orders
+            await self._close_position(symbol, "flatten_all")
         if not self._dry_run:
             await self._exchange.cancel_all_orders()
