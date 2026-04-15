@@ -106,7 +106,7 @@ async def test_preflight_low_equity() -> None:
 
 @pytest.mark.asyncio
 async def test_preflight_stale_positions() -> None:
-    """Preflight closes stale positions."""
+    """Preflight with clean_start closes stale positions."""
 
     positions = [
         Position(
@@ -118,10 +118,30 @@ async def test_preflight_stale_positions() -> None:
         ),
     ]
     exchange = FakeExchange(positions=positions)
-    engine = LiveEngine(exchange, dry_run=False)
+    engine = LiveEngine(exchange, dry_run=False, clean_start=True)
     result = await engine._preflight()
     assert result is True
     assert "BTC" in exchange.closed_positions
+
+
+@pytest.mark.asyncio
+async def test_preflight_positions_no_clean_start() -> None:
+    """Preflight without clean_start does NOT close positions (reconcile later)."""
+
+    positions = [
+        Position(
+            symbol="BTC",
+            size=Decimal("0.01"),
+            entry_price=Decimal("70000"),
+            unrealized_pnl=Decimal("10"),
+            leverage=1,
+        ),
+    ]
+    exchange = FakeExchange(positions=positions)
+    engine = LiveEngine(exchange, dry_run=False, clean_start=False)
+    result = await engine._preflight()
+    assert result is True
+    assert exchange.closed_positions == []
 
 
 @pytest.mark.asyncio

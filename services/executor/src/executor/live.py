@@ -213,6 +213,7 @@ class LiveEngine:
         journal_dir: str = "journal",
         notify: _Notifier | None = None,
         params: V10GStrategyParams | None = None,
+        clean_start: bool = False,
     ) -> None:
         self._exchange = exchange
         # Auto-filter symbols unavailable on testnet
@@ -223,6 +224,7 @@ class LiveEngine:
         self._symbols = all_symbols
         self._dry_run = dry_run
         self._running = False
+        self._clean_start = clean_start
         self._state = EngineState()
         self._bars_cache: dict[str, pl.DataFrame] = {}
         self._state_file = state_file
@@ -244,16 +246,52 @@ class LiveEngine:
             logger.error("Preflight checks FAILED — aborting")
             return
 
-        # Try to restore state from disk
+        # Try to restore state from disk, then reconcile with exchange
         from .state import load_state, save_state
 
         restored = load_state(self._state_file)
-        if restored:
+        account = await self._exchange.get_account_state()
+        exchange_positions = {p.symbol: p for p in account.positions}
+
+        if restored and not self._clean_start:
             self._state = _live_to_engine_state(restored)
-            account = await self._exchange.get_account_state()
             self._state.peak_equity = max(
                 self._state.peak_equity, float(account.equity)
             )
+
+            # Reconcile state positions with exchange
+            state_syms = set(self._state.positions.keys())
+            exchange_syms = set(exchange_positions.keys())
+
+            # Positions in state but not on exchange → already closed externally
+            for sym in state_syms - exchange_syms:
+                logger.warning(
+                    "[reconcile] %s in state but not on exchange — removing", sym
+                )
+                del self._state.positions[sym]
+
+            # Positions on exchange but not in state → unexpected, adopt them
+            for sym in exchange_syms - state_syms:
+                pos = exchange_positions[sym]
+                logger.warning(
+                    "[reconcile] %s on exchange but not in state — adopting "
+                    "(side=%s, size=%s, entry=$%s)",
+                    sym,
+                    "long" if pos.size > 0 else "short",
+                    abs(pos.size),
+                    pos.entry_price,
+                )
+                self._state.positions[sym] = PositionState(
+                    symbol=sym,
+                    side="long" if pos.size > 0 else "short",
+                    entry_price=float(pos.entry_price),
+                    entry_bar=max(self._state.bar_count - 1, 0),
+                    size=float(abs(pos.size)),
+                    trailing_stop=0.0,  # will be recalculated on next tick
+                    highest_pnl=0.0,
+                    bars_held=0,
+                )
+
             logger.info(
                 "Restored state: bar #%d, %d positions, peak $%.2f",
                 self._state.bar_count,
@@ -262,6 +300,28 @@ class LiveEngine:
             )
             await self._notify.send(
                 f"🔄 Engine restarted — restored {len(self._state.positions)} positions, bar #{self._state.bar_count}"
+            )
+        elif exchange_positions and not self._clean_start:
+            # No state file but exchange has positions → adopt all
+            logger.warning(
+                "[reconcile] No state file, adopting %d exchange position(s)",
+                len(exchange_positions),
+            )
+            self._state.initial_equity = float(account.equity)
+            self._state.peak_equity = float(account.equity)
+            for sym, pos in exchange_positions.items():
+                self._state.positions[sym] = PositionState(
+                    symbol=sym,
+                    side="long" if pos.size > 0 else "short",
+                    entry_price=float(pos.entry_price),
+                    entry_bar=0,
+                    size=float(abs(pos.size)),
+                    trailing_stop=0.0,
+                    highest_pnl=0.0,
+                    bars_held=0,
+                )
+            await self._notify.send(
+                f"🔄 Engine restarted — adopted {len(exchange_positions)} orphan position(s)"
             )
         else:
             await self._notify.send(
@@ -316,33 +376,41 @@ class LiveEngine:
         self._state.initial_equity = equity
         self._state.peak_equity = equity
 
-        # 3. Stale positions check
+        # 3. Check existing positions (reconcile later in start())
         if account.positions:
             symbols_with_pos = [p.symbol for p in account.positions]
-            logger.warning(
-                "[!] Found %d existing position(s): %s",
-                len(account.positions),
-                ", ".join(symbols_with_pos),
-            )
-            if not self._dry_run:
-                logger.info("Closing stale positions before starting...")
-                for pos in account.positions:
-                    is_buy = pos.size < 0
-                    result = await self._exchange.place_market_order(
-                        pos.symbol,
-                        is_buy,
-                        abs(pos.size),
-                        reduce_only=True,
-                    )
-                    if result.success:
-                        logger.info("[✓] Closed %s position", pos.symbol)
-                    else:
-                        logger.error(
-                            "[✗] Failed to close %s: %s", pos.symbol, result.message
+            if self._clean_start:
+                logger.warning(
+                    "[!] CLEAN_START: closing %d position(s): %s",
+                    len(account.positions),
+                    ", ".join(symbols_with_pos),
+                )
+                if not self._dry_run:
+                    for pos in account.positions:
+                        is_buy = pos.size < 0
+                        result = await self._exchange.place_market_order(
+                            pos.symbol,
+                            is_buy,
+                            abs(pos.size),
+                            reduce_only=True,
                         )
-                        passed = False
+                        if result.success:
+                            logger.info("[✓] Closed %s position", pos.symbol)
+                        else:
+                            logger.error(
+                                "[✗] Failed to close %s: %s",
+                                pos.symbol,
+                                result.message,
+                            )
+                            passed = False
+                else:
+                    logger.info("[DRY RUN] Would close positions")
             else:
-                logger.info("[DRY RUN] Would close stale positions")
+                logger.info(
+                    "[i] Found %d existing position(s): %s — will reconcile after state load",
+                    len(account.positions),
+                    ", ".join(symbols_with_pos),
+                )
         else:
             logger.info("[✓] No existing positions")
 
