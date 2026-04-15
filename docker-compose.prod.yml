@@ -1,0 +1,19 @@
+# Production compose: executor only, pulls from GHCR
+# Usage: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  executor:
+    image: ghcr.io/rocky-d/cta-forge/executor:latest
+    container_name: cta-forge-executor
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./engine-state.json:/app/engine-state.json
+    ports:
+      - "8004:8004"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

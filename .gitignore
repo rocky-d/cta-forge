@@ -17,6 +17,13 @@ htmlcov/
 
 # Environment & secrets
 .env
+*.pem
+
+# Terraform
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.backup
+infra/terraform/.terraform.lock.hcl
 
 # Runtime artifacts
 engine-state.json
