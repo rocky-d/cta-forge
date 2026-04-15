@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -57,10 +58,12 @@ def save_state(state: LiveState, path: str | Path = DEFAULT_STATE_FILE) -> None:
         },
     }
 
-    # Write atomically: write to tmp then rename
+    # Write atomically: write to tmp then move.
+    # shutil.move handles Docker bind-mounted files where os.rename fails
+    # with ERRNO 16 (Device or resource busy).
     tmp_path = path.with_suffix(".tmp")
     tmp_path.write_text(json.dumps(data, indent=2, cls=_DecimalEncoder))
-    tmp_path.rename(path)
+    shutil.move(str(tmp_path), str(path))
     logger.info(
         "State saved: %d positions, bar #%d", len(state.positions), state.bar_count
     )
