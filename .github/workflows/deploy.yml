@@ -16,6 +16,9 @@ jobs:
   # Gate: ensure CI passed on this commit before deploying
   check-ci:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
