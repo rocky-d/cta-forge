@@ -69,14 +69,15 @@ class TelegramNotifier(_Notifier):
         url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(
+                resp = await client.post(
                     url,
                     json={
                         "chat_id": self._chat_id,
                         "text": message,
-                        "parse_mode": "Markdown",
                     },
                 )
+                if resp.status_code != 200:
+                    logger.warning("Telegram API %d: %s", resp.status_code, resp.text)
         except Exception as e:
             logger.warning("Telegram notification failed: %s", e)
 
