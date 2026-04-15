@@ -115,12 +115,9 @@ V10G_SYMBOLS = [
     "ETH",
     "SOL",
     "BNB",
-    "XRP",
     "DOGE",
     "AVAX",
-    "LINK",
     "ADA",
-    "DOT",
     "ATOM",
     "NEAR",
 ]
