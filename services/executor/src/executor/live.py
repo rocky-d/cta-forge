@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 import httpx
 import numpy as np
 import polars as pl
+from lark_bots import ABot
 
 if TYPE_CHECKING:
     from exchange.adapter import ExchangeAdapter
@@ -93,8 +94,6 @@ class LarkNotifier(_Notifier):
         self._secret = secret
 
     async def send(self, message: str) -> None:
-        from lark_bots import ABot
-
         try:
             async with ABot(self._webhook_url, secret=self._secret) as bot:
                 await bot.asend_text(message)
@@ -109,8 +108,6 @@ class MultiNotifier(_Notifier):
         self._notifiers = notifiers
 
     async def send(self, message: str) -> None:
-        import asyncio
-
         await asyncio.gather(
             *(n.send(message) for n in self._notifiers),
             return_exceptions=True,
