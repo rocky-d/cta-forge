@@ -283,13 +283,10 @@ class LiveEngine:
                 )
                 self._state.positions[sym] = PositionState(
                     symbol=sym,
-                    side="long" if pos.size > 0 else "short",
+                    qty=float(pos.size),
                     entry_price=float(pos.entry_price),
                     entry_bar=max(self._state.bar_count - 1, 0),
-                    size=float(abs(pos.size)),
-                    trailing_stop=0.0,  # will be recalculated on next tick
-                    highest_pnl=0.0,
-                    bars_held=0,
+                    best_price=float(pos.entry_price),
                 )
 
             logger.info(
@@ -312,13 +309,10 @@ class LiveEngine:
             for sym, pos in exchange_positions.items():
                 self._state.positions[sym] = PositionState(
                     symbol=sym,
-                    side="long" if pos.size > 0 else "short",
+                    qty=float(pos.size),
                     entry_price=float(pos.entry_price),
                     entry_bar=0,
-                    size=float(abs(pos.size)),
-                    trailing_stop=0.0,
-                    highest_pnl=0.0,
-                    bars_held=0,
+                    best_price=float(pos.entry_price),
                 )
             await self._notify.send(
                 f"🔄 Engine restarted — adopted {len(exchange_positions)} orphan position(s)"
