@@ -17,57 +17,40 @@ jobs:
   check-ci:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify lint and test passed
+      - uses: actions/checkout@v4
+
+      - name: Wait for CI workflows to complete
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set +e  # Don't exit on error, we handle it ourselves
-          SHA=${{ github.sha }}
-          echo "Checking CI status for $SHA..."
+          echo "Waiting for Lint and Test workflows on commit ${{ github.sha }}..."
 
+          # Wait for both workflows (up to 5 min each)
+          gh run list --commit ${{ github.sha }} --workflow lint.yml --json conclusion,status \
+            --jq 'if .[0].status == "completed" then .[0].conclusion else "pending" end' \
+            | xargs -I{} echo "Lint: {}"
+
+          # Simple approach: just wait and check status
           for i in $(seq 1 30); do
-            echo "Attempt $i/30..."
+            LINT_STATUS=$(gh run list --commit ${{ github.sha }} --workflow lint.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')
+            TEST_STATUS=$(gh run list --commit ${{ github.sha }} --workflow test.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')
 
-            # Query check runs
-            RESPONSE=$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" 2>&1)
-            if [ $? -ne 0 ]; then
-              echo "  API call failed, retrying..."
-              sleep 10
-              continue
-            fi
+            echo "Attempt $i/30: Lint=$LINT_STATUS, Test=$TEST_STATUS"
 
-            # Parse results
-            RUFF_FMT=$(echo "$RESPONSE" | jq -r '.check_runs[] | select(.name == "ruff-format") | .conclusion // "pending"')
-            RUFF_CHK=$(echo "$RESPONSE" | jq -r '.check_runs[] | select(.name == "ruff-check") | .conclusion // "pending"')
-            TYPE_CHK=$(echo "$RESPONSE" | jq -r '.check_runs[] | select(.name == "type-check") | .conclusion // "pending"')
-            TEST=$(echo "$RESPONSE" | jq -r '.check_runs[] | select(.name == "test") | .conclusion // "pending"')
-
-            # Default empty to pending
-            RUFF_FMT=${RUFF_FMT:-pending}
-            RUFF_CHK=${RUFF_CHK:-pending}
-            TYPE_CHK=${TYPE_CHK:-pending}
-            TEST=${TEST:-pending}
-
-            echo "  ruff-format=$RUFF_FMT ruff-check=$RUFF_CHK type-check=$TYPE_CHK test=$TEST"
-
-            # Fail fast if any failed
-            if [ "$RUFF_FMT" = "failure" ] || [ "$RUFF_CHK" = "failure" ] || \
-               [ "$TYPE_CHK" = "failure" ] || [ "$TEST" = "failure" ]; then
-              echo "✗ CI FAILED — aborting deploy"
+            if [ "$LINT_STATUS" = "failure" ] || [ "$TEST_STATUS" = "failure" ]; then
+              echo "✗ CI failed — aborting deploy"
               exit 1
             fi
 
-            # Pass if all four succeeded
-            if [ "$RUFF_FMT" = "success" ] && [ "$RUFF_CHK" = "success" ] && \
-               [ "$TYPE_CHK" = "success" ] && [ "$TEST" = "success" ]; then
-              echo "✓ All CI checks passed"
+            if [ "$LINT_STATUS" = "success" ] && [ "$TEST_STATUS" = "success" ]; then
+              echo "✓ CI passed"
               exit 0
             fi
 
             sleep 10
           done
 
-          echo "✗ CI did not complete within 5 minutes — aborting"
+          echo "✗ CI did not complete in time"
           exit 1
 
   build-and-push:
