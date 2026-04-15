@@ -69,6 +69,15 @@ wheels = [
 ]
 
 [[package]]
+name = "atask"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/e1/7efa44789d187a1ab5f8c9710bd2788d8c1244aeecc6fb5df3549107824c/atask-0.2.1.tar.gz", hash = "sha256:7b4b02603b97a831d771d918990c857edc9f3f3fda09a9169876694213417a33", size = 3846, upload-time = "2026-04-10T13:43:05.309Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/fe/0709359c50b76c11807dac2a2faf4c57055fec7da7e581a092e36dd2f3b1/atask-0.2.1-py3-none-any.whl", hash = "sha256:9334b48c6b18c34ca6e9484c8719427247226afcb6d6cc58dedbf47eed1e610e", size = 4801, upload-time = "2026-04-10T13:43:04.25Z" },
+]
+
+[[package]]
 name = "bitarray"
 version = "3.8.1"
 source = { registry = "https://pypi.org/simple" }
@@ -772,6 +781,7 @@ dependencies = [
     { name = "exchange" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "lark-bots" },
     { name = "numpy" },
     { name = "polars" },
     { name = "uvicorn" },
@@ -785,6 +795,7 @@ requires-dist = [
     { name = "exchange", editable = "libs/exchange" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.28.0" },
+    { name = "lark-bots", specifier = ">=0.2.2" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "polars", specifier = ">=1.0.0" },
     { name = "uvicorn", specifier = ">=0.34.0" },
@@ -1011,6 +1022,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0f/41/c5f71f9f00aabcc71fee8b7475e3f64747282580c2fe748961ba29b18385/kiwisolver-1.5.0-graalpy312-graalpy250_312_native-macosx_11_0_arm64.whl", hash = "sha256:f6764a4ccab3078db14a632420930f6186058750df066b8ea2a7106df91d3203", size = 138036, upload-time = "2026-03-09T13:15:36.894Z" },
     { url = "https://files.pythonhosted.org/packages/fa/06/7399a607f434119c6e1fdc8ec89a8d51ccccadf3341dee4ead6bd14caaf5/kiwisolver-1.5.0-graalpy312-graalpy250_312_native-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c31c13da98624f957b0fb1b5bae5383b2333c2c3f6793d9825dd5ce79b525cb7", size = 194295, upload-time = "2026-03-09T13:15:38.22Z" },
     { url = "https://files.pythonhosted.org/packages/b5/91/53255615acd2a1eaca307ede3c90eb550bae9c94581f8c00081b6b1c8f44/kiwisolver-1.5.0-graalpy312-graalpy250_312_native-win_amd64.whl", hash = "sha256:1f1489f769582498610e015a8ef2d36f28f505ab3096d0e16b4858a9ec214f57", size = 75987, upload-time = "2026-03-09T13:15:39.65Z" },
+]
+
+[[package]]
+name = "lark-bots"
+version = "0.2.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "atask" },
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/4c/c6310874f77d2dcf5b06bde6547278d5299567e3d9327aed6660cf1d263b/lark_bots-0.2.2.tar.gz", hash = "sha256:36ec6733a56d4b05f98d96adf770bb77f8a344b48b151e55ecd1550f25e41de6", size = 4037, upload-time = "2026-04-10T13:54:57.321Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/d3/eff23fe20b51a01300d79ec69c88ef1cec709ff02a02566750f3745399f9/lark_bots-0.2.2-py3-none-any.whl", hash = "sha256:79019a651aa9f1942c440c226881556082dbf8f72f9eacdfb52636e05cd09dfe", size = 5635, upload-time = "2026-04-10T13:54:56.546Z" },
 ]
 
 [[package]]

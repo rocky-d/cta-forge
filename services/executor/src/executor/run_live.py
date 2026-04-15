@@ -9,7 +9,35 @@ import sys
 
 from exchange.hyperliquid import HyperliquidAdapter
 
-from .live import LiveEngine, TelegramNotifier, _NullNotifier
+from .live import (
+    LarkNotifier,
+    LiveEngine,
+    MultiNotifier,
+    TelegramNotifier,
+    _Notifier,
+    _NullNotifier,
+)
+
+
+def _build_notifier() -> _Notifier:
+    """Build notifier from env vars. Multiple backends stack via MultiNotifier."""
+    notifiers: list[_Notifier] = []
+
+    tg_token = os.environ.get("TG_BOT_TOKEN", "")
+    tg_chat = os.environ.get("TG_CHAT_ID", "")
+    if tg_token and tg_chat:
+        notifiers.append(TelegramNotifier(tg_token, tg_chat))
+
+    lark_url = os.environ.get("LARK_WEBHOOK_URL", "")
+    lark_secret = os.environ.get("LARK_WEBHOOK_SECRET") or None
+    if lark_url:
+        notifiers.append(LarkNotifier(lark_url, secret=lark_secret))
+
+    if not notifiers:
+        return _NullNotifier()
+    if len(notifiers) == 1:
+        return notifiers[0]
+    return MultiNotifier(notifiers)
 
 
 def main() -> None:
@@ -30,12 +58,7 @@ def main() -> None:
     dry_run = os.environ.get("DRY_RUN", "false").lower() in ("true", "1", "yes")
     state_file = os.environ.get("STATE_FILE", "engine-state.json")
 
-    # Setup Telegram notifications if configured
-    tg_token = os.environ.get("TG_BOT_TOKEN", "")
-    tg_chat = os.environ.get("TG_CHAT_ID", "")
-    notifier = (
-        TelegramNotifier(tg_token, tg_chat) if tg_token and tg_chat else _NullNotifier()
-    )
+    notifier = _build_notifier()
 
     adapter = HyperliquidAdapter(pk, addr, testnet=testnet)
     engine = LiveEngine(

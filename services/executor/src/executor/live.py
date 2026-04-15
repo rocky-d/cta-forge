@@ -85,6 +85,38 @@ class TelegramNotifier(_Notifier):
             logger.warning("Telegram notification failed: %s", e)
 
 
+class LarkNotifier(_Notifier):
+    """Send notifications via Lark/Feishu webhook (lark-bots)."""
+
+    def __init__(self, webhook_url: str, secret: str | None = None) -> None:
+        self._webhook_url = webhook_url
+        self._secret = secret
+
+    async def send(self, message: str) -> None:
+        from lark_bots import ABot
+
+        try:
+            async with ABot(self._webhook_url, secret=self._secret) as bot:
+                await bot.asend_text(message)
+        except Exception as e:
+            logger.warning("Lark notification failed: %s", e)
+
+
+class MultiNotifier(_Notifier):
+    """Fan-out notifier: sends to all backends concurrently."""
+
+    def __init__(self, notifiers: list[_Notifier]) -> None:
+        self._notifiers = notifiers
+
+    async def send(self, message: str) -> None:
+        import asyncio
+
+        await asyncio.gather(
+            *(n.send(message) for n in self._notifiers),
+            return_exceptions=True,
+        )
+
+
 # ── v10g strategy parameters (from core.constants) ───────────
 # Local aliases for brevity:
 SYMBOLS = V10G_SYMBOLS

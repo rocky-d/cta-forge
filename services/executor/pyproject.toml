@@ -13,6 +13,7 @@ dependencies = [
     "numpy>=2.0.0",
     "dttb>=0.3.2",
     "exchange",
+    "lark-bots>=0.2.2",
 ]
 
 [tool.uv.sources]
