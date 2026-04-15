@@ -13,7 +13,41 @@ env:
   IMAGE_NAME: rocky-d/cta-forge/executor
 
 jobs:
+  # Gate: ensure CI passed on this commit before deploying
+  check-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify lint and test passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA=${{ github.sha }}
+          echo "Checking CI status for $SHA..."
+
+          # Wait up to 5 minutes for CI to complete
+          for i in $(seq 1 30); do
+            LINT=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs \
+              --jq '.check_runs[] | select(.name | test("ruff|ty|lint"; "i")) | .conclusion' 2>/dev/null | head -1)
+            TEST=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs \
+              --jq '.check_runs[] | select(.name | test("test|pytest"; "i")) | .conclusion' 2>/dev/null | head -1)
+
+            if [ "$LINT" = "success" ] && [ "$TEST" = "success" ]; then
+              echo "✓ Lint: $LINT, Test: $TEST — CI passed"
+              exit 0
+            elif [ "$LINT" = "failure" ] || [ "$TEST" = "failure" ]; then
+              echo "✗ Lint: $LINT, Test: $TEST — CI FAILED, aborting deploy"
+              exit 1
+            fi
+
+            echo "Waiting for CI... (attempt $i/30, lint=$LINT, test=$TEST)"
+            sleep 10
+          done
+
+          echo "✗ CI did not complete within 5 minutes — aborting"
+          exit 1
+
   build-and-push:
+    needs: check-ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
