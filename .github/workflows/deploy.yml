@@ -26,20 +26,33 @@ jobs:
 
           # Wait up to 5 minutes for CI to complete
           for i in $(seq 1 30); do
-            LINT=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs \
-              --jq '.check_runs[] | select(.name | test("ruff|ty|lint"; "i")) | .conclusion' 2>/dev/null | head -1)
-            TEST=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs \
-              --jq '.check_runs[] | select(.name | test("test|pytest"; "i")) | .conclusion' 2>/dev/null | head -1)
+            # Get all check conclusions as JSON
+            CHECKS=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs \
+              --jq '[.check_runs[] | {name: .name, conclusion: .conclusion, status: .status}]' 2>/dev/null)
 
-            if [ "$LINT" = "success" ] && [ "$TEST" = "success" ]; then
-              echo "✓ Lint: $LINT, Test: $TEST — CI passed"
+            # Look for our specific CI jobs
+            RUFF_FMT=$(echo "$CHECKS" | jq -r '.[] | select(.name == "ruff-format") | .conclusion')
+            RUFF_CHK=$(echo "$CHECKS" | jq -r '.[] | select(.name == "ruff-check") | .conclusion')
+            TYPE_CHK=$(echo "$CHECKS" | jq -r '.[] | select(.name == "type-check") | .conclusion')
+            TEST=$(echo "$CHECKS" | jq -r '.[] | select(.name == "test") | .conclusion')
+
+            echo "  ruff-format=$RUFF_FMT ruff-check=$RUFF_CHK type-check=$TYPE_CHK test=$TEST"
+
+            # Fail fast if any failed
+            for result in "$RUFF_FMT" "$RUFF_CHK" "$TYPE_CHK" "$TEST"; do
+              if [ "$result" = "failure" ]; then
+                echo "✗ CI FAILED — aborting deploy"
+                exit 1
+              fi
+            done
+
+            # Pass if all four succeeded
+            if [ "$RUFF_FMT" = "success" ] && [ "$RUFF_CHK" = "success" ] && \
+               [ "$TYPE_CHK" = "success" ] && [ "$TEST" = "success" ]; then
+              echo "✓ All CI checks passed"
               exit 0
-            elif [ "$LINT" = "failure" ] || [ "$TEST" = "failure" ]; then
-              echo "✗ Lint: $LINT, Test: $TEST — CI FAILED, aborting deploy"
-              exit 1
             fi
 
-            echo "Waiting for CI... (attempt $i/30, lint=$LINT, test=$TEST)"
             sleep 10
           done
 
