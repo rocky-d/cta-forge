@@ -34,6 +34,7 @@ from .decision import (
     V10GDecisionEngine,
     V10GStrategyParams,
 )
+from .journal import TradeJournal
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,7 @@ class LiveEngine:
     """
 
     MIN_EQUITY = 100.0  # USD
+    DEFAULT_LEVERAGE = 5  # cross 5x for all symbols
 
     def __init__(
         self,
@@ -221,6 +223,7 @@ class LiveEngine:
         symbols: list[str] | None = None,
         dry_run: bool = False,
         state_file: str = "engine-state.json",
+        journal_dir: str = "journal",
         notify: _Notifier | None = None,
         params: V10GStrategyParams | None = None,
     ) -> None:
@@ -231,6 +234,7 @@ class LiveEngine:
         self._state = EngineState()
         self._bars_cache: dict[str, pl.DataFrame] = {}
         self._state_file = state_file
+        self._journal = TradeJournal(journal_dir)
         self._notify = notify or _NullNotifier()
         self._factor = V10GCompositeFactor()
         self._decision = V10GDecisionEngine(params)
@@ -381,6 +385,27 @@ class LiveEngine:
             logger.exception("[✗] Market data fetch FAILED for %s", test_symbol)
             passed = False
 
+        # 6. Set leverage for all symbols
+        if not self._dry_run:
+            for symbol in self._symbols:
+                try:
+                    await self._exchange.set_leverage(
+                        symbol, self.DEFAULT_LEVERAGE, cross=True
+                    )
+                except Exception:
+                    logger.warning("[!] Failed to set leverage for %s", symbol)
+            logger.info(
+                "[✓] Leverage set to %dx cross for %d symbols",
+                self.DEFAULT_LEVERAGE,
+                len(self._symbols),
+            )
+        else:
+            logger.info(
+                "[DRY RUN] Would set %dx cross leverage for %d symbols",
+                self.DEFAULT_LEVERAGE,
+                len(self._symbols),
+            )
+
         if passed:
             logger.info("=== Preflight PASSED ===")
         else:
@@ -456,7 +481,28 @@ class LiveEngine:
         for action in actions:
             await self._execute_action(action, equity)
 
-        # 6. Summary
+        # 6. Journal: record tick equity + signals
+        pos_snapshot = {
+            sym: {
+                "side": "long" if p.qty > 0 else "short",
+                "qty": abs(p.qty),
+                "entry": p.entry_price,
+                "best": p.best_price,
+            }
+            for sym, p in self._state.positions.items()
+        }
+        self._journal.record_tick(
+            bar=self._state.bar_count,
+            equity=equity,
+            peak_equity=self._state.peak_equity,
+            positions=pos_snapshot,
+        )
+        self._journal.record_signals(
+            bar=self._state.bar_count,
+            signals={s: snap.signal for s, snap in snapshots.items()},
+        )
+
+        # 7. Summary
         drawdown_pct = (
             (1 - equity / self._state.peak_equity) * 100
             if self._state.peak_equity > 0
@@ -624,6 +670,15 @@ class LiveEngine:
             f"📈 OPEN {side.upper()} {action.symbol} | size=${size_usd:.0f} | "
             f"entry={current_price:.2f} | {action.reason}"
         )
+        self._journal.record_trade(
+            bar=self._state.bar_count,
+            kind=action.kind.value,
+            symbol=action.symbol,
+            qty=action.qty,
+            price=current_price,
+            reason=action.reason,
+            side=side,
+        )
 
     async def _close_position(self, symbol: str, reason: str) -> None:
         """Close an existing position."""
@@ -653,8 +708,36 @@ class LiveEngine:
 
         del self._state.positions[symbol]
         held = self._state.bar_count - pos.entry_bar
+
+        # Compute PnL
+        exit_price = (
+            float(self._bars_cache.get(symbol, pl.DataFrame())["close"][-1])
+            if symbol in self._bars_cache
+            else pos.entry_price
+        )
+        if pos.qty > 0:
+            pnl = (exit_price - pos.entry_price) * abs(pos.qty)
+            pnl_pct = (exit_price - pos.entry_price) / pos.entry_price * 100
+        else:
+            pnl = (pos.entry_price - exit_price) * abs(pos.qty)
+            pnl_pct = (pos.entry_price - exit_price) / pos.entry_price * 100
+
         await self._notify.send(
-            f"📉 CLOSE {side.upper()} {symbol} | held={held} bars | {reason}"
+            f"📉 CLOSE {side.upper()} {symbol} | held={held} bars | "
+            f"pnl=${pnl:.2f} ({pnl_pct:+.1f}%) | {reason}"
+        )
+        self._journal.record_trade(
+            bar=self._state.bar_count,
+            kind="close",
+            symbol=symbol,
+            qty=abs(pos.qty),
+            price=exit_price,
+            reason=reason,
+            side=side,
+            entry_price=pos.entry_price,
+            pnl=pnl,
+            pnl_pct=pnl_pct,
+            held_bars=held,
         )
 
     async def _partial_close(self, symbol: str, qty: float, reason: str) -> None:
@@ -692,6 +775,28 @@ class LiveEngine:
 
         await self._notify.send(
             f"📊 PARTIAL {side.upper()} {symbol} | closed {qty:.6f} | {reason}"
+        )
+        exit_price = (
+            float(self._bars_cache.get(symbol, pl.DataFrame())["close"][-1])
+            if symbol in self._bars_cache
+            else pos.entry_price
+        )
+        if pos.qty > 0:
+            pnl = (exit_price - pos.entry_price) * qty
+        else:
+            pnl = (pos.entry_price - exit_price) * qty
+        self._journal.record_trade(
+            bar=self._state.bar_count,
+            kind="partial_close",
+            symbol=symbol,
+            qty=qty,
+            price=exit_price,
+            reason=reason,
+            side=side,
+            entry_price=pos.entry_price,
+            pnl=pnl,
+            pnl_pct=(pnl / (pos.entry_price * qty) * 100) if pos.entry_price > 0 else 0,
+            held_bars=self._state.bar_count - pos.entry_bar,
         )
 
     async def _flatten_all(self) -> None:

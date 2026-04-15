@@ -10,6 +10,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./engine-state.json:/app/engine-state.json
+      - ./journal:/app/journal
     ports:
       - "8004:8004"
     logging:
