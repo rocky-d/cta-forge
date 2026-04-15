@@ -28,12 +28,6 @@ jobs:
         run: |
           echo "Waiting for Lint and Test workflows on commit ${{ github.sha }}..."
 
-          # Wait for both workflows (up to 5 min each)
-          gh run list --commit ${{ github.sha }} --workflow lint.yml --json conclusion,status \
-            --jq 'if .[0].status == "completed" then .[0].conclusion else "pending" end' \
-            | xargs -I{} echo "Lint: {}"
-
-          # Simple approach: just wait and check status
           for i in $(seq 1 30); do
             LINT_STATUS=$(gh run list --commit ${{ github.sha }} --workflow lint.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')
             TEST_STATUS=$(gh run list --commit ${{ github.sha }} --workflow test.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')

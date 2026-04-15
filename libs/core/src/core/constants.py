@@ -51,14 +51,17 @@ V10G_SYMBOLS = [
     "ETH",
     "SOL",
     "BNB",
+    "XRP",
     "DOGE",
     "AVAX",
+    "LINK",
     "ADA",
+    "DOT",
     "ATOM",
     "NEAR",
 ]
-# Note: XRP, LINK, DOT excluded — not available on HL testnet.
-# Re-add when switching to mainnet.
+# These symbols exist on mainnet but not on HL testnet.
+V10G_TESTNET_EXCLUDED = {"XRP", "LINK", "DOT"}
 V10G_TIMEFRAME_HOURS = 6
 V10G_ADX_PERIODS = [22, 27, 32]  # ensemble ADX
 V10G_ADX_THRESHOLD = 25

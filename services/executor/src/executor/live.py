@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from exchange.adapter import ExchangeAdapter
 
 from alpha_service.factors.v10g_composite import V10GCompositeFactor
+from core.constants import V10G_SYMBOLS, V10G_TESTNET_EXCLUDED
 
 from .decision import (
     ActionKind,
@@ -108,19 +110,6 @@ class MultiNotifier(_Notifier):
 
 
 # ── v10g strategy defaults ───────────────────────────────────────
-
-# Symbols to trade (12 main symbols, the full 19-symbol backtest adds more)
-V10G_SYMBOLS = [
-    "BTC",
-    "ETH",
-    "SOL",
-    "BNB",
-    "DOGE",
-    "AVAX",
-    "ADA",
-    "ATOM",
-    "NEAR",
-]
 
 TIMEFRAME_HOURS = 6
 
@@ -225,7 +214,12 @@ class LiveEngine:
         params: V10GStrategyParams | None = None,
     ) -> None:
         self._exchange = exchange
-        self._symbols = symbols or V10G_SYMBOLS
+        # Auto-filter symbols unavailable on testnet
+        is_testnet = os.getenv("HL_NETWORK", "testnet") == "testnet"
+        all_symbols = symbols or list(V10G_SYMBOLS)
+        if is_testnet:
+            all_symbols = [s for s in all_symbols if s not in V10G_TESTNET_EXCLUDED]
+        self._symbols = all_symbols
         self._dry_run = dry_run
         self._running = False
         self._state = EngineState()
