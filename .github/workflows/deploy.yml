@@ -21,30 +21,41 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set +e  # Don't exit on error, we handle it ourselves
           SHA=${{ github.sha }}
           echo "Checking CI status for $SHA..."
 
-          # Wait up to 5 minutes for CI to complete
           for i in $(seq 1 30); do
-            # Get all check conclusions as JSON
-            CHECKS=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs \
-              --jq '[.check_runs[] | {name: .name, conclusion: .conclusion, status: .status}]' 2>/dev/null)
+            echo "Attempt $i/30..."
 
-            # Look for our specific CI jobs
-            RUFF_FMT=$(echo "$CHECKS" | jq -r '.[] | select(.name == "ruff-format") | .conclusion')
-            RUFF_CHK=$(echo "$CHECKS" | jq -r '.[] | select(.name == "ruff-check") | .conclusion')
-            TYPE_CHK=$(echo "$CHECKS" | jq -r '.[] | select(.name == "type-check") | .conclusion')
-            TEST=$(echo "$CHECKS" | jq -r '.[] | select(.name == "test") | .conclusion')
+            # Query check runs
+            RESPONSE=$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" 2>&1)
+            if [ $? -ne 0 ]; then
+              echo "  API call failed, retrying..."
+              sleep 10
+              continue
+            fi
+
+            # Parse results
+            RUFF_FMT=$(echo "$RESPONSE" | jq -r '.check_runs[] | select(.name == "ruff-format") | .conclusion // "pending"')
+            RUFF_CHK=$(echo "$RESPONSE" | jq -r '.check_runs[] | select(.name == "ruff-check") | .conclusion // "pending"')
+            TYPE_CHK=$(echo "$RESPONSE" | jq -r '.check_runs[] | select(.name == "type-check") | .conclusion // "pending"')
+            TEST=$(echo "$RESPONSE" | jq -r '.check_runs[] | select(.name == "test") | .conclusion // "pending"')
+
+            # Default empty to pending
+            RUFF_FMT=${RUFF_FMT:-pending}
+            RUFF_CHK=${RUFF_CHK:-pending}
+            TYPE_CHK=${TYPE_CHK:-pending}
+            TEST=${TEST:-pending}
 
             echo "  ruff-format=$RUFF_FMT ruff-check=$RUFF_CHK type-check=$TYPE_CHK test=$TEST"
 
             # Fail fast if any failed
-            for result in "$RUFF_FMT" "$RUFF_CHK" "$TYPE_CHK" "$TEST"; do
-              if [ "$result" = "failure" ]; then
-                echo "✗ CI FAILED — aborting deploy"
-                exit 1
-              fi
-            done
+            if [ "$RUFF_FMT" = "failure" ] || [ "$RUFF_CHK" = "failure" ] || \
+               [ "$TYPE_CHK" = "failure" ] || [ "$TEST" = "failure" ]; then
+              echo "✗ CI FAILED — aborting deploy"
+              exit 1
+            fi
 
             # Pass if all four succeeded
             if [ "$RUFF_FMT" = "success" ] && [ "$RUFF_CHK" = "success" ] && \
