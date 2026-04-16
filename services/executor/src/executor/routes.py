@@ -21,6 +21,19 @@ class BacktestRequest(BaseModel):
     initial_equity: float = 10000.0
 
 
+def _price_series(result: BacktestResult, symbol: str) -> list[dict[str, Any]]:
+    """Extract price series for a symbol from backtest result bars."""
+    df = result.bars.get(symbol)
+    if df is None or df.is_empty() or not result.equity_curve:
+        return []
+    curve_start = result.equity_curve[0][0]
+    return [
+        {"timestamp": t.isoformat(), "close": round(float(p), 2)}
+        for t, p in zip(df["open_time"].to_list(), df["close"].to_list())
+        if t >= curve_start
+    ]
+
+
 def _format_result(result: BacktestResult) -> dict[str, Any]:
     """Format BacktestResult for JSON response."""
     if not result.equity_curve:
@@ -69,6 +82,8 @@ def _format_result(result: BacktestResult) -> dict[str, Any]:
             {"timestamp": ts.isoformat(), "equity": round(eq, 2)}
             for ts, eq in result.equity_curve
         ],
+        "btc_prices": _price_series(result, "BTCUSDT"),
+        "eth_prices": _price_series(result, "ETHUSDT"),
         "engine": "V10GDecisionEngine",
     }
 
