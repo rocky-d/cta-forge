@@ -13,6 +13,8 @@ import numpy as np
 import polars as pl
 
 from core.metrics import calculate_metrics
+from data_service.fetcher import fetch_all_klines
+from data_service.store import ParquetStore
 
 from alpha_service.factors.v10g_composite import (
     V10GCompositeFactor,
@@ -23,6 +25,7 @@ from alpha_service.factors.v10g_composite import (
 
 BINANCE_URL = "https://fapi.binance.com"
 OUT_DIR = Path(__file__).resolve().parents[2] / "backtest-results"
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 # All 19 symbols — each will start from its own earliest available data
 SYMBOLS = [
@@ -39,78 +42,44 @@ COMMISSION = 0.0004
 START_TS = int(datetime(2019, 9, 1, tzinfo=UTC).timestamp() * 1000)
 
 
-async def fetch_klines_from(client, symbol, start_ms, target_bars=20000):
-    """Fetch forward from start_ms using pagination."""
-    all_rows = []
-    start_time = start_ms
-    while len(all_rows) < target_bars:
-        params = {
-            "symbol": symbol,
-            "interval": TIMEFRAME,
-            "limit": 1500,
-            "startTime": start_time,
-        }
-        try:
-            resp = await client.get(
-                f"{BINANCE_URL}/fapi/v1/klines", params=params
-            )
-            if resp.status_code == 429:
-                await asyncio.sleep(5)
-                continue
-            if resp.status_code != 200:
-                break
-            raw = resp.json()
-            if not raw:
-                break
-            rows = [
-                {
-                    "open_time": datetime.fromtimestamp(
-                        k[0] / 1000, tz=UTC
-                    ),
-                    "open": float(k[1]),
-                    "high": float(k[2]),
-                    "low": float(k[3]),
-                    "close": float(k[4]),
-                    "volume": float(k[5]),
-                }
-                for k in raw
-            ]
-            all_rows.extend(rows)
-            if len(raw) < 1500:
-                break
-            start_time = raw[-1][0] + 1
-            await asyncio.sleep(0.1)
-        except Exception as e:
-            print(f"    err: {e}", flush=True)
-            break
-    if not all_rows:
-        return None
-    df = (
-        pl.DataFrame(all_rows)
-        .unique(subset=["open_time"])
-        .sort("open_time")
-    )
-    return df
-
-
 async def fetch_all():
+    """Load bars from local parquet cache, fetch from Binance if missing."""
+    store = ParquetStore(DATA_DIR)
     bars = {}
     async with httpx.AsyncClient(timeout=30) as client:
         for sym in SYMBOLS:
-            print(f"  Fetching {sym}...", end=" ", flush=True)
-            df = await fetch_klines_from(
-                client, sym, START_TS, target_bars=20000
-            )
-            if df is not None and len(df) >= 500:
+            print(f"  {sym}...", end=" ", flush=True)
+
+            # Check local cache
+            local = store.read(sym, TIMEFRAME)
+            if not local.is_empty() and len(local) >= 500:
+                # Incremental update: fetch from last stored bar
+                latest = store.latest_timestamp(sym, TIMEFRAME)
+                if latest is not None:
+                    start_ms = int(latest.timestamp() * 1000) + 1
+                    new_bars = await fetch_all_klines(
+                        client, symbol=sym, interval=TIMEFRAME, start_ms=start_ms
+                    )
+                    if not new_bars.is_empty():
+                        store.write(sym, TIMEFRAME, new_bars)
+                        print(f"+{len(new_bars)} new", end=" ", flush=True)
+            else:
+                # Full fetch from start
+                df = await fetch_all_klines(
+                    client, symbol=sym, interval=TIMEFRAME, start_ms=START_TS
+                )
+                if not df.is_empty():
+                    store.write(sym, TIMEFRAME, df)
+
+            # Read final data from store
+            df = store.read(sym, TIMEFRAME)
+            if not df.is_empty() and len(df) >= 500:
                 first = df["open_time"][0].strftime("%Y-%m-%d")
                 last = df["open_time"][-1].strftime("%Y-%m-%d")
                 bars[sym] = df
-                print(
-                    f"✓ {len(df)} bars ({first} → {last})",
-                    flush=True,
-                )
+                print(f"✓ {len(df)} bars ({first} → {last})", flush=True)
             else:
-                n = len(df) if df is not None else 0
+                n = len(df) if not df.is_empty() else 0
                 print(f"✗ skipped ({n} bars)", flush=True)
             await asyncio.sleep(0.15)
     return bars

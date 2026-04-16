@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 import httpx
 import numpy as np
 import polars as pl
+from data_service.fetcher import fetch_klines
+from data_service.store import ParquetStore
 from lark_bots import ABot
 
 if TYPE_CHECKING:
@@ -211,6 +213,7 @@ class LiveEngine:
         dry_run: bool = False,
         state_file: str = "engine-state.json",
         journal_dir: str = "journal",
+        data_dir: str = "data",
         notify: _Notifier | None = None,
         params: V10GStrategyParams | None = None,
         clean_start: bool = False,
@@ -228,6 +231,7 @@ class LiveEngine:
         self._state = EngineState()
         self._bars_cache: dict[str, pl.DataFrame] = {}
         self._state_file = state_file
+        self._store = ParquetStore(data_dir)
         self._journal = TradeJournal(journal_dir)
         self._notify = notify or _NullNotifier()
         self._factor = V10GCompositeFactor()
@@ -577,32 +581,61 @@ class LiveEngine:
     # ── Data fetching ────────────────────────────────────────────
 
     async def _fetch_bars(self) -> None:
-        """Fetch latest bars from Binance for all symbols."""
-        url = "https://fapi.binance.com/fapi/v1/klines"
+        """Fetch bars from local cache (parquet), backfill from Binance as needed."""
+        interval = "6h"
+        min_bars = 200  # strategy warm-up requirement
+
         async with httpx.AsyncClient(timeout=30) as client:
             for symbol in self._symbols:
                 try:
                     pair = f"{symbol}USDT"
-                    resp = await client.get(
-                        url,
-                        params={"symbol": pair, "interval": "6h", "limit": 200},
-                    )
-                    if resp.status_code != 200:
-                        logger.warning("Failed to fetch %s: %d", pair, resp.status_code)
+
+                    # 1. Read local parquet
+                    local = self._store.read(pair, interval)
+                    need_fetch = local.is_empty() or len(local) < min_bars
+
+                    if not need_fetch:
+                        # Check if we're missing recent bars
+                        latest = self._store.latest_timestamp(pair, interval)
+                        if latest is not None:
+                            age_hours = (
+                                datetime.now(tz=UTC) - latest
+                            ).total_seconds() / 3600
+                            # If latest bar is older than 1 interval, fetch new
+                            need_fetch = age_hours > 6
+
+                    if need_fetch:
+                        # Incremental fetch from last stored bar
+                        start_ms = None
+                        latest = self._store.latest_timestamp(pair, interval)
+                        if latest is not None:
+                            start_ms = int(latest.timestamp() * 1000) + 1
+
+                        new_bars = await fetch_klines(
+                            client,
+                            symbol=pair,
+                            interval=interval,
+                            start_ms=start_ms,
+                            limit=1000,
+                        )
+                        if not new_bars.is_empty():
+                            self._store.write(pair, interval, new_bars)
+                            logger.info(
+                                "Stored %d new bars for %s", len(new_bars), pair
+                            )
+
+                    # 2. Read from store (now includes any new data)
+                    df = self._store.read(pair, interval)
+                    if df.is_empty():
+                        logger.warning("No data available for %s", pair)
                         continue
 
-                    raw = resp.json()
-                    df = pl.DataFrame(
-                        {
-                            "open_time": [r[0] for r in raw],
-                            "open": [float(r[1]) for r in raw],
-                            "high": [float(r[2]) for r in raw],
-                            "low": [float(r[3]) for r in raw],
-                            "close": [float(r[4]) for r in raw],
-                            "volume": [float(r[5]) for r in raw],
-                        }
-                    )
+                    # Take last min_bars rows
+                    if len(df) > min_bars:
+                        df = df.tail(min_bars)
+
                     self._bars_cache[symbol] = df
+
                 except Exception:
                     logger.exception("Error fetching %s", symbol)
 

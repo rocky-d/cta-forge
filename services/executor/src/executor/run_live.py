@@ -58,6 +58,7 @@ def main() -> None:
     dry_run = os.environ.get("DRY_RUN", "false").lower() in ("true", "1", "yes")
     state_file = os.environ.get("STATE_FILE", "engine-state.json")
     journal_dir = os.environ.get("JOURNAL_DIR", "journal")
+    data_dir = os.environ.get("DATA_DIR", "data")
     clean_start = os.environ.get("CLEAN_START", "false").lower() in ("true", "1", "yes")
 
     notifier = _build_notifier()
@@ -68,6 +69,7 @@ def main() -> None:
         dry_run=dry_run,
         state_file=state_file,
         journal_dir=journal_dir,
+        data_dir=data_dir,
         notify=notifier,
         clean_start=clean_start,
     )

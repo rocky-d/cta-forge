@@ -24,7 +24,7 @@ from v10g_maxrange import (  # noqa: E402
     align_data,
     build_timeline,
     compute_signals,
-    fetch_klines_from,
+    fetch_all,
     precompute,
     run_backtest,
 )
@@ -67,16 +67,8 @@ FOLDS = [
 
 
 async def main():
-    import httpx
-
-    print("Fetching data...", flush=True)
-    async with httpx.AsyncClient(timeout=30) as client:
-        bars = {}
-        for sym in SYMBOLS:
-            df = await fetch_klines_from(client, sym, START_TS)
-            if df is not None and len(df) >= 500:
-                bars[sym] = df
-            await asyncio.sleep(0.15)
+    print("Loading data (parquet cache + Binance incremental)...", flush=True)
+    bars = await fetch_all()
     print(f"→ {len(bars)} symbols loaded\n", flush=True)
 
     timeline, ts_to_idx = build_timeline(bars)

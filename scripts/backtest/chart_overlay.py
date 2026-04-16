@@ -10,12 +10,12 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
+
 import numpy as np
 
+from data_service.store import ParquetStore
 from report_service.metrics import calculate_metrics
 from v10g_maxrange import (
-    BINANCE_URL,
     INITIAL_EQUITY,
     SYMBOLS,
     START_TS,
@@ -24,68 +24,31 @@ from v10g_maxrange import (
     build_timeline,
     calc_ulcer,
     compute_signals,
-    fetch_klines_from,
+    fetch_all,
     precompute,
     run_backtest,
 )
 
 OUT_DIR = Path(__file__).resolve().parents[2] / "backtest-results"
-
-
-async def fetch_price_series(client, symbol):
-    """Fetch full price series for overlay."""
-    all_rows = []
-    start_time = START_TS
-    while len(all_rows) < 20000:
-        params = {
-            "symbol": symbol,
-            "interval": TIMEFRAME,
-            "limit": 1500,
-            "startTime": start_time,
-        }
-        try:
-            resp = await client.get(f"{BINANCE_URL}/fapi/v1/klines", params=params)
-            if resp.status_code == 429:
-                await asyncio.sleep(5)
-                continue
-            if resp.status_code != 200:
-                break
-            raw = resp.json()
-            if not raw:
-                break
-            for k in raw:
-                all_rows.append(
-                    (datetime.fromtimestamp(k[0] / 1000, tz=UTC), float(k[4]))
-                )
-            if len(raw) < 1500:
-                break
-            start_time = raw[-1][0] + 1
-            await asyncio.sleep(0.1)
-        except Exception:
-            break
-    return all_rows
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 
 async def main():
     t0 = time.time()
-    print("Fetching klines for all symbols + BTC/ETH overlay...", flush=True)
+    print("Loading klines (parquet cache + Binance incremental)...", flush=True)
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        bars = {}
-        for sym in SYMBOLS:
-            print(f"  {sym}...", end=" ", flush=True)
-            df = await fetch_klines_from(client, sym, START_TS)
-            if df is not None and len(df) >= 500:
-                bars[sym] = df
-                print(f"✓ {len(df)}", flush=True)
-            else:
-                print("✗", flush=True)
-            await asyncio.sleep(0.15)
+    bars = await fetch_all()
 
-        print("  BTC overlay...", flush=True)
-        btc_prices = await fetch_price_series(client, "BTCUSDT")
-        print("  ETH overlay...", flush=True)
-        eth_prices = await fetch_price_series(client, "ETHUSDT")
+    # BTC/ETH overlay price series from cache
+    store = ParquetStore(DATA_DIR)
+    btc_df = store.read("BTCUSDT", TIMEFRAME)
+    btc_prices = list(
+        zip(btc_df["open_time"].to_list(), btc_df["close"].to_list())
+    ) if not btc_df.is_empty() else []
+    eth_df = store.read("ETHUSDT", TIMEFRAME)
+    eth_prices = list(
+        zip(eth_df["open_time"].to_list(), eth_df["close"].to_list())
+    ) if not eth_df.is_empty() else []
 
     print(f"\n{len(bars)} symbols loaded", flush=True)
 
