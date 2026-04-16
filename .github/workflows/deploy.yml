@@ -111,6 +111,35 @@ jobs:
             cd ~/cta-forge
             echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u rocky-d --password-stdin
             docker compose -f docker-compose.prod.yml pull
+            # Graceful shutdown: give live engine time to finish any in-flight tick
+            docker compose -f docker-compose.prod.yml stop -t 30
             docker compose -f docker-compose.prod.yml down --remove-orphans
             docker compose -f docker-compose.prod.yml up -d
             docker image prune -f
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/cta-forge
+            sleep 15
+            # Check container is running (not restarting)
+            STATUS=$(docker inspect --format='{{.State.Status}}' cta-forge-executor 2>/dev/null || echo "missing")
+            echo "Container status: $STATUS"
+            if [ "$STATUS" != "running" ]; then
+              echo "✗ Container not running!"
+              docker logs cta-forge-executor --tail 20 2>&1
+              exit 1
+            fi
+            # Check for LiveEngine startup in logs
+            if docker logs cta-forge-executor 2>&1 | grep -q "Preflight PASSED"; then
+              echo "✓ LiveEngine started successfully"
+            elif docker logs cta-forge-executor 2>&1 | grep -q "Waiting.*until next candle"; then
+              echo "✓ LiveEngine started, waiting for next tick"
+            else
+              echo "⚠ LiveEngine startup not confirmed yet (may still be initializing)"
+              docker logs cta-forge-executor --tail 10 2>&1
+            fi

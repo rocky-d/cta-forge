@@ -1,0 +1,26 @@
+name: Logs
+
+on:
+  workflow_dispatch:
+    inputs:
+      lines:
+        description: "Number of log lines to retrieve"
+        required: false
+        default: "50"
+
+jobs:
+  fetch-logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch container logs
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "=== Container Status ==="
+            docker ps --filter name=cta-forge --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" 2>/dev/null || echo "No containers found"
+            echo ""
+            echo "=== Last ${{ inputs.lines }} log lines ==="
+            docker logs cta-forge-executor --tail ${{ inputs.lines }} 2>&1 || echo "Container not found"
