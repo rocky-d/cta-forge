@@ -27,7 +27,12 @@ if TYPE_CHECKING:
     from exchange.adapter import ExchangeAdapter
 
 from alpha_service.factors.v10g_composite import V10GCompositeFactor
-from core.constants import V10G_SYMBOLS, V10G_TESTNET_EXCLUDED
+from core.constants import (
+    DEFAULT_TIMEFRAME,
+    V10G_SYMBOLS,
+    V10G_TESTNET_EXCLUDED,
+    V10G_TIMEFRAME_HOURS,
+)
 
 from .decision import (
     ActionKind,
@@ -582,62 +587,60 @@ class LiveEngine:
 
     async def _fetch_bars(self) -> None:
         """Fetch bars from local cache (parquet), backfill from Binance as needed."""
-        interval = "6h"
+        interval = DEFAULT_TIMEFRAME
         min_bars = 200  # strategy warm-up requirement
 
+        async def _fetch_symbol(
+            client: httpx.AsyncClient, symbol: str
+        ) -> tuple[str, pl.DataFrame | None]:
+            """Fetch one symbol, return (symbol, df) or (symbol, None)."""
+            pair = f"{symbol}USDT"
+            try:
+                # 1. Check local parquet
+                latest = self._store.latest_timestamp(pair, interval)
+                if latest is not None:
+                    age_hours = (datetime.now(tz=UTC) - latest).total_seconds() / 3600
+                    need_fetch = age_hours > V10G_TIMEFRAME_HOURS
+                else:
+                    need_fetch = True
+
+                if need_fetch:
+                    start_ms = int(latest.timestamp() * 1000) + 1 if latest else None
+                    new_bars = await fetch_klines(
+                        client,
+                        symbol=pair,
+                        interval=interval,
+                        start_ms=start_ms,
+                        limit=1000,
+                    )
+                    if not new_bars.is_empty():
+                        self._store.write(pair, interval, new_bars)
+                        logger.info("Stored %d new bars for %s", len(new_bars), pair)
+
+                # 2. Read from store
+                df = self._store.read(pair, interval)
+                if df.is_empty():
+                    logger.warning("No data available for %s", pair)
+                    return symbol, None
+
+                if len(df) > min_bars:
+                    df = df.tail(min_bars)
+
+                return symbol, df
+
+            except Exception:
+                logger.exception("Error fetching %s", pair)
+                return symbol, None
+
+        # Fetch all symbols concurrently
         async with httpx.AsyncClient(timeout=30) as client:
-            for symbol in self._symbols:
-                try:
-                    pair = f"{symbol}USDT"
+            results = await asyncio.gather(
+                *(_fetch_symbol(client, sym) for sym in self._symbols)
+            )
 
-                    # 1. Read local parquet
-                    local = self._store.read(pair, interval)
-                    need_fetch = local.is_empty() or len(local) < min_bars
-
-                    if not need_fetch:
-                        # Check if we're missing recent bars
-                        latest = self._store.latest_timestamp(pair, interval)
-                        if latest is not None:
-                            age_hours = (
-                                datetime.now(tz=UTC) - latest
-                            ).total_seconds() / 3600
-                            # If latest bar is older than 1 interval, fetch new
-                            need_fetch = age_hours > 6
-
-                    if need_fetch:
-                        # Incremental fetch from last stored bar
-                        start_ms = None
-                        latest = self._store.latest_timestamp(pair, interval)
-                        if latest is not None:
-                            start_ms = int(latest.timestamp() * 1000) + 1
-
-                        new_bars = await fetch_klines(
-                            client,
-                            symbol=pair,
-                            interval=interval,
-                            start_ms=start_ms,
-                            limit=1000,
-                        )
-                        if not new_bars.is_empty():
-                            self._store.write(pair, interval, new_bars)
-                            logger.info(
-                                "Stored %d new bars for %s", len(new_bars), pair
-                            )
-
-                    # 2. Read from store (now includes any new data)
-                    df = self._store.read(pair, interval)
-                    if df.is_empty():
-                        logger.warning("No data available for %s", pair)
-                        continue
-
-                    # Take last min_bars rows
-                    if len(df) > min_bars:
-                        df = df.tail(min_bars)
-
-                    self._bars_cache[symbol] = df
-
-                except Exception:
-                    logger.exception("Error fetching %s", symbol)
+        for symbol, df in results:
+            if df is not None:
+                self._bars_cache[symbol] = df
 
     # ── Build market snapshots ───────────────────────────────────
 
