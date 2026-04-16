@@ -19,6 +19,7 @@ dev = [
     "executor",
     "report-service",
     "exchange",
+    "core",
 ]
 
 [tool.uv.sources]
@@ -28,6 +29,7 @@ strategy-service = { workspace = true }
 executor = { workspace = true }
 report-service = { workspace = true }
 exchange = { workspace = true }
+core = { workspace = true }
 
 [tool.uv.workspace]
 members = [
