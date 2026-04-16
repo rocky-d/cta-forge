@@ -16,7 +16,7 @@ import numpy as np
 import polars as pl
 
 from alpha_service.factors.v10g_composite import V10GCompositeFactor, _compute_atr
-
+from core.constants import V10G_BACKTEST_SYMBOLS
 from data_service.fetcher import fetch_all_klines
 from data_service.store import ParquetStore
 
@@ -34,30 +34,9 @@ logger = logging.getLogger(__name__)
 # Binance USDS-M Futures launched Sep 2019
 _DEFAULT_START_TS = int(datetime(2019, 9, 1, tzinfo=UTC).timestamp() * 1000)
 
-# Default 19 symbols for max-range backtest
-DEFAULT_SYMBOLS = [
-    "BTCUSDT",
-    "ETHUSDT",
-    "SOLUSDT",
-    "BNBUSDT",
-    "XRPUSDT",
-    "DOGEUSDT",
-    "AVAXUSDT",
-    "LINKUSDT",
-    "ADAUSDT",
-    "DOTUSDT",
-    "ATOMUSDT",
-    "NEARUSDT",
-    "APTUSDT",
-    "ARBUSDT",
-    "OPUSDT",
-    "SUIUSDT",
-    "INJUSDT",
-    "TIAUSDT",
-    "SEIUSDT",
-]
+# Default symbols for max-range backtest (derived from constants)
+DEFAULT_SYMBOLS = [f"{s}USDT" for s in V10G_BACKTEST_SYMBOLS]
 
-COMMISSION = 0.0004  # 4 bps
 WARMUP_BARS = 150  # symbols need at least this many bars before trading
 
 
@@ -257,6 +236,7 @@ def run_backtest(
     cash = initial_equity
     curve: list[tuple[datetime, float]] = []
     trades: list[dict[str, Any]] = []
+    commission = params.commission
 
     def get_val(sym: str, gt: int, key: str) -> float | None:
         li = gt - data[sym]["start_idx"]
@@ -319,7 +299,7 @@ def run_backtest(
                     continue
                 price = snap.close if snap else pos.entry_price
                 pnl = pos.qty * (price - pos.entry_price)
-                pnl -= abs(pos.qty) * price * COMMISSION
+                pnl -= abs(pos.qty) * price * commission
                 cash += abs(pos.qty) * pos.entry_price + pnl
                 trades.append({"pnl": pnl})
 
@@ -330,7 +310,7 @@ def run_backtest(
                 price = snap.close if snap else pos_before.entry_price
                 close_qty = action.qty if pos_before.qty > 0 else -action.qty
                 pnl = close_qty * (price - pos_before.entry_price)
-                pnl -= abs(close_qty) * price * COMMISSION
+                pnl -= abs(close_qty) * price * commission
                 cash += abs(close_qty) * pos_before.entry_price + pnl
                 trades.append({"pnl": pnl})
 
@@ -339,7 +319,7 @@ def run_backtest(
                 if price <= 0:
                     continue
                 qty = action.qty if action.kind == ActionKind.OPEN_LONG else -action.qty
-                cost = abs(qty) * price + abs(qty) * price * COMMISSION
+                cost = abs(qty) * price + abs(qty) * price * commission
                 cash -= cost
                 state.positions[sym] = PositionState(
                     symbol=sym,
@@ -370,7 +350,7 @@ def run_backtest(
         else:
             price = pos.entry_price
         pnl = pos.qty * (price - pos.entry_price)
-        pnl -= abs(pos.qty) * price * COMMISSION
+        pnl -= abs(pos.qty) * price * commission
         trades.append({"pnl": pnl})
 
     return curve, trades
