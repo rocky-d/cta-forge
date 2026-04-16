@@ -1,4 +1,15 @@
-# Failed Experiments Archive (2026-04-12)
+# Backtest Archive (2026-04-16)
+
+## Retired scripts (moved from parent dir)
+
+| Script | Reason |
+|---|---|
+| v10g_longterm.py | Inline logic, redundant with v10g_maxrange.py (use Engine) |
+| v10_sweep.py | v10 param sweep, v10g already finalized |
+| chart_overlay.py | One-off BTC/ETH overlay chart, inline backtest logic |
+| chart_walkforward.py | Walk-forward vol comparison chart, one-off |
+
+## Failed Experiments (2026-04-12)
 
 All tested against v10g baseline (Sharpe 1.58, +187%, DD 12.9%) over 6.5yr max-range.
 
