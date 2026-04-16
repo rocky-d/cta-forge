@@ -15,9 +15,9 @@ services/
   data-service/      -- Binance kline fetcher, parquet store, REST API
   alpha-service/     -- factor computation (TSMOM, Donchian, VolRegime, V10GComposite)
   strategy-service/  -- signal composition, allocation, risk
-  executor/          -- backtest & live execution engine
-  report-service/    -- metrics calculation, chart generation
-scripts/backtest/    -- standalone backtest scripts
+  executor/          -- backtest engine (V10GDecisionEngine) & live execution
+  report-service/    -- metrics calculation, chart generation (3-panel backtest chart)
+scripts/backtest/    -- CLI entry point (thin wrapper, imports from services)
 backtest-results/    -- output charts, metrics JSON
 docs/                -- project documentation
 ```
@@ -99,3 +99,22 @@ Ops:
 - Test: pytest (unit + integration)
 - Deploy: workflow_dispatch -> check-ci gate -> build Docker -> push GHCR -> SSH deploy EC2
 - All actions on Node.js 22+ (checkout@v6, setup-uv@v7, docker/login-action@v4)
+
+## Backtest
+
+Architecture:
+- `services/executor/src/executor/backtest.py` -- core backtest module
+  - `fetch_bars()` -- ParquetStore cache + Binance incremental fetch
+  - `precompute()`, `build_timeline()`, `align_data()`, `compute_signals()` -- data pipeline
+  - `run_backtest()` -- V10GDecisionEngine loop (same engine as live trading)
+  - `run_full_backtest()` -- single orchestration entry point
+- `services/report-service/src/report_service/plot.py` -- `plot_backtest()` three-panel chart
+  (equity + BTC/ETH indexed overlay, drawdown, monthly returns)
+
+Usage:
+- CLI: `uv run python scripts/backtest/v10g_maxrange.py` (thin wrapper, imports from services)
+- REST API:
+  1. `POST :8004/backtest` -> JSON (metrics, equity_curve, btc/eth prices, yearly)
+  2. `POST :8005/plot/backtest` -> PNG (three-panel chart with BTC/ETH overlay)
+
+Output: `backtest-results/backtest_v10g_engine.png`, `backtest-results/metrics_v10g_engine.json`
