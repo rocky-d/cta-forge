@@ -90,6 +90,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v6
+
+      - name: Sync compose file to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: docker-compose.prod.yml
+          target: ~/cta-forge/
+
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
         with:
@@ -100,5 +111,6 @@ jobs:
             cd ~/cta-forge
             echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u rocky-d --password-stdin
             docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml down --remove-orphans
             docker compose -f docker-compose.prod.yml up -d
             docker image prune -f
