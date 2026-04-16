@@ -1,11 +1,12 @@
-# Production compose: executor only, pulls from GHCR
+# Production compose: live trading engine only, pulls from GHCR.
 # Usage: docker compose -f docker-compose.prod.yml up -d
 
 services:
-  executor:
+  executor-live:
     image: ghcr.io/rocky-d/cta-forge/executor:latest
     container_name: cta-forge-executor
     restart: unless-stopped
+    command: ["uv", "run", "python", "-m", "executor.run_live"]
     env_file: .env
     volumes:
       - ./data:/app/data

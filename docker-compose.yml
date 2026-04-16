@@ -1,3 +1,8 @@
+# Local development / full-stack demo compose.
+# Usage:
+#   docker compose up                    # all API services (no live engine)
+#   docker compose --profile live up     # + live trading engine
+
 services:
   data-service:
     build:
@@ -8,7 +13,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      - DATA_DIR=/app/data
+      DATA_DIR: /app/data
 
   alpha-service:
     build:
@@ -24,21 +29,33 @@ services:
     ports:
       - "8003:8003"
 
-  executor:
+  executor-api:
     build:
       context: .
       target: executor
     ports:
       - "8004:8004"
+    env_file: .env
     depends_on:
       - data-service
       - strategy-service
-    env_file:
-      - .env
     environment:
-      - DATA_SERVICE_URL=http://data-service:8001
-      - STRATEGY_SERVICE_URL=http://strategy-service:8003
-      - REPORT_SERVICE_URL=http://report-service:8005
+      DATA_SERVICE_URL: http://data-service:8001
+      STRATEGY_SERVICE_URL: http://strategy-service:8003
+      REPORT_SERVICE_URL: http://report-service:8005
+
+  executor-live:
+    build:
+      context: .
+      target: executor
+    command: ["uv", "run", "python", "-m", "executor.run_live"]
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./engine-state.json:/app/engine-state.json
+      - ./journal:/app/journal
+    profiles:
+      - live
 
   report-service:
     build:
