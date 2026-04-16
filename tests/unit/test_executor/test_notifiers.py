@@ -5,18 +5,18 @@ from __future__ import annotations
 
 import pytest
 
-from executor.live import (
+from executor.notify import (
     LarkNotifier,
     MultiNotifier,
+    NullNotifier,
     TelegramNotifier,
-    _NullNotifier,
 )
 
 
 @pytest.mark.asyncio
 async def test_null_notifier_is_silent() -> None:
     """NullNotifier.send() completes without error."""
-    n = _NullNotifier()
+    n = NullNotifier()
     await n.send("test message")
 
 
@@ -76,7 +76,7 @@ async def test_multi_notifier_fans_out() -> None:
     """MultiNotifier sends to all backends."""
     messages: list[str] = []
 
-    class Recorder(_NullNotifier):
+    class Recorder(NullNotifier):
         def __init__(self, tag: str) -> None:
             self._tag = tag
 
@@ -95,11 +95,11 @@ async def test_multi_notifier_tolerates_partial_failure() -> None:
     """One backend failing doesn't block others."""
     results: list[str] = []
 
-    class FailNotifier(_NullNotifier):
+    class FailNotifier(NullNotifier):
         async def send(self, message: str) -> None:
             raise RuntimeError("boom")
 
-    class OkNotifier(_NullNotifier):
+    class OkNotifier(NullNotifier):
         async def send(self, message: str) -> None:
             results.append(message)
 

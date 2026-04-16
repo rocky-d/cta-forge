@@ -9,13 +9,13 @@ import sys
 
 from exchange.hyperliquid import HyperliquidAdapter
 
-from .live import (
+from .live import LiveEngine
+from .notify import (
     LarkNotifier,
-    LiveEngine,
     MultiNotifier,
+    NullNotifier,
     TelegramNotifier,
     _Notifier,
-    _NullNotifier,
 )
 
 
@@ -34,7 +34,7 @@ def _build_notifier() -> _Notifier:
         notifiers.append(LarkNotifier(lark_url, secret=lark_secret))
 
     if not notifiers:
-        return _NullNotifier()
+        return NullNotifier()
     if len(notifiers) == 1:
         return notifiers[0]
     return MultiNotifier(notifiers)
