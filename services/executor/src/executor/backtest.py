@@ -16,7 +16,7 @@ import numpy as np
 import polars as pl
 
 from alpha_service.factors.v10g_composite import V10GCompositeFactor, _compute_atr
-from core.constants import V10G_BACKTEST_SYMBOLS
+from core.constants import V10G_SYMBOLS
 from data_service.fetcher import fetch_all_klines
 from data_service.store import ParquetStore
 
@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 # Binance USDS-M Futures launched Sep 2019
 _DEFAULT_START_TS = int(datetime(2019, 9, 1, tzinfo=UTC).timestamp() * 1000)
 
-# Default symbols for max-range backtest (derived from constants)
-DEFAULT_SYMBOLS = [f"{s}USDT" for s in V10G_BACKTEST_SYMBOLS]
+# Default symbols for backtest (derived from constants, Binance USDT-M pairs)
+DEFAULT_SYMBOLS = [f"{s}USDT" for s in V10G_SYMBOLS]
 
 WARMUP_BARS = 150  # symbols need at least this many bars before trading
 

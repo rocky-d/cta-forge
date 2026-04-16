@@ -59,10 +59,6 @@ V10G_SYMBOLS = [
     "DOT",
     "ATOM",
     "NEAR",
-]
-# Extended symbol list for backtest (includes newer listings beyond live set)
-V10G_BACKTEST_SYMBOLS = [
-    *V10G_SYMBOLS,
     "APT",
     "ARB",
     "OP",
@@ -72,7 +68,7 @@ V10G_BACKTEST_SYMBOLS = [
     "SEI",
 ]
 # These symbols exist on mainnet but not on HL testnet.
-V10G_TESTNET_EXCLUDED = {"XRP", "LINK", "DOT"}
+V10G_TESTNET_EXCLUDED = {"XRP", "LINK", "DOT", "SEI"}
 V10G_TIMEFRAME_HOURS = 6
 V10G_ADX_PERIODS = [22, 27, 32]  # ensemble ADX
 V10G_ADX_THRESHOLD = 25
