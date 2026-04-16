@@ -64,28 +64,38 @@ Architecture:
 - `libs/exchange/` -- HL SDK wrapper library
   - `ExchangeAdapter` Protocol interface (structural subtyping)
   - `HyperliquidAdapter` implementation (safe init, unified account, async executor)
+- `services/executor/src/executor/decision.py` -- V10GDecisionEngine (stateless decision logic, shared by live + backtest)
 - `services/executor/src/executor/live.py` -- LiveEngine (v10g strategy, 6h candle-aligned loop)
+- `services/executor/src/executor/notify.py` -- Notifier stack (Telegram, Lark/Feishu, multi-backend)
 - `services/executor/src/executor/run_live.py` -- CLI entry point
 
 Preflight checks (must all pass before trading):
 1. Exchange connectivity
 2. Minimum equity ($100)
-3. Stale positions -> auto-flatten
+3. Position reconcile (state vs exchange, adopt orphaned positions)
 4. Stale open orders -> auto-cancel
 5. Market data spot check
 
 Risk controls:
 - 15% max drawdown -> hard stop (flatten all)
 - 8% drawdown -> DD breaker (50% position size reduction)
-- ATR trailing stops (4.5x)
+- ATR trailing stops (5.0x, tightens to 3.0x after 2.0x ATR profit)
 - Max 5 concurrent positions
-- 20% max per-position equity
+- 15% max per-position equity
+
+Important: V10GDecisionEngine.tick() mutates state internally (deletes closed
+positions, adjusts partial qty, updates best_price). Callers must snapshot
+positions before tick() if they need pre-tick state for settlement.
 
 Ops:
-- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID
+- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID, LARK_WEBHOOK_URL, DATA_DIR
 - State persistence: engine-state.json (auto-generated, gitignored)
+- Data cache: parquet files in DATA_DIR (live + backtest share via ParquetStore)
+- Deployment: GitHub Actions workflow_dispatch -> GHCR -> SSH EC2 (Tokyo t3.small)
 
-## Next Steps
+## CI/CD
 
-- Deploy to cloud server (systemd service + CI/CD)
-- Transaction cost sensitivity analysis
+- Lint: ruff check + ruff format + ty check (3 parallel jobs)
+- Test: pytest (unit + integration)
+- Deploy: workflow_dispatch -> check-ci gate -> build Docker -> push GHCR -> SSH deploy EC2
+- All actions on Node.js 22+ (checkout@v6, setup-uv@v7, docker/login-action@v4)
