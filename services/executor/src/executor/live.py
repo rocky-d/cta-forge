@@ -468,12 +468,27 @@ class LiveEngine:
         # 3. Build snapshots for decision engine
         snapshots = self._build_snapshots()
 
-        # 4. Get decisions from the unified engine
+        # 4. Snapshot positions BEFORE tick: tick() deletes closed positions
+        # from state internally (so opens can reuse the slot on the same bar).
+        # We need the pre-tick snapshot to execute closes and partials.
+        positions_before: dict[str, PositionState] = {
+            sym: PositionState(
+                symbol=pos.symbol,
+                qty=pos.qty,
+                entry_price=pos.entry_price,
+                entry_bar=pos.entry_bar,
+                best_price=pos.best_price,
+                partial_taken=pos.partial_taken,
+            )
+            for sym, pos in self._state.positions.items()
+        }
+
+        # 5. Get decisions from the unified engine
         actions = self._decision.tick(self._state, equity, snapshots)
 
-        # 5. Execute actions
+        # 6. Execute actions (pass pre-tick snapshot for close/partial settlement)
         for action in actions:
-            await self._execute_action(action, equity)
+            await self._execute_action(action, equity, positions_before)
 
         # 6. Journal: record tick equity + signals
         pos_snapshot = {
@@ -609,7 +624,12 @@ class LiveEngine:
 
     # ── Action execution ─────────────────────────────────────────
 
-    async def _execute_action(self, action: TradeAction, equity: float) -> None:
+    async def _execute_action(
+        self,
+        action: TradeAction,
+        equity: float,
+        positions_before: dict[str, PositionState],
+    ) -> None:
         """Execute a single trade action."""
         logger.info(
             "Executing: %s %s qty=%.4f (%s)",
@@ -620,16 +640,18 @@ class LiveEngine:
         )
 
         if action.kind == ActionKind.FLATTEN_ALL:
-            await self._flatten_all()
+            await self._flatten_all(positions_before)
             self._running = False
             return
 
         if action.kind == ActionKind.CLOSE:
-            await self._close_position(action.symbol, action.reason)
+            await self._close_position(action.symbol, action.reason, positions_before)
             return
 
         if action.kind == ActionKind.PARTIAL_CLOSE:
-            await self._partial_close(action.symbol, action.qty, action.reason)
+            await self._partial_close(
+                action.symbol, action.qty, action.reason, positions_before
+            )
             return
 
         if action.kind in (ActionKind.OPEN_LONG, ActionKind.OPEN_SHORT):
@@ -701,9 +723,24 @@ class LiveEngine:
             side=side,
         )
 
-    async def _close_position(self, symbol: str, reason: str) -> None:
-        """Close an existing position."""
-        pos = self._state.positions.get(symbol)
+    async def _close_position(
+        self,
+        symbol: str,
+        reason: str,
+        positions_before: dict[str, PositionState] | None = None,
+    ) -> None:
+        """Close an existing position.
+
+        Args:
+            positions_before: pre-tick snapshot. tick() deletes closed positions
+                from state internally, so we must use the snapshot to know what
+                to close. Falls back to current state for _flatten_all calls.
+        """
+        pos = (
+            positions_before.get(symbol)
+            if positions_before is not None
+            else self._state.positions.get(symbol)
+        )
         if pos is None:
             return
 
@@ -727,7 +764,8 @@ class LiveEngine:
                 logger.error("Failed to close %s: %s", symbol, result.message)
                 return
 
-        del self._state.positions[symbol]
+        # Remove from state if tick() didn't already
+        self._state.positions.pop(symbol, None)
         held = self._state.bar_count - pos.entry_bar
 
         # Compute PnL
@@ -761,15 +799,29 @@ class LiveEngine:
             held_bars=held,
         )
 
-    async def _partial_close(self, symbol: str, qty: float, reason: str) -> None:
-        """Partial close a position."""
-        pos = self._state.positions.get(symbol)
-        if pos is None:
+    async def _partial_close(
+        self,
+        symbol: str,
+        qty: float,
+        reason: str,
+        positions_before: dict[str, PositionState] | None = None,
+    ) -> None:
+        """Partial close a position.
+
+        tick() already adjusted pos.qty in state, so we use positions_before
+        to get the original side for determining buy/sell direction.
+        """
+        pos_before = (
+            positions_before.get(symbol)
+            if positions_before is not None
+            else self._state.positions.get(symbol)
+        )
+        if pos_before is None:
             return
 
-        is_buy = pos.qty < 0
+        is_buy = pos_before.qty < 0
         size = Decimal(str(qty))
-        side = "long" if pos.qty > 0 else "short"
+        side = "long" if pos_before.qty > 0 else "short"
 
         logger.info(
             "Partial close %s %s: qty=%.6f, reason=%s",
@@ -787,12 +839,8 @@ class LiveEngine:
                 logger.error("Failed to partial close %s: %s", symbol, result.message)
                 return
 
-        # Update position qty
-        if pos.qty > 0:
-            pos.qty -= qty
-        else:
-            pos.qty += qty
-        pos.partial_taken = True
+        # tick() already adjusted pos.qty and set partial_taken in state;
+        # no need to update here.
 
         await self._notify.send(
             f"📊 PARTIAL {side.upper()} {symbol} | closed {qty:.6f} | {reason}"
@@ -800,12 +848,12 @@ class LiveEngine:
         exit_price = (
             float(self._bars_cache.get(symbol, pl.DataFrame())["close"][-1])
             if symbol in self._bars_cache
-            else pos.entry_price
+            else pos_before.entry_price
         )
-        if pos.qty > 0:
-            pnl = (exit_price - pos.entry_price) * qty
+        if pos_before.qty > 0:
+            pnl = (exit_price - pos_before.entry_price) * qty
         else:
-            pnl = (pos.entry_price - exit_price) * qty
+            pnl = (pos_before.entry_price - exit_price) * qty
         self._journal.record_trade(
             bar=self._state.bar_count,
             kind="partial_close",
@@ -814,18 +862,26 @@ class LiveEngine:
             price=exit_price,
             reason=reason,
             side=side,
-            entry_price=pos.entry_price,
+            entry_price=pos_before.entry_price,
             pnl=pnl,
-            pnl_pct=(pnl / (pos.entry_price * qty) * 100) if pos.entry_price > 0 else 0,
-            held_bars=self._state.bar_count - pos.entry_bar,
+            pnl_pct=(pnl / (pos_before.entry_price * qty) * 100)
+            if pos_before.entry_price > 0
+            else 0,
+            held_bars=self._state.bar_count - pos_before.entry_bar,
         )
 
-    async def _flatten_all(self) -> None:
+    async def _flatten_all(
+        self, positions_before: dict[str, PositionState] | None = None
+    ) -> None:
         """Emergency: close all positions."""
         logger.warning("FLATTENING ALL POSITIONS")
         await self._notify.send("🚨 MAX DRAWDOWN — FLATTENING ALL POSITIONS")
-        symbols = list(self._state.positions.keys())
+        # Use pre-tick snapshot: tick() already deleted positions from state
+        source = (
+            positions_before if positions_before is not None else self._state.positions
+        )
+        symbols = list(source.keys())
         for symbol in symbols:
-            await self._close_position(symbol, "flatten_all")
+            await self._close_position(symbol, "flatten_all", positions_before)
         if not self._dry_run:
             await self._exchange.cancel_all_orders()
