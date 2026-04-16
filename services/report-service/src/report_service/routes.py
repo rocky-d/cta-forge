@@ -10,7 +10,12 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from .metrics import calculate_metrics
-from .plot import plot_drawdown, plot_equity_curve, plot_returns_distribution
+from .plot import (
+    plot_backtest,
+    plot_drawdown,
+    plot_equity_curve,
+    plot_returns_distribution,
+)
 
 router = APIRouter()
 
@@ -26,6 +31,19 @@ class PlotRequest(BaseModel):
     equity_curve: list[tuple[str, float]] = []
     trades: list[dict] = []
     chart_type: str = "equity"  # equity, drawdown, distribution
+
+
+class BacktestPlotRequest(BaseModel):
+    """Request for full three-panel backtest chart."""
+
+    equity_curve: list[tuple[str, float]]  # [(timestamp_iso, equity), ...]
+    btc_prices: list[tuple[str, float]] = []  # [(timestamp_iso, close), ...]
+    eth_prices: list[tuple[str, float]] = []
+    metrics: dict | None = None
+    yearly: dict[str, float] | None = None
+    initial_equity: float = 10_000.0
+    title_extra: str = ""
+    dpi: int = 200
 
 
 def _parse_curve(curve: list[tuple[str, float]]) -> list[tuple[datetime, float]]:
@@ -100,5 +118,46 @@ async def generate_plot_base64(req: PlotRequest) -> dict:
     else:
         img_bytes = plot_equity_curve(curve)
 
+    encoded = base64.b64encode(img_bytes).decode("utf-8")
+    return {"image": encoded, "media_type": "image/png"}
+
+
+@router.post("/plot/backtest")
+async def generate_backtest_plot(req: BacktestPlotRequest) -> Response:
+    """Generate full three-panel backtest chart as PNG image."""
+    curve = _parse_curve(req.equity_curve)
+    btc = _parse_curve(req.btc_prices) if req.btc_prices else None
+    eth = _parse_curve(req.eth_prices) if req.eth_prices else None
+
+    img_bytes = plot_backtest(
+        equity_curve=curve,
+        btc_prices=btc,
+        eth_prices=eth,
+        metrics=req.metrics,
+        yearly=req.yearly,
+        title_extra=req.title_extra,
+        initial_equity=req.initial_equity,
+        dpi=req.dpi,
+    )
+    return Response(content=img_bytes, media_type="image/png")
+
+
+@router.post("/plot/backtest/base64")
+async def generate_backtest_plot_base64(req: BacktestPlotRequest) -> dict:
+    """Generate full three-panel backtest chart as base64 PNG."""
+    curve = _parse_curve(req.equity_curve)
+    btc = _parse_curve(req.btc_prices) if req.btc_prices else None
+    eth = _parse_curve(req.eth_prices) if req.eth_prices else None
+
+    img_bytes = plot_backtest(
+        equity_curve=curve,
+        btc_prices=btc,
+        eth_prices=eth,
+        metrics=req.metrics,
+        yearly=req.yearly,
+        title_extra=req.title_extra,
+        initial_equity=req.initial_equity,
+        dpi=req.dpi,
+    )
     encoded = base64.b64encode(img_bytes).decode("utf-8")
     return {"image": encoded, "media_type": "image/png"}

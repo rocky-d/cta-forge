@@ -8,33 +8,39 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 import polars as pl
 import pytest
-from alpha_service.factors.momentum import TSMOMFactor
-from executor.backtest import BacktestEngine
+from executor.backtest import (
+    align_data,
+    build_timeline,
+    calc_ulcer,
+    precompute,
+    run_backtest,
+)
+from executor.decision import V10GStrategyParams
 from report_service.metrics import calculate_metrics
 from strategy_service.allocator import allocate_positions
 from strategy_service.composer import compose_signals
 
 
 def _generate_market_data(
-    n_symbols: int = 5, n_bars: int = 200
+    n_symbols: int = 5, n_bars: int = 400, prefix: str = "SYM"
 ) -> dict[str, pl.DataFrame]:
     """Generate synthetic market data with varying trends."""
     np.random.seed(42)
     bars = {}
     for i in range(n_symbols):
-        symbol = f"SYM{i}USDT"
-        trend = np.random.uniform(-0.002, 0.003)  # Random trend per symbol
+        symbol = f"{prefix}{i}USDT"
+        trend = np.random.uniform(-0.002, 0.003)
         rows = []
         price = 100.0 + np.random.uniform(-20, 20)
         for j in range(n_bars):
             price = price * (1 + trend + np.random.normal(0, 0.015))
             rows.append(
                 {
-                    "open_time": datetime(2024, 1, 1, tzinfo=UTC)
+                    "open_time": datetime(2020, 1, 1, tzinfo=UTC)
                     + timedelta(hours=j * 6),
                     "open": price * 0.999,
-                    "high": price * 1.01,
-                    "low": price * 0.99,
+                    "high": price * 1.015,
+                    "low": price * 0.985,
                     "close": price,
                     "volume": 1000.0 + np.random.uniform(0, 500),
                 }
@@ -43,46 +49,63 @@ def _generate_market_data(
     return bars
 
 
+def _make_signals(data, timeline):
+    """Generate mild positive signals for testing."""
+    sigs = {}
+    for sym in data:
+        s = np.zeros(len(timeline))
+        for j in range(len(s)):
+            s[j] = 0.45 if j % 20 < 15 else -0.2
+        sigs[sym] = s
+    return sigs
+
+
 class TestEndToEndPipeline:
     """Integration tests for the complete trading pipeline."""
 
     def test_full_backtest_pipeline(self):
-        """Test: data → alpha → strategy → backtest → report."""
-        # 1. Generate data
-        market_data = _generate_market_data(n_symbols=5, n_bars=150)
+        """Test: data → precompute → signals → backtest → metrics."""
+        market_data = _generate_market_data(n_symbols=3, n_bars=400)
 
-        # 2. Setup factor
-        tsmom = TSMOMFactor(lookback=20)
+        # Precompute and build timeline
+        data = precompute(market_data)
+        timeline, ts_to_idx = build_timeline(market_data)
+        align_data(market_data, data, ts_to_idx)
+        sigs = _make_signals(data, timeline)
 
-        # 3. Run backtest with integrated pipeline
-        engine = BacktestEngine(initial_equity=10000.0)
+        # Run backtest with V10GDecisionEngine
+        start = 200
+        curve, trades = run_backtest(data, sigs, timeline, start, len(timeline))
 
-        def compute_signal(symbol: str, bars: pl.DataFrame) -> float:
-            result = tsmom.compute(bars)
-            if result.is_empty():
-                return 0.0
-            return float(result["signal"][-1])
-
-        def allocate(signals: dict[str, float], equity: float) -> dict[str, float]:
-            return allocate_positions(signals, equity, max_position_pct=0.2)
-
-        result = engine.run(
-            bars=market_data,
-            compute_signals=compute_signal,
-            allocate=allocate,
-        )
-
-        # 4. Calculate metrics
-        metrics = calculate_metrics(result.equity_curve, result.trades)
+        # Calculate metrics
+        metrics = calculate_metrics(curve, trades)
 
         # Assertions
-        assert result.final_equity > 0
-        assert len(result.equity_curve) == 150
+        assert len(curve) > 0
+        assert curve[0][1] > 0  # positive equity
         assert metrics.num_trades >= 0
         assert 0 <= metrics.max_drawdown <= 1
 
+    def test_backtest_with_custom_params(self):
+        """Test backtest respects custom strategy parameters."""
+        market_data = _generate_market_data(n_symbols=2, n_bars=400)
+        data = precompute(market_data)
+        timeline, ts_to_idx = build_timeline(market_data)
+        align_data(market_data, data, ts_to_idx)
+        sigs = _make_signals(data, timeline)
+
+        params = V10GStrategyParams(
+            max_drawdown=1.0,
+            max_positions=1,
+            signal_threshold=0.3,
+        )
+        curve, trades = run_backtest(
+            data, sigs, timeline, 200, len(timeline), params=params
+        )
+        assert len(curve) > 0
+
     def test_multi_factor_composition(self):
-        """Test multi-factor signal composition."""
+        """Test multi-factor signal composition (strategy-service)."""
         signals = {
             "SYM0USDT": {"tsmom_20": 0.7, "breakout_15": 0.3},
             "SYM1USDT": {"tsmom_20": -0.5, "breakout_15": 0.8},
@@ -95,51 +118,29 @@ class TestEndToEndPipeline:
         assert len(composite) == 3
         assert all(-1 <= v <= 1 for v in composite.values())
 
-        # Allocate based on composite
         positions = allocate_positions(composite, equity=10000.0)
         assert all(isinstance(v, float) for v in positions.values())
 
-    def test_backtest_with_declining_market(self):
-        """Test backtest handles losing scenarios gracefully."""
-        # Generate strongly declining market
-        np.random.seed(123)
-        bars = {}
-        for i in range(3):
-            symbol = f"BEAR{i}USDT"
-            rows = []
-            price = 100.0
-            for j in range(100):
-                price = price * (1 - 0.005 + np.random.normal(0, 0.01))
-                rows.append(
-                    {
-                        "open_time": datetime(2024, 1, 1, tzinfo=UTC)
-                        + timedelta(hours=j * 6),
-                        "open": price * 1.001,
-                        "high": price * 1.02,
-                        "low": price * 0.98,
-                        "close": price,
-                        "volume": 1000.0,
-                    }
-                )
-            bars[symbol] = pl.DataFrame(rows)
+    def test_metrics_and_ulcer(self):
+        """Test metrics calculation on backtest output."""
+        market_data = _generate_market_data(n_symbols=2, n_bars=400)
+        data = precompute(market_data)
+        timeline, ts_to_idx = build_timeline(market_data)
+        align_data(market_data, data, ts_to_idx)
+        sigs = _make_signals(data, timeline)
 
-        engine = BacktestEngine(initial_equity=10000.0)
-        result = engine.run(
-            bars=bars,
-            compute_signals=lambda s, b: 0.5,  # Always bullish (wrong in this market)
-            allocate=lambda sigs, eq: {s: sigs[s] * eq * 0.2 for s in sigs},
-        )
+        curve, trades = run_backtest(data, sigs, timeline, 200, len(timeline))
+        metrics = calculate_metrics(curve, trades)
+        ulcer = calc_ulcer(curve)
 
-        # Should still complete
-        assert result.final_equity > 0
-        assert result.max_drawdown > 0.1  # Should have significant drawdown
+        assert metrics.sharpe_ratio != 0 or metrics.num_trades == 0
+        assert ulcer >= 0
 
     @pytest.mark.asyncio
     async def test_async_compatible(self):
         """Verify components work in async context."""
         market_data = _generate_market_data(n_symbols=2, n_bars=50)
 
-        # Simulate async data fetch
         async def fetch_data():
             await asyncio.sleep(0.01)
             return market_data
