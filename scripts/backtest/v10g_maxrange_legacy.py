@@ -1,8 +1,4 @@
-"""CTA-Forge v10g — Max-range backtest using V10GDecisionEngine.
-
-This version delegates all trading decisions to V10GDecisionEngine,
-ensuring exact parity between backtest and live trading logic.
-"""
+"""CTA-Forge v10g — Max-range backtest (earliest Binance Futures → 2026)."""
 
 from __future__ import annotations
 
@@ -14,21 +10,17 @@ from pathlib import Path
 
 import httpx
 import numpy as np
+import polars as pl
 
-from alpha_service.factors.v10g_composite import (
-    V10GCompositeFactor,
-    _compute_atr,
-)
 from core.metrics import calculate_metrics
 from data_service.fetcher import fetch_all_klines
 from data_service.store import ParquetStore
-from executor.decision import (
-    ActionKind,
-    BarSnapshot,
-    EngineState,
-    PositionState,
-    V10GDecisionEngine,
-    V10GStrategyParams,
+
+from alpha_service.factors.v10g_composite import (
+    V10GCompositeFactor,
+    V10GCompositeParams,
+    _compute_adx,
+    _compute_atr,
 )
 
 BINANCE_URL = "https://fapi.binance.com"
@@ -37,25 +29,10 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 # All 19 symbols — each will start from its own earliest available data
 SYMBOLS = [
-    "BTCUSDT",
-    "ETHUSDT",
-    "SOLUSDT",
-    "BNBUSDT",
-    "XRPUSDT",
-    "DOGEUSDT",
-    "AVAXUSDT",
-    "LINKUSDT",
-    "ADAUSDT",
-    "DOTUSDT",
-    "ATOMUSDT",
-    "NEARUSDT",
-    "APTUSDT",
-    "ARBUSDT",
-    "OPUSDT",
-    "SUIUSDT",
-    "INJUSDT",
-    "TIAUSDT",
-    "SEIUSDT",
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+    "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "ADAUSDT", "DOTUSDT",
+    "ATOMUSDT", "NEARUSDT", "APTUSDT", "ARBUSDT", "OPUSDT",
+    "SUIUSDT", "INJUSDT", "TIAUSDT", "SEIUSDT",
 ]
 TIMEFRAME = "6h"
 INITIAL_EQUITY = 10_000.0
@@ -108,6 +85,16 @@ async def fetch_all():
     return bars
 
 
+def compute_adx(high, low, close, period=14):
+    """Compute ADX via shared factor implementation."""
+    return _compute_adx(high, low, close, period)
+
+
+def compute_atr(high, low, close, period=14):
+    """Compute ATR via shared factor implementation."""
+    return _compute_atr(high, low, close, period)
+
+
 # Shared factor instance
 _v10g_factor = V10GCompositeFactor()
 
@@ -129,6 +116,7 @@ def compute_signals(data, timeline, params):
     n_global = len(timeline)
     use_btc = params.get("btc_filter", False)
 
+    # Build per-symbol indicator dicts (factor expects local arrays)
     btc_ind = None
     if use_btc and "BTCUSDT" in data:
         btc_ind = data["BTCUSDT"]
@@ -139,11 +127,17 @@ def compute_signals(data, timeline, params):
         start = d["start_idx"]
         n = d["length"]
 
+        # Factor computes on local arrays
         btc_ref = btc_ind if (use_btc and sym != "BTCUSDT") else None
 
+        # For BTC filter, we need aligned arrays. The factor expects
+        # btc_indicators to be indexed in parallel with the symbol.
+        # When symbols have different start_idx, we need to build
+        # an aligned BTC indicator slice.
         if btc_ref is not None and btc_ref["start_idx"] != start:
             btc_start = btc_ref["start_idx"]
             btc_len = btc_ref["length"]
+            # Build aligned BTC close array (same global timeline mapping)
             aligned_btc = {}
             for key in btc_ref:
                 if key in ("start_idx", "length"):
@@ -160,6 +154,7 @@ def compute_signals(data, timeline, params):
         else:
             local_sigs = _v10g_factor.compute_signal_array(d, btc_ref)
 
+        # Map local signals to global timeline
         for li in range(n):
             gi = start + li
             if gi < n_global:
@@ -186,168 +181,274 @@ def align_data(bars_dict, data, ts_to_idx):
         data[sym]["start_idx"] = global_start
 
 
+def sym_local_idx(data, sym, global_t):
+    """Convert global timeline index to symbol's local array index."""
+    local = global_t - data[sym]["start_idx"]
+    if local < 0 or local >= data[sym]["length"]:
+        return None
+    return local
+
+
 def run_backtest(data, sigs, timeline, start_idx, end_idx, params):
-    """Run backtest using V10GDecisionEngine for all decisions."""
-    # Build strategy params from backtest params dict
-    strategy_params = V10GStrategyParams(
-        signal_threshold=params["signal_threshold"],
-        min_hold_bars=params["min_hold_bars"],
-        atr_stop_mult=params["atr_stop_mult"],
-        risk_per_trade=params["risk_per_trade"],
-        max_positions=params["max_positions"],
-        rebalance_every=params["rebalance_every"],
-        partial_take_profit=params.get("partial_take_profit", 0),
-        target_vol=params.get("target_vol", 0),
-        max_hold_bars=params.get("max_hold_bars", 0),
-        tighten_stop_after_atr=params.get("tighten_stop_after_atr", 0),
-        tightened_stop_mult=params.get("tightened_stop_mult", 3.0),
-        dd_circuit_breaker=params.get("dd_circuit_breaker", 0),
-        # Backtest: disable hard max_drawdown stop (use dd_circuit_breaker soft stop only)
-        # Original backtest never had this feature - set to 1.0 to effectively disable
-        max_drawdown=params.get("max_drawdown", 1.0),
-        risk_parity=params.get("risk_parity", True),
-        signal_reversal_threshold=0.15,
-        max_single_position_pct=0.15,
-        commission=COMMISSION,
-    )
+    SIG_T = params["signal_threshold"]
+    MIN_HOLD = params["min_hold_bars"]
+    ATR_STOP = params["atr_stop_mult"]
+    RISK_PT = params["risk_per_trade"]
+    MAX_POS = params["max_positions"]
+    REBAL = params["rebalance_every"]
+    PT_TP = params.get("partial_take_profit", 0)
+    TARGET_VOL = params.get("target_vol", 0)
+    MAX_HOLD = params.get("max_hold_bars", 0)
+    TIGHTEN_AFTER = params.get("tighten_stop_after_atr", 0)
+    TIGHTENED_STOP = params.get("tightened_stop_mult", 3.0)
+    DD_BREAKER = params.get("dd_circuit_breaker", 0)
+    RISK_PARITY = params.get("risk_parity", True)
 
-    engine = V10GDecisionEngine(strategy_params)
-    state = EngineState(
-        initial_equity=INITIAL_EQUITY,
-        peak_equity=INITIAL_EQUITY,
-    )
-
+    equity = INITIAL_EQUITY
     cash = INITIAL_EQUITY
+    peak_eq = INITIAL_EQUITY
+    positions = {}
     curve = []
     trades = []
+    recent_returns = []
 
-    # Helper: get data at global timeline index
-    def get_val(sym, gt, key):
+    def get_close(sym, gt):
         li = gt - data[sym]["start_idx"]
         if 0 <= li < data[sym]["length"]:
-            return data[sym][key][li]
+            return data[sym]["close"][li]
         return None
 
-    # Warmup threshold: symbols need at least 150 bars of history
-    WARMUP_BARS = 150
+    def get_atr(sym, gt):
+        li = gt - data[sym]["start_idx"]
+        if 0 <= li < data[sym]["length"]:
+            return data[sym]["atr"][li]
+        return None
+
+    def get_rvol(sym, gt):
+        li = gt - data[sym]["start_idx"]
+        if 0 <= li < data[sym]["length"]:
+            return data[sym]["rvol"][li]
+        return None
 
     for t in range(start_idx, end_idx):
-        # Build snapshots for all symbols with sufficient data
-        snapshots: dict[str, BarSnapshot] = {}
-        for sym in data:
-            li = t - data[sym]["start_idx"]
-            if li < WARMUP_BARS or li >= data[sym]["length"]:
-                continue
-            close = get_val(sym, t, "close")
-            atr = get_val(sym, t, "atr")
-            rvol = get_val(sym, t, "rvol")
-            signal = sigs[sym][t]
-            if close is None or atr is None:
-                continue
-            snapshots[sym] = BarSnapshot(
-                close=close,
-                atr=atr,
-                rvol=rvol if rvol is not None else 0.01,
-                signal=signal,
-            )
-
         # Mark to market
-        equity = cash
-        for sym, pos in state.positions.items():
-            snap = snapshots.get(sym)
-            if snap is None:
-                # Use entry price if no current data
-                equity += abs(pos.qty) * pos.entry_price
-            else:
-                # Position value = notional + unrealized PnL
-                equity += abs(pos.qty) * pos.entry_price + pos.qty * (
-                    snap.close - pos.entry_price
-                )
+        pv = cash
+        for s, po in positions.items():
+            cp = get_close(s, t)
+            if cp is None:
+                continue
+            pv += (
+                abs(po["qty"]) * po["entry_price"]
+                + po["qty"] * (cp - po["entry_price"])
+            )
+        equity = pv
+        peak_eq = max(peak_eq, equity)
+        cur_dd = (
+            (peak_eq - equity) / peak_eq if peak_eq > 0 else 0
+        )
 
-        # Update recent returns for vol scaling
         if curve:
-            prev_eq = curve[-1][1]
-            if prev_eq > 0:
-                ret = (equity - prev_eq) / prev_eq
-                state.recent_returns.append(ret)
+            prev = curve[-1][1]
+            if prev > 0:
+                recent_returns.append((pv - prev) / prev)
+                if len(recent_returns) > 120:
+                    recent_returns.pop(0)
 
-        # Snapshot positions BEFORE tick: tick() deletes closed positions from
-        # state internally (so opens can reuse the slot), so we need the
-        # pre-tick snapshot to settle the trade cash flows.
-        positions_before = {sym: pos for sym, pos in state.positions.items()}
+        vol_scale = 1.0
+        if TARGET_VOL > 0 and len(recent_returns) >= 20:
+            rv = np.std(recent_returns[-60:]) * np.sqrt(4 * 365)
+            if rv > 0:
+                vol_scale = np.clip(TARGET_VOL / rv, 0.3, 2.0)
+        dd_scale = (
+            0.5
+            if DD_BREAKER > 0 and cur_dd > DD_BREAKER
+            else 1.0
+        )
 
-        # Get actions from decision engine
-        actions = engine.tick(state, equity, snapshots)
+        # Close positions
+        to_close = []
+        for s, po in positions.items():
+            held = t - po["entry_bar"]
+            a = get_atr(s, t)
+            cp = get_close(s, t)
+            if a is None or cp is None:
+                to_close.append(s)
+                continue
 
-        # Execute actions
-        for action in actions:
-            sym = action.symbol
-            snap = snapshots.get(sym)
+            if MAX_HOLD > 0 and held >= MAX_HOLD:
+                to_close.append(s)
+                continue
 
-            if action.kind == ActionKind.CLOSE or action.kind == ActionKind.FLATTEN_ALL:
-                # Position was already removed from state by tick(); use snapshot
-                pos = positions_before.get(sym)
-                if pos is None:
-                    continue
-                price = snap.close if snap else pos.entry_price
-                pnl = pos.qty * (price - pos.entry_price)
-                pnl -= abs(pos.qty) * price * COMMISSION
-                cash += abs(pos.qty) * pos.entry_price + pnl
-                trades.append({"pnl": pnl})
+            cs = ATR_STOP
+            if TIGHTEN_AFTER > 0:
+                unr = (
+                    (cp - po["entry_price"]) / a
+                    if po["qty"] > 0
+                    else (po["entry_price"] - cp) / a
+                ) if a > 0 else 0
+                if unr > TIGHTEN_AFTER:
+                    cs = TIGHTENED_STOP
 
-            elif action.kind == ActionKind.PARTIAL_CLOSE:
-                # tick() already adjusted pos.qty in state; use state for current qty
-                pos_before = positions_before.get(sym)
-                if pos_before is None:
-                    continue
-                price = snap.close if snap else pos_before.entry_price
-                # action.qty is the half-qty to close
-                close_qty = action.qty if pos_before.qty > 0 else -action.qty
-                pnl = close_qty * (price - pos_before.entry_price)
-                pnl -= abs(close_qty) * price * COMMISSION
-                cash += abs(close_qty) * pos_before.entry_price + pnl
-                trades.append({"pnl": pnl})
-
-            elif action.kind in (ActionKind.OPEN_LONG, ActionKind.OPEN_SHORT):
-                price = snap.close if snap else 0.0
-                if price <= 0:
-                    continue
-                qty = action.qty if action.kind == ActionKind.OPEN_LONG else -action.qty
-                cost = abs(qty) * price + abs(qty) * price * COMMISSION
-                cash -= cost
-                state.positions[sym] = PositionState(
-                    symbol=sym,
-                    qty=qty,
-                    entry_price=price,
-                    entry_bar=state.bar_count,
-                    best_price=price,
+            if po["qty"] > 0:
+                po["best_price"] = max(
+                    po.get("best_price", po["entry_price"]), cp
                 )
-
-        # Record equity (recalculate after trades)
-        equity = cash
-        for sym, pos in state.positions.items():
-            snap = snapshots.get(sym)
-            if snap is None:
-                equity += abs(pos.qty) * pos.entry_price
+                if (
+                    cp < po["best_price"] - cs * a
+                    and held >= MIN_HOLD
+                ):
+                    to_close.append(s)
             else:
-                equity += abs(pos.qty) * pos.entry_price + pos.qty * (
-                    snap.close - pos.entry_price
+                po["best_price"] = min(
+                    po.get("best_price", po["entry_price"]), cp
                 )
-        curve.append((timeline[t], equity))
+                if (
+                    cp > po["best_price"] + cs * a
+                    and held >= MIN_HOLD
+                ):
+                    to_close.append(s)
+
+            if held >= MIN_HOLD:
+                sig_val = sigs[s][t]
+                if po["qty"] > 0 and sig_val < -0.15:
+                    to_close.append(s)
+                elif po["qty"] < 0 and sig_val > 0.15:
+                    to_close.append(s)
+
+        # Partial take profit
+        if PT_TP > 0:
+            for s, po in positions.items():
+                if s in to_close:
+                    continue
+                a = get_atr(s, t)
+                cp = get_close(s, t)
+                if a is None or cp is None:
+                    continue
+                if (
+                    po["qty"] > 0
+                    and not po.get("pt")
+                    and cp > po["entry_price"] + PT_TP * a
+                ):
+                    hq = po["qty"] / 2
+                    pnl = hq * (cp - po["entry_price"]) - abs(
+                        hq
+                    ) * cp * COMMISSION
+                    cash += abs(hq) * po["entry_price"] + pnl
+                    po["qty"] -= hq
+                    po["pt"] = True
+                    trades.append({"pnl": pnl})
+                elif (
+                    po["qty"] < 0
+                    and not po.get("pt")
+                    and cp < po["entry_price"] - PT_TP * a
+                ):
+                    hq = po["qty"] / 2
+                    pnl = hq * (cp - po["entry_price"]) - abs(
+                        hq
+                    ) * cp * COMMISSION
+                    cash += abs(hq) * po["entry_price"] + pnl
+                    po["qty"] -= hq
+                    po["pt"] = True
+                    trades.append({"pnl": pnl})
+
+        for s in set(to_close):
+            po = positions[s]
+            cp = get_close(s, t)
+            if cp is None:
+                cp = po["entry_price"]
+            pnl = po["qty"] * (cp - po["entry_price"]) - abs(
+                po["qty"]
+            ) * cp * COMMISSION
+            cash += abs(po["qty"]) * po["entry_price"] + pnl
+            trades.append({"pnl": pnl})
+            del positions[s]
+
+        # Open new positions
+        if t % REBAL == 0 and len(positions) < MAX_POS:
+            cands = []
+            for s in data:
+                if s in positions:
+                    continue
+                li = t - data[s]["start_idx"]
+                if li < 150 or li >= data[s]["length"]:
+                    continue
+                if abs(sigs[s][t]) >= SIG_T:
+                    cands.append((s, sigs[s][t]))
+            cands.sort(key=lambda x: abs(x[1]), reverse=True)
+
+            for s, sg in cands:
+                if len(positions) >= MAX_POS:
+                    break
+                cp = get_close(s, t)
+                a = get_atr(s, t)
+                rv = get_rvol(s, t)
+                if (
+                    cp is None
+                    or a is None
+                    or a < 1e-10
+                    or cp < 1e-10
+                ):
+                    continue
+
+                if RISK_PARITY:
+                    av = rv if rv and rv > 0 else 0.01
+                    trp = equity * RISK_PT / MAX_POS
+                    qty_abs = min(
+                        trp / (av * cp * np.sqrt(20)),
+                        equity * 0.15 / cp,
+                    )
+                else:
+                    na = a / cp
+                    ma = 0.02
+                    iv = np.clip(ma / na, 0.5, 2.0)
+                    qty_abs = min(
+                        equity
+                        * RISK_PT
+                        * iv
+                        * vol_scale
+                        / (ATR_STOP * a),
+                        equity * 0.15 / cp,
+                    )
+
+                qty_abs *= vol_scale * dd_scale
+                if qty_abs * cp < 10:
+                    continue
+                qty = qty_abs if sg > 0 else -qty_abs
+                cash -= abs(qty) * cp + abs(qty) * cp * COMMISSION
+                positions[s] = {
+                    "qty": qty,
+                    "entry_price": cp,
+                    "entry_bar": t,
+                    "best_price": cp,
+                }
+
+        # Record equity
+        pv = cash
+        for s, po in positions.items():
+            cp = get_close(s, t)
+            if cp is None:
+                continue
+            pv += (
+                abs(po["qty"]) * po["entry_price"]
+                + po["qty"] * (cp - po["entry_price"])
+            )
+        curve.append((timeline[t], pv))
 
         if t % 2000 == 0:
-            print(f"    step {t}/{end_idx}: equity=${equity:,.0f}", flush=True)
+            print(
+                f"    step {t}/{end_idx}: equity=${pv:,.0f}",
+                flush=True,
+            )
 
-    # Close remaining positions at end
+    # Close remaining
     t_e = end_idx - 1
-    for sym, pos in list(state.positions.items()):
-        li = t_e - data[sym]["start_idx"]
-        if 0 <= li < data[sym]["length"]:
-            price = data[sym]["close"][li]
-        else:
-            price = pos.entry_price
-        pnl = pos.qty * (price - pos.entry_price)
-        pnl -= abs(pos.qty) * price * COMMISSION
+    for s, po in positions.items():
+        cp = get_close(s, t_e)
+        if cp is None:
+            cp = po["entry_price"]
+        pnl = po["qty"] * (cp - po["entry_price"]) - abs(
+            po["qty"]
+        ) * cp * COMMISSION
         trades.append({"pnl": pnl})
 
     return curve, trades
@@ -366,12 +467,12 @@ async def main():
     t0 = time.time()
     print("=" * 60, flush=True)
     print(
-        "CTA-Forge v10g — Max-Range Backtest (V10GDecisionEngine)",
+        "CTA-Forge v10g — Max-Range Backtest (2019-09 → 2026)",
         flush=True,
     )
     print("=" * 60, flush=True)
 
-    print("\nFetching from 2019-09-01...", flush=True)
+    print(f"\nFetching from 2019-09-01...", flush=True)
     bars = await fetch_all()
     print(f"\n→ {len(bars)} symbols loaded\n", flush=True)
 
@@ -433,33 +534,37 @@ async def main():
     days = (timeline[end - 1] - timeline[start]).days
     print(
         f"Backtesting: {timeline[start].strftime('%Y-%m-%d')} → "
-        f"{timeline[end - 1].strftime('%Y-%m-%d')} ({days} days)\n",
+        f"{timeline[end-1].strftime('%Y-%m-%d')} ({days} days)\n",
         flush=True,
     )
 
-    curve, trades = run_backtest(data, sigs, timeline, start, end, params)
+    curve, trades = run_backtest(
+        data, sigs, timeline, start, end, params
+    )
     m = calculate_metrics(curve, trades)
     ulcer = calc_ulcer(curve)
 
-    print(f"\n{'=' * 60}", flush=True)
+    print(f"\n{'='*60}", flush=True)
     print(f"RESULTS ({days} days, {len(bars)} symbols)", flush=True)
-    print(f"{'=' * 60}", flush=True)
+    print(f"{'='*60}", flush=True)
     print(
-        f"  Return: {m.total_return * 100:+.1f}%  "
-        f"Ann: {m.annualized_return * 100:+.1f}%",
+        f"  Return: {m.total_return*100:+.1f}%  "
+        f"Ann: {m.annualized_return*100:+.1f}%",
         flush=True,
     )
     print(
-        f"  Sharpe: {m.sharpe_ratio:.2f}  Sortino: {m.sortino_ratio:.2f}",
+        f"  Sharpe: {m.sharpe_ratio:.2f}  "
+        f"Sortino: {m.sortino_ratio:.2f}",
         flush=True,
     )
     print(
-        f"  MaxDD:  {m.max_drawdown * 100:.1f}%  Calmar: {m.calmar_ratio:.2f}",
+        f"  MaxDD:  {m.max_drawdown*100:.1f}%  "
+        f"Calmar: {m.calmar_ratio:.2f}",
         flush=True,
     )
     print(
         f"  PF: {m.profit_factor:.2f}  "
-        f"Win: {m.win_rate * 100:.1f}%  "
+        f"Win: {m.win_rate*100:.1f}%  "
         f"Trades: {m.num_trades}",
         flush=True,
     )
@@ -473,9 +578,13 @@ async def main():
             yearly[yr] = {"first": eq}
         yearly[yr]["last"] = eq
 
-    print("\nYearly returns:", flush=True)
+    print(f"\nYearly returns:", flush=True)
     for yr in sorted(yearly):
-        yr_ret = (yearly[yr]["last"] - yearly[yr]["first"]) / yearly[yr]["first"] * 100
+        yr_ret = (
+            (yearly[yr]["last"] - yearly[yr]["first"])
+            / yearly[yr]["first"]
+            * 100
+        )
         print(f"  {yr}: {yr_ret:+.1f}%", flush=True)
 
     # === Charts ===
@@ -524,24 +633,29 @@ async def main():
         color="#e74c3c",
     )
     axes[0].set_title(
-        f"CTA-Forge v10g — Max-Range Backtest (V10GDecisionEngine)\n"
-        f"{len(bars)} symbols · 6h · $10K start · {days} days",
+        f"CTA-Forge v10g — Max-Range Backtest "
+        f"({timeline[start].strftime('%Y-%m')} → "
+        f"{timeline[end-1].strftime('%Y-%m')})\n"
+        f"{len(bars)} symbols · 6h · $10K start · "
+        f"{days} days",
         fontsize=13,
         fontweight="bold",
     )
     axes[0].set_ylabel("Equity ($)")
-    axes[0].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"${x:,.0f}"))
+    axes[0].yaxis.set_major_formatter(
+        plt.FuncFormatter(lambda x, p: f"${x:,.0f}")
+    )
     axes[0].grid(True, alpha=0.2)
 
     mt = (
-        f"Return: {m.total_return * 100:+.1f}%  "
-        f"Ann: {m.annualized_return * 100:+.1f}%\n"
+        f"Return: {m.total_return*100:+.1f}%  "
+        f"Ann: {m.annualized_return*100:+.1f}%\n"
         f"Sharpe: {m.sharpe_ratio:.2f}  "
         f"Sortino: {m.sortino_ratio:.2f}\n"
-        f"MaxDD: {m.max_drawdown * 100:.1f}%  "
+        f"MaxDD: {m.max_drawdown*100:.1f}%  "
         f"Calmar: {m.calmar_ratio:.2f}\n"
         f"PF: {m.profit_factor:.2f}  "
-        f"Win: {m.win_rate * 100:.1f}%  "
+        f"Win: {m.win_rate*100:.1f}%  "
         f"Trades: {m.num_trades}\n"
         f"Ulcer: {ulcer:.4f}"
     )
@@ -564,7 +678,7 @@ async def main():
 
     yr_str = " | ".join(
         [
-            f"{yr}:{(yearly[yr]['last'] - yearly[yr]['first']) / yearly[yr]['first'] * 100:+.0f}%"
+            f"{yr}:{(yearly[yr]['last']-yearly[yr]['first'])/yearly[yr]['first']*100:+.0f}%"
             for yr in sorted(yearly)
         ]
     )
@@ -589,7 +703,9 @@ async def main():
     eq_arr = np.array(eq_b)
     rm = np.maximum.accumulate(eq_arr)
     dd_pct = (rm - eq_arr) / rm * 100
-    axes[1].fill_between(ts_b, 0, -dd_pct, color="#e74c3c", alpha=0.5)
+    axes[1].fill_between(
+        ts_b, 0, -dd_pct, color="#e74c3c", alpha=0.5
+    )
     axes[1].set_ylabel("DD %")
     axes[1].grid(True, alpha=0.2)
 
@@ -602,13 +718,17 @@ async def main():
         monthly[key]["end"] = eq_b[ii]
     mos = list(monthly.keys())
     rets = [
-        (monthly[m_]["end"] - monthly[m_]["start"]) / monthly[m_]["start"] * 100
+        (monthly[m_]["end"] - monthly[m_]["start"])
+        / monthly[m_]["start"]
+        * 100
         for m_ in mos
     ]
     axes[2].bar(
         range(len(mos)),
         rets,
-        color=["#2ecc71" if r >= 0 else "#e74c3c" for r in rets],
+        color=[
+            "#2ecc71" if r >= 0 else "#e74c3c" for r in rets
+        ],
         alpha=0.8,
         width=0.8,
     )
@@ -629,18 +749,22 @@ async def main():
         0.02,
         0.95,
         f"Positive: {pos_months}/{len(rets)} months "
-        f"({pos_months / len(rets) * 100:.0f}%)",
+        f"({pos_months/len(rets)*100:.0f}%)",
         transform=axes[2].transAxes,
         fontsize=8,
         va="top",
     )
 
     for a in axes[:2]:
-        a.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
-        a.xaxis.set_major_locator(mdates.MonthLocator(interval=6))
+        a.xaxis.set_major_formatter(
+            mdates.DateFormatter("%Y-%m")
+        )
+        a.xaxis.set_major_locator(
+            mdates.MonthLocator(interval=6)
+        )
     fig.autofmt_xdate()
     fig.savefig(
-        OUT_DIR / "backtest_v10g_engine.png",
+        OUT_DIR / "backtest_v10g_maxrange.png",
         dpi=150,
         bbox_inches="tight",
         facecolor="white",
@@ -648,13 +772,10 @@ async def main():
     plt.close(fig)
 
     # Save metrics
-    (OUT_DIR / "metrics_v10g_engine.json").write_text(
+    (OUT_DIR / "metrics_v10g_maxrange.json").write_text(
         json.dumps(
             {
-                "period": (
-                    f"{timeline[start].strftime('%Y-%m-%d')} → "
-                    f"{timeline[end - 1].strftime('%Y-%m-%d')}"
-                ),
+                "period": f"{timeline[start].strftime('%Y-%m-%d')} → {timeline[end-1].strftime('%Y-%m-%d')}",
                 "days": days,
                 "symbols": len(bars),
                 "symbol_list": sorted(bars.keys()),
@@ -669,19 +790,23 @@ async def main():
                 "trades": m.num_trades,
                 "ulcer": ulcer,
                 "yearly": {
-                    str(yr): (yearly[yr]["last"] - yearly[yr]["first"])
+                    str(yr): (
+                        yearly[yr]["last"] - yearly[yr]["first"]
+                    )
                     / yearly[yr]["first"]
                     * 100
                     for yr in sorted(yearly)
                 },
-                "engine": "V10GDecisionEngine",
             },
             indent=2,
         )
     )
 
-    print(f"\n✅ Done in {time.time() - t0:.0f}s", flush=True)
-    print(f"Charts: {OUT_DIR / 'backtest_v10g_engine.png'}", flush=True)
+    print(f"\n✅ Done in {time.time()-t0:.0f}s", flush=True)
+    print(
+        f"Charts: {OUT_DIR / 'backtest_v10g_maxrange.png'}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":
