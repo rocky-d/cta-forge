@@ -478,7 +478,7 @@ async def main():
         yr_ret = (yearly[yr]["last"] - yearly[yr]["first"]) / yearly[yr]["first"] * 100
         print(f"  {yr}: {yr_ret:+.1f}%", flush=True)
 
-    # === Charts ===
+    # === Charts (3-panel: equity + BTC/ETH overlay, drawdown, monthly) ===
     import matplotlib
 
     matplotlib.use("Agg")
@@ -489,111 +489,136 @@ async def main():
 
     ts_b = [e[0] for e in curve]
     eq_b = [e[1] for e in curve]
+    curve_start_ts = ts_b[0]
+
+    # BTC / ETH price series for overlay (from bars already in memory)
+    def _price_series(sym: str) -> list[tuple]:
+        df = bars.get(sym)
+        if df is None or df.is_empty():
+            return []
+        return [
+            (t, p)
+            for t, p in zip(df["open_time"].to_list(), df["close"].to_list())
+            if t >= curve_start_ts
+        ]
+
+    btc_prices = _price_series("BTCUSDT")
+    eth_prices = _price_series("ETHUSDT")
 
     fig, axes = plt.subplots(
         3,
         1,
-        figsize=(20, 15),
-        height_ratios=[3, 1, 1.5],
-        gridspec_kw={"hspace": 0.2},
+        figsize=(24, 12),
+        height_ratios=[3.5, 1, 1.5],
+        gridspec_kw={"hspace": 0.15},
     )
+    fig.patch.set_facecolor("white")
+    fig.subplots_adjust(left=0.06, right=0.94, top=0.95, hspace=0.15)
 
-    # Equity curve
-    axes[0].plot(ts_b, eq_b, linewidth=0.8, color="#2ecc71")
-    axes[0].axhline(
-        y=INITIAL_EQUITY,
-        color="#7f8c8d",
-        linestyle="--",
-        linewidth=0.5,
-        alpha=0.5,
+    # === Top panel: Equity (left Y) + BTC/ETH indexed price (right Y) ===
+    ax = axes[0]
+    ax2 = ax.twinx()
+
+    btc_base = btc_prices[0][1] if btc_prices else 1
+    eth_base = eth_prices[0][1] if eth_prices else 1
+    ln_btc = ax2.plot(
+        [p[0] for p in btc_prices],
+        [p[1] / btc_base * 100 for p in btc_prices],
+        linewidth=0.6,
+        color="#F7931A",
+        alpha=0.4,
+        label="BTC (indexed)",
     )
-    axes[0].fill_between(
+    ln_eth = ax2.plot(
+        [p[0] for p in eth_prices],
+        [p[1] / eth_base * 100 for p in eth_prices],
+        linewidth=0.6,
+        color="#627EEA",
+        alpha=0.4,
+        label="ETH (indexed)",
+    )
+    ax2.set_ylabel("BTC / ETH Index (start = 100)", fontsize=9, color="#888888")
+    ax2.tick_params(axis="y", labelcolor="#888888", labelsize=8)
+
+    ln_eq = ax.plot(
+        ts_b,
+        eq_b,
+        linewidth=1.8,
+        color="#2ecc71",
+        label="CTA-Forge v10g",
+        zorder=10,
+    )
+    ax.axhline(
+        y=INITIAL_EQUITY, color="#7f8c8d", linestyle="--", linewidth=0.5, alpha=0.4
+    )
+    ax.fill_between(
         ts_b,
         INITIAL_EQUITY,
         eq_b,
         where=[e >= INITIAL_EQUITY for e in eq_b],
         alpha=0.1,
         color="#2ecc71",
+        zorder=5,
     )
-    axes[0].fill_between(
+    ax.fill_between(
         ts_b,
         INITIAL_EQUITY,
         eq_b,
         where=[e < INITIAL_EQUITY for e in eq_b],
         alpha=0.1,
         color="#e74c3c",
+        zorder=5,
     )
-    axes[0].set_title(
+
+    # Keep equity curve on top of BTC/ETH lines
+    ax.set_zorder(ax2.get_zorder() + 1)
+    ax.patch.set_visible(False)
+
+    ax.set_title(
         f"CTA-Forge v10g — Max-Range Backtest (V10GDecisionEngine)\n"
-        f"{len(bars)} symbols · 6h · $10K start · {days} days",
+        f"{len(bars)} symbols · 6h · $10K start · {days} days · vs BTC & ETH buy-and-hold",
         fontsize=13,
         fontweight="bold",
+        pad=12,
     )
-    axes[0].set_ylabel("Equity ($)")
-    axes[0].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"${x:,.0f}"))
-    axes[0].grid(True, alpha=0.2)
+    ax.set_ylabel("Equity ($)", fontsize=10)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _p: f"${x:,.0f}"))
 
-    mt = (
-        f"Return: {m.total_return * 100:+.1f}%  "
-        f"Ann: {m.annualized_return * 100:+.1f}%\n"
-        f"Sharpe: {m.sharpe_ratio:.2f}  "
-        f"Sortino: {m.sortino_ratio:.2f}\n"
-        f"MaxDD: {m.max_drawdown * 100:.1f}%  "
-        f"Calmar: {m.calmar_ratio:.2f}\n"
-        f"PF: {m.profit_factor:.2f}  "
-        f"Win: {m.win_rate * 100:.1f}%  "
-        f"Trades: {m.num_trades}\n"
-        f"Ulcer: {ulcer:.4f}"
-    )
-    axes[0].text(
-        0.98,
-        0.02,
-        mt,
-        transform=axes[0].transAxes,
-        fontsize=9,
-        va="bottom",
-        ha="right",
-        bbox=dict(
-            boxstyle="round,pad=0.5",
-            facecolor="#2c3e50",
-            alpha=0.85,
-        ),
-        color="white",
-        family="monospace",
-    )
+    lns = ln_eq + ln_btc + ln_eth
+    labs = [line.get_label() for line in lns]
+    ax.legend(lns, labs, loc="upper left", fontsize=9, framealpha=0.8)
+    ax.grid(True, alpha=0.15)
 
-    yr_str = " | ".join(
+    # Bottom xlabel: metrics summary
+    yr_str = "  ".join(
         [
-            f"{yr}:{(yearly[yr]['last'] - yearly[yr]['first']) / yearly[yr]['first'] * 100:+.0f}%"
+            f"{yr}: {(yearly[yr]['last'] - yearly[yr]['first']) / yearly[yr]['first'] * 100:+.1f}%"
             for yr in sorted(yearly)
         ]
     )
-    axes[0].text(
-        0.02,
-        0.98,
-        yr_str,
-        transform=axes[0].transAxes,
-        fontsize=8,
-        va="top",
-        ha="left",
-        bbox=dict(
-            boxstyle="round,pad=0.3",
-            facecolor="#34495e",
-            alpha=0.7,
-        ),
-        color="white",
-        family="monospace",
+    btc_ret = (btc_prices[-1][1] / btc_prices[0][1] - 1) * 100 if btc_prices else 0
+    eth_ret = (eth_prices[-1][1] / eth_prices[0][1] - 1) * 100 if eth_prices else 0
+    line1 = (
+        f"Return: {m.total_return * 100:+.1f}%   Ann: {m.annualized_return * 100:+.1f}%   "
+        f"Sharpe: {m.sharpe_ratio:.2f}   Sortino: {m.sortino_ratio:.2f}   "
+        f"MaxDD: {m.max_drawdown * 100:.1f}%   Calmar: {m.calmar_ratio:.2f}   "
+        f"PF: {m.profit_factor:.2f}   Win: {m.win_rate * 100:.1f}%   "
+        f"Trades: {m.num_trades}   Ulcer: {ulcer:.4f}   |   "
+        f"BTC B&H: {btc_ret:+.0f}%   ETH B&H: {eth_ret:+.0f}%\n{yr_str}"
+    )
+    axes[2].set_xlabel(
+        line1, fontsize=7.5, family="monospace", color="#2c3e50", labelpad=6
     )
 
-    # Drawdown
+    # === Middle: Drawdown ===
     eq_arr = np.array(eq_b)
     rm = np.maximum.accumulate(eq_arr)
     dd_pct = (rm - eq_arr) / rm * 100
     axes[1].fill_between(ts_b, 0, -dd_pct, color="#e74c3c", alpha=0.5)
     axes[1].set_ylabel("DD %")
-    axes[1].grid(True, alpha=0.2)
+    axes[1].grid(True, alpha=0.15)
 
-    # Monthly returns
+    # === Bottom: Monthly returns ===
     monthly = {}
     for ii in range(1, len(eq_b)):
         key = ts_b[ii].strftime("%Y-%m")
@@ -622,14 +647,13 @@ async def main():
     )
     axes[2].set_ylabel("Monthly %")
     axes[2].axhline(y=0, color="black", linewidth=0.5)
-    axes[2].grid(True, alpha=0.2, axis="y")
+    axes[2].grid(True, alpha=0.15, axis="y")
 
     pos_months = sum(1 for r in rets if r > 0)
     axes[2].text(
         0.02,
         0.95,
-        f"Positive: {pos_months}/{len(rets)} months "
-        f"({pos_months / len(rets) * 100:.0f}%)",
+        f"Positive: {pos_months}/{len(rets)} months ({pos_months / len(rets) * 100:.0f}%)",
         transform=axes[2].transAxes,
         fontsize=8,
         va="top",
@@ -641,7 +665,7 @@ async def main():
     fig.autofmt_xdate()
     fig.savefig(
         OUT_DIR / "backtest_v10g_engine.png",
-        dpi=150,
+        dpi=200,
         bbox_inches="tight",
         facecolor="white",
     )
