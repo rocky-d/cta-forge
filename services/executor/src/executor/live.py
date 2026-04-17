@@ -744,7 +744,7 @@ class LiveEngine:
         if pos is None:
             return
 
-        is_buy = pos.qty < 0  # reverse to close
+        is_buy = bool(pos.qty < 0)  # reverse to close
         size = Decimal(str(abs(pos.qty)))
         side = "long" if pos.qty > 0 else "short"
 
@@ -819,7 +819,7 @@ class LiveEngine:
         if pos_before is None:
             return
 
-        is_buy = pos_before.qty < 0
+        is_buy = bool(pos_before.qty < 0)
         size = Decimal(str(qty))
         side = "long" if pos_before.qty > 0 else "short"
 

@@ -80,6 +80,11 @@ class PositionState:
     best_price: float  # highest for long, lowest for short
     partial_taken: bool = False
 
+    def __post_init__(self) -> None:
+        self.qty = float(self.qty)
+        self.entry_price = float(self.entry_price)
+        self.best_price = float(self.best_price)
+
 
 @dataclass
 class EngineState:
