@@ -98,6 +98,30 @@ class TradeJournal:
         }
         self._append(self._signals_file, record)
 
+    def load_equity(self) -> list[dict]:
+        """Load all equity snapshots from JSONL."""
+        return self._read(self._equity_file)
+
+    def load_trades(self) -> list[dict]:
+        """Load all trade records from JSONL."""
+        return self._read(self._trades_file)
+
+    def load_signals(self) -> list[dict]:
+        """Load all signal records from JSONL."""
+        return self._read(self._signals_file)
+
+    def _read(self, path: Path) -> list[dict]:
+        """Read all JSON records from a JSONL file."""
+        if not path.exists():
+            return []
+        records = []
+        with path.open() as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+        return records
+
     def _append(self, path: Path, record: dict) -> None:
         """Append a JSON record to a JSONL file."""
         try:

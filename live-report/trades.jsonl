@@ -1,0 +1,7 @@
+{"ts": "2026-04-15T18:00:32.020907+00:00", "bar": 1, "kind": "open_long", "symbol": "ETH", "side": "long", "qty": 0.03303357, "price": 2355.5, "reason": "signal_0.40"}
+{"ts": "2026-04-16T00:00:32.181166+00:00", "bar": 1, "kind": "open_long", "symbol": "ETH", "side": "long", "qty": 0.03289841, "price": 2368.1, "reason": "signal_0.46"}
+{"ts": "2026-04-16T18:00:32.416237+00:00", "bar": 4, "kind": "open_long", "symbol": "ARB", "side": "long", "qty": 692.77628695, "price": 0.1239, "reason": "signal_0.50"}
+{"ts": "2026-04-16T18:00:34.418184+00:00", "bar": 4, "kind": "open_long", "symbol": "TIA", "side": "long", "qty": 145.17990076, "price": 0.3921, "reason": "signal_0.50"}
+{"ts": "2026-04-16T18:00:36.355530+00:00", "bar": 4, "kind": "open_long", "symbol": "INJ", "side": "long", "qty": 24.29227325, "price": 3.3669, "reason": "signal_0.49"}
+{"ts": "2026-04-17T18:00:33.272028+00:00", "bar": 8, "kind": "open_long", "symbol": "BTC", "side": "long", "qty": 0.00194224, "price": 77966.3, "reason": "signal_0.50"}
+{"ts": "2026-04-18T00:00:32.319254+00:00", "bar": 9, "kind": "partial_close", "symbol": "TIA", "side": "long", "qty": 72.58995038, "price": 0.4278, "reason": "partial_tp_long_0.43", "entry_price": 0.3921, "pnl": 2.59, "pnl_pct": 9.0993, "held_bars": 5}
