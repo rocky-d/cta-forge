@@ -21,9 +21,7 @@ class TestJournalLoad:
             j = TradeJournal(d)
             j.record_tick(1, 10000.0, 10000.0, {"BTC": {"side": "long"}})
             j.record_tick(2, 10500.0, 10500.0, {})
-            j.record_trade(
-                1, "open_long", "BTC", 0.1, 50000, "signal", side="long"
-            )
+            j.record_trade(1, "open_long", "BTC", 0.1, 50000, "signal", side="long")
             j.record_signals(1, {"BTC": 0.5, "ETH": -0.2})
 
             assert len(j.load_equity()) == 2
@@ -43,12 +41,18 @@ class TestJournalToReportFormat:
             j = TradeJournal(d)
             j.record_tick(1, 10000.0, 10000.0, {"BTC": {"side": "long"}})
             j.record_tick(2, 10200.0, 10200.0, {"BTC": {"side": "long"}})
+            j.record_trade(1, "open_long", "BTC", 0.1, 50000, "signal", side="long")
             j.record_trade(
-                1, "open_long", "BTC", 0.1, 50000, "signal", side="long"
-            )
-            j.record_trade(
-                2, "close", "BTC", 0.1, 52000, "tp",
-                side="long", entry_price=50000, pnl=200, pnl_pct=4.0,
+                2,
+                "close",
+                "BTC",
+                0.1,
+                52000,
+                "tp",
+                side="long",
+                entry_price=50000,
+                pnl=200,
+                pnl_pct=4.0,
             )
 
             result = _journal_to_report_format(j)

@@ -186,9 +186,7 @@ async def get_live_report() -> dict[str, Any]:
             "win_rate": m.win_rate,
             "num_trades": m.num_trades,
         },
-        "equity_curve": [
-            {"timestamp": ts, "equity": eq} for ts, eq in curve
-        ],
+        "equity_curve": [{"timestamp": ts, "equity": eq} for ts, eq in curve],
         "positions": data["positions"],
     }
 
@@ -215,9 +213,7 @@ async def get_live_report_plot() -> Any:
     }
 
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"{REPORT_SERVICE_URL}/plot/backtest", json=payload
-        )
+        resp = await client.post(f"{REPORT_SERVICE_URL}/plot/backtest", json=payload)
         resp.raise_for_status()
 
     from fastapi.responses import Response
