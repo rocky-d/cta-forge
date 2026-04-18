@@ -45,3 +45,4 @@ backtest-results/*.json
 # OS
 .DS_Store
 Thumbs.db
+live-report/
