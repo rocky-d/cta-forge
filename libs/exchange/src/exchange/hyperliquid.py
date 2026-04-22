@@ -173,7 +173,11 @@ class HyperliquidAdapter:
             spot = await self._run_sync(self._info.spot_user_state, self._address)
             for bal in spot.get("balances", []):
                 if bal.get("coin") == "USDC":
-                    spot_usdc = Decimal(str(bal.get("total", "0")))
+                    total = Decimal(str(bal.get("total", "0")))
+                    hold = Decimal(str(bal.get("hold", "0")))
+                    # Only add the available spot balance, as the held margin
+                    # is already accounted for in perp marginSummary.accountValue.
+                    spot_usdc = total - hold
                     break
         except Exception as e:
             logger.warning("Failed to fetch spot balance: %s", e)
