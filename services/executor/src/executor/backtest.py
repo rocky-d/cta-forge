@@ -15,7 +15,7 @@ import httpx
 import numpy as np
 import polars as pl
 
-from alpha_service.factors.v10g_composite import V10GCompositeFactor, _compute_atr
+from alpha_service.factors.v10g_composite import V10GCompositeFactor, V10GCompositeParams, _compute_atr
 from core.constants import V10G_SYMBOLS
 from data_service.fetcher import fetch_all_klines
 from data_service.store import ParquetStore
@@ -113,14 +113,29 @@ async def fetch_bars(
 
 # ── Signal computation ───────────────────────────────────────────
 
-_factor = V10GCompositeFactor()
 
-
-def precompute(bars_dict: dict[str, pl.DataFrame]) -> dict[str, dict]:
+def precompute(
+    bars_dict: dict[str, pl.DataFrame], params: V10GStrategyParams
+) -> dict[str, dict]:
     """Precompute indicators per symbol using V10GCompositeFactor."""
     data: dict[str, dict] = {}
+    # Extract factor params from strategy params
+    factor_params = V10GCompositeParams(
+        timeframe_hours=params.timeframe_hours,
+        mom_lookbacks=params.mom_lookbacks,
+        adx_threshold=params.adx_threshold,
+        adx_ensemble=params.adx_ensemble,
+        signal_persistence=params.signal_persistence,
+        donchian_period=params.donchian_period,
+        rvol_lookback=params.rvol_lookback,
+        rvol_median_lookback=params.rvol_median_lookback,
+        vol_filter_lookback=params.vol_filter_lookback,
+        btc_filter_lookback=params.btc_filter_lookback,
+    )
+    factor = V10GCompositeFactor(params=factor_params)
+
     for sym, df in bars_dict.items():
-        ind = _factor.precompute(df)
+        ind = factor.precompute(df)
         ind["atr"] = _compute_atr(ind["high"], ind["low"], ind["close"])
         ind["start_idx"] = 0
         ind["length"] = len(ind["close"])
@@ -154,11 +169,27 @@ def align_data(
 def compute_signals(
     data: dict[str, dict],
     timeline: list[datetime],
+    params: V10GStrategyParams,
     *,
     btc_filter: bool = True,
 ) -> dict[str, np.ndarray]:
     """Compute signals on global timeline using V10GCompositeFactor."""
     n_global = len(timeline)
+
+    # Extract factor params from strategy params
+    factor_params = V10GCompositeParams(
+        timeframe_hours=params.timeframe_hours,
+        mom_lookbacks=params.mom_lookbacks,
+        adx_threshold=params.adx_threshold,
+        adx_ensemble=params.adx_ensemble,
+        signal_persistence=params.signal_persistence,
+        donchian_period=params.donchian_period,
+        rvol_lookback=params.rvol_lookback,
+        rvol_median_lookback=params.rvol_median_lookback,
+        vol_filter_lookback=params.vol_filter_lookback,
+        btc_filter_lookback=params.btc_filter_lookback,
+    )
+    factor = V10GCompositeFactor(params=factor_params)
 
     btc_ind = None
     if btc_filter and "BTCUSDT" in data:
@@ -187,9 +218,9 @@ def compute_signals(
                     if 0 <= btc_li < btc_len:
                         aligned[li] = arr[btc_li]
                 aligned_btc[key] = aligned
-            local_sigs = _factor.compute_signal_array(d, aligned_btc)
+            local_sigs = factor.compute_signal_array(d, aligned_btc)
         else:
-            local_sigs = _factor.compute_signal_array(d, btc_ref)
+            local_sigs = factor.compute_signal_array(d, btc_ref)
 
         for li in range(n):
             gi = start + li
@@ -372,27 +403,33 @@ def calc_ulcer(curve: list[tuple[datetime, float]]) -> float:
 async def run_full_backtest(
     data_dir: str,
     symbols: list[str] | None = None,
-    timeframe: str = "6h",
     initial_equity: float = 10_000.0,
     warmup: int = 200,
+    params: V10GStrategyParams | None = None,
 ) -> BacktestResult:
     """Run complete backtest pipeline: fetch → precompute → simulate → return.
 
     This is the single entry point for backtest execution, used by both
     the REST API and scripts.
     """
+    params = params or V10GStrategyParams(max_drawdown=1.0)
+    tf = params.timeframe_str
+
     # 1. Fetch data
-    bars = await fetch_bars(data_dir, symbols, timeframe)
+    bars = await fetch_bars(data_dir, symbols, tf)
     if not bars:
         return BacktestResult()
 
     # 2. Precompute indicators
-    data = precompute(bars)
+    # Use composite params from strategy params if available
+    # For now we use global _factor defaults, but this is the hook for profile-based signals
+    data = precompute(bars, params)
+
     timeline, ts_to_idx = build_timeline(bars)
     align_data(bars, data, ts_to_idx)
 
     # 3. Compute signals
-    sigs = compute_signals(data, timeline, btc_filter=True)
+    sigs = compute_signals(data, timeline, params, btc_filter=True)
 
     # 4. Run backtest
     start = warmup
@@ -406,6 +443,7 @@ async def run_full_backtest(
         start,
         end,
         initial_equity=initial_equity,
+        params=params,
     )
 
     return BacktestResult(

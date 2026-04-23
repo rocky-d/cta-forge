@@ -105,12 +105,17 @@ def _compute_atr(
 class V10GCompositeParams:
     """Parameters for the v10g composite signal."""
 
+    timeframe_hours: int = 6  # New: for dynamic lookbacks
     mom_lookbacks: list[int] = field(default_factory=lambda: [20, 60, 120])
     adx_threshold: float = 25.0
     adx_ensemble: list[int] = field(default_factory=lambda: [22, 27, 32])
     signal_persistence: int = 2
     donchian_period: int = 20
     rvol_lookback: int = 20
+    rvol_median_lookback: int = 120
+    vol_filter_lookback: int = 20
+    btc_filter_lookback: int = 60
+
 
 
 @dataclass
@@ -202,8 +207,9 @@ class V10GCompositeFactor:
                 di_short = dim_arr[i] > dip_arr[i]
 
                 # Adaptive lookback weighting based on realized vol
+                rml = p.rvol_median_lookback
                 median_rvol = (
-                    np.median(rvol[max(0, i - 120) : i]) if i > 120 else rvol[i]
+                    np.median(rvol[max(0, i - rml) : i]) if i > rml else rvol[i]
                 )
                 vol_ratio = rvol[i] / median_rvol if median_rvol > 0 else 1.0
 
@@ -240,8 +246,9 @@ class V10GCompositeFactor:
                             raw *= 0.2
 
                 # Volume filter
-                if i >= 20:
-                    avg_vol = vol[i - 20 : i].mean()
+                vfl = p.vol_filter_lookback
+                if i >= vfl:
+                    avg_vol = vol[i - vfl : i].mean()
                     if avg_vol > 0:
                         vr = vol[i] / avg_vol
                         if vr < 0.8:
@@ -256,10 +263,11 @@ class V10GCompositeFactor:
                     raw *= 0.3
 
                 # BTC regime filter
-                if btc_indicators is not None and i >= 60:
+                bfl = p.btc_filter_lookback
+                if btc_indicators is not None and i >= bfl:
                     bc = btc_indicators["close"]
-                    if i < len(bc) and i >= 60:
-                        br = (bc[i] - bc[i - 60]) / bc[i - 60] if bc[i - 60] > 0 else 0
+                    if i < len(bc) and i >= bfl:
+                        br = (bc[i] - bc[i - bfl]) / bc[i - bfl] if bc[i - bfl] > 0 else 0
                         if raw > 0 and br < -0.05:
                             raw *= 0.5
                         elif raw < 0 and br > 0.05:

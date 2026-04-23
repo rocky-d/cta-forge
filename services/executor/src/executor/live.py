@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # ── v10g strategy defaults ───────────────────────────────────────
 
-TIMEFRAME_HOURS = 6
+# Note: TIMEFRAME_HOURS is now dynamic via self._decision.params.timeframe_hours
 
 
 # ── Legacy types for state persistence compatibility ─────────────
@@ -170,7 +170,16 @@ class LiveEngine:
         self._store = ParquetStore(data_dir)
         self._journal = TradeJournal(journal_dir)
         self._notify = notify or NullNotifier()
-        self._factor = V10GCompositeFactor()
+        # Pass params to factor and decision engine
+        self._factor = V10GCompositeFactor(params=V10GCompositeParams(
+            timeframe_hours=params.timeframe_hours,
+            mom_lookbacks=params.mom_lookbacks,
+            adx_threshold=params.adx_threshold,
+            adx_ensemble=params.adx_ensemble,
+            signal_persistence=params.signal_persistence,
+            donchian_period=params.donchian_period,
+            rvol_lookback=params.rvol_lookback,
+        ))
         self._decision = V10GDecisionEngine(params)
 
     async def start(self) -> None:
@@ -424,12 +433,13 @@ class LiveEngine:
     # ── Core loop ────────────────────────────────────────────────
 
     async def _wait_for_candle_close(self) -> None:
-        """Sleep until next 6h candle close (UTC 00:00, 06:00, 12:00, 18:00)."""
+        """Sleep until next candle close (e.g. UTC 00:00, 06:00, 12:00, 18:00 for 6h)."""
         now = datetime.now(tz=UTC)
         hours_since_midnight = now.hour
+        tf_hours = self._decision.p.timeframe_hours
         next_close_hour = (
-            (hours_since_midnight // TIMEFRAME_HOURS) + 1
-        ) * TIMEFRAME_HOURS
+            (hours_since_midnight // tf_hours) + 1
+        ) * tf_hours
 
         if next_close_hour >= 24:
             next_close = now.replace(

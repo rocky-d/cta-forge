@@ -29,6 +29,9 @@ class V10GStrategyParams:
     Source of truth: backtest v10g_maxrange.py best-performing config.
     """
 
+    timeframe_str: str = "6h"
+    timeframe_hours: int = 6
+    # Execution params
     signal_threshold: float = 0.40
     min_hold_bars: int = 16
     atr_stop_mult: float = 5.0
@@ -46,6 +49,18 @@ class V10GStrategyParams:
     signal_reversal_threshold: float = 0.15
     max_single_position_pct: float = 0.15
     commission: float = 0.0004
+    # Factor params
+    mom_lookbacks: list[int] = field(default_factory=lambda: [20, 60, 120])
+    adx_threshold: float = 25.0
+    adx_ensemble: list[int] = field(default_factory=lambda: [22, 27, 32])
+    signal_persistence: int = 2
+    donchian_period: int = 20
+    rvol_lookback: int = 20
+    rvol_median_lookback: int = 120
+    vol_filter_lookback: int = 20
+    btc_filter_lookback: int = 60
+
+
 
 
 # ── Position / state types ───────────────────────────────────────
@@ -428,7 +443,7 @@ class V10GDecisionEngine:
             rv = snap.rvol if snap.rvol > 0 else 0.01
             target_risk = equity * self.p.risk_per_trade / self.p.max_positions
             qty = min(
-                target_risk / (rv * snap.close * np.sqrt(20)),
+                target_risk / (rv * snap.close * np.sqrt(self.p.rvol_lookback)),
                 equity * self.p.max_single_position_pct / snap.close,
             )
         else:
@@ -455,7 +470,7 @@ class V10GDecisionEngine:
         if self.p.target_vol <= 0 or len(state.recent_returns) < 20:
             return 1.0
         window = state.recent_returns[-60:]
-        rv = np.std(window) * np.sqrt(4 * 365)  # annualize 6h returns
+        rv = np.std(window) * np.sqrt((24 / self.p.timeframe_hours) * 365)  # annualize returns
         if rv <= 0:
             return 1.0
         return float(np.clip(self.p.target_vol / rv, 0.3, 2.0))

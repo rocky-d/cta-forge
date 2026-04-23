@@ -3,11 +3,12 @@
 Thin wrapper around executor.backtest (same engine as live trading)
 with report_service.plot for chart generation.
 
-Usage: uv run python scripts/backtest/v10g_maxrange.py
+Usage: uv run python scripts/backtest/v10g_maxrange.py --profile 6h_default
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import time
@@ -15,11 +16,38 @@ from pathlib import Path
 
 from core.metrics import calculate_metrics
 from executor.backtest import calc_ulcer, run_full_backtest
+from executor.decision import V10GStrategyParams
 from report_service.plot import plot_backtest
 
 OUT_DIR = Path(__file__).resolve().parents[2] / "backtest-results"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 INITIAL_EQUITY = 10_000.0
+
+# ── Profiles ─────────────────────────────────────────────────────
+
+PROFILES = {
+    "6h_default": V10GStrategyParams(
+        timeframe_str="6h",
+        timeframe_hours=6,
+        signal_threshold=0.40,
+        min_hold_bars=16,
+        max_hold_bars=100,
+    ),
+    "1h_scaled": V10GStrategyParams(
+        timeframe_str="1h",
+        timeframe_hours=1,
+        signal_threshold=0.40,
+        min_hold_bars=16 * 6,  # scale bars to match same physical time
+        max_hold_bars=100 * 6,
+        rebalance_every=4 * 6,
+        mom_lookbacks=[20 * 6, 60 * 6, 120 * 6],
+        donchian_period=20 * 6,
+        rvol_lookback=20 * 6,
+        rvol_median_lookback=120 * 6,
+        vol_filter_lookback=20 * 6,
+        btc_filter_lookback=60 * 6,
+    ),
+}
 
 
 def _price_series(bars, sym, start_ts):
@@ -35,15 +63,26 @@ def _price_series(bars, sym, start_ts):
 
 
 async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--profile",
+        choices=list(PROFILES.keys()),
+        default="6h_default",
+        help="Strategy profile to run",
+    )
+    args = parser.parse_args()
+    profile = PROFILES[args.profile]
+
     t0 = time.time()
     print("=" * 60)
-    print("CTA-Forge v10g — Max-Range Backtest (V10GDecisionEngine)")
+    print(f"CTA-Forge v10g — Max-Range Backtest [{args.profile}]")
     print("=" * 60)
 
-    print("\nRunning backtest...")
+    print(f"\nRunning backtest with timeframe: {profile.timeframe_str}...")
     result = await run_full_backtest(
         data_dir=str(DATA_DIR),
         initial_equity=INITIAL_EQUITY,
+        params=profile,
     )
 
     if not result.equity_curve:
@@ -65,6 +104,7 @@ async def main():
     print(f"\n{'=' * 60}")
     print(f"RESULTS ({result.days} days, {len(result.symbols)} symbols)")
     print(f"{'=' * 60}")
+    print(f"  Profile: {args.profile}")
     print(f"  Period: {result.start_date} -> {result.end_date}")
     print(f"  Symbols: {', '.join(result.symbols)}")
     print(
@@ -116,19 +156,21 @@ async def main():
         },
         yearly=yearly_pct,
         title_extra=(
-            f"{len(result.symbols)} symbols · 6h · "
+            f"{len(result.symbols)} symbols · {profile.timeframe_str} · "
             f"${INITIAL_EQUITY:,.0f} start · {result.days} days · "
             f"vs BTC & ETH buy-and-hold"
         ),
         initial_equity=INITIAL_EQUITY,
     )
-    chart_path = OUT_DIR / "backtest_v10g_engine.png"
+    chart_path = OUT_DIR / f"backtest_v10g_{args.profile}.png"
     chart_path.write_bytes(img)
 
     # Save metrics JSON
-    (OUT_DIR / "metrics_v10g_engine.json").write_text(
+    (OUT_DIR / f"metrics_v10g_{args.profile}.json").write_text(
         json.dumps(
             {
+                "profile": args.profile,
+                "timeframe": profile.timeframe_str,
                 "period": f"{result.start_date} -> {result.end_date}",
                 "days": result.days,
                 "symbols": len(result.symbols),
