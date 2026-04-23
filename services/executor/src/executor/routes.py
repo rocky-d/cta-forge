@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from .backtest import BacktestResult, calc_ulcer, run_full_backtest
+from .decision import V10GStrategyParams
 from .journal import TradeJournal
 
 router = APIRouter()
@@ -103,8 +104,8 @@ async def run_backtest_endpoint(req: BacktestRequest) -> dict:
     result = await run_full_backtest(
         data_dir=DATA_DIR,
         symbols=req.symbols,
-        timeframe=req.timeframe,
         initial_equity=req.initial_equity,
+        params=V10GStrategyParams(timeframe_str=req.timeframe),
     )
     return _format_result(result)
 

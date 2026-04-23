@@ -61,8 +61,6 @@ class V10GStrategyParams:
     btc_filter_lookback: int = 60
 
 
-
-
 # ── Position / state types ───────────────────────────────────────
 
 
@@ -470,7 +468,9 @@ class V10GDecisionEngine:
         if self.p.target_vol <= 0 or len(state.recent_returns) < 20:
             return 1.0
         window = state.recent_returns[-60:]
-        rv = np.std(window) * np.sqrt((24 / self.p.timeframe_hours) * 365)  # annualize returns
+        rv = np.std(window) * np.sqrt(
+            (24 / self.p.timeframe_hours) * 365
+        )  # annualize returns
         if rv <= 0:
             return 1.0
         return float(np.clip(self.p.target_vol / rv, 0.3, 2.0))

@@ -68,7 +68,7 @@ class TestEndToEndPipeline:
         market_data = _generate_market_data(n_symbols=3, n_bars=400)
 
         # Precompute and build timeline
-        data = precompute(market_data)
+        data = precompute(market_data, V10GStrategyParams())
         timeline, ts_to_idx = build_timeline(market_data)
         align_data(market_data, data, ts_to_idx)
         sigs = _make_signals(data, timeline)
@@ -89,7 +89,7 @@ class TestEndToEndPipeline:
     def test_backtest_with_custom_params(self):
         """Test backtest respects custom strategy parameters."""
         market_data = _generate_market_data(n_symbols=2, n_bars=400)
-        data = precompute(market_data)
+        data = precompute(market_data, V10GStrategyParams())
         timeline, ts_to_idx = build_timeline(market_data)
         align_data(market_data, data, ts_to_idx)
         sigs = _make_signals(data, timeline)
@@ -124,7 +124,7 @@ class TestEndToEndPipeline:
     def test_metrics_and_ulcer(self):
         """Test metrics calculation on backtest output."""
         market_data = _generate_market_data(n_symbols=2, n_bars=400)
-        data = precompute(market_data)
+        data = precompute(market_data, V10GStrategyParams())
         timeline, ts_to_idx = build_timeline(market_data)
         align_data(market_data, data, ts_to_idx)
         sigs = _make_signals(data, timeline)

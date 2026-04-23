@@ -67,7 +67,7 @@ class TestBuildTimeline:
 class TestPrecompute:
     def test_produces_required_keys(self):
         bars = {"BTCUSDT": _make_bars(200)}
-        data = precompute(bars)
+        data = precompute(bars, V10GStrategyParams())
         assert "BTCUSDT" in data
         d = data["BTCUSDT"]
         assert "close" in d
@@ -85,7 +85,7 @@ class TestRunBacktest:
             sym = f"SYM{i}USDT"
             bars[sym] = _make_bars(n, base=100 + i * 50, seed=42 + i)
 
-        data = precompute(bars)
+        data = precompute(bars, V10GStrategyParams())
         timeline, ts_to_idx = build_timeline(bars)
         align_data(bars, data, ts_to_idx)
 

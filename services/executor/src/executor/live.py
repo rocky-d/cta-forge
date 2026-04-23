@@ -25,7 +25,10 @@ from data_service.store import ParquetStore
 if TYPE_CHECKING:
     from exchange.adapter import ExchangeAdapter
 
-from alpha_service.factors.v10g_composite import V10GCompositeFactor
+from alpha_service.factors.v10g_composite import (
+    V10GCompositeFactor,
+    V10GCompositeParams,
+)
 from core.constants import (
     DEFAULT_TIMEFRAME,
     V10G_SYMBOLS,
@@ -170,16 +173,19 @@ class LiveEngine:
         self._store = ParquetStore(data_dir)
         self._journal = TradeJournal(journal_dir)
         self._notify = notify or NullNotifier()
+        params = params or V10GStrategyParams()
         # Pass params to factor and decision engine
-        self._factor = V10GCompositeFactor(params=V10GCompositeParams(
-            timeframe_hours=params.timeframe_hours,
-            mom_lookbacks=params.mom_lookbacks,
-            adx_threshold=params.adx_threshold,
-            adx_ensemble=params.adx_ensemble,
-            signal_persistence=params.signal_persistence,
-            donchian_period=params.donchian_period,
-            rvol_lookback=params.rvol_lookback,
-        ))
+        self._factor = V10GCompositeFactor(
+            params=V10GCompositeParams(
+                timeframe_hours=params.timeframe_hours,
+                mom_lookbacks=params.mom_lookbacks,
+                adx_threshold=params.adx_threshold,
+                adx_ensemble=params.adx_ensemble,
+                signal_persistence=params.signal_persistence,
+                donchian_period=params.donchian_period,
+                rvol_lookback=params.rvol_lookback,
+            )
+        )
         self._decision = V10GDecisionEngine(params)
 
     async def start(self) -> None:
@@ -437,9 +443,7 @@ class LiveEngine:
         now = datetime.now(tz=UTC)
         hours_since_midnight = now.hour
         tf_hours = self._decision.p.timeframe_hours
-        next_close_hour = (
-            (hours_since_midnight // tf_hours) + 1
-        ) * tf_hours
+        next_close_hour = ((hours_since_midnight // tf_hours) + 1) * tf_hours
 
         if next_close_hour >= 24:
             next_close = now.replace(

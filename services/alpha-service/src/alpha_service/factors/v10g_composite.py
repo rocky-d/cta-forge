@@ -117,7 +117,6 @@ class V10GCompositeParams:
     btc_filter_lookback: int = 60
 
 
-
 @dataclass
 class V10GCompositeFactor:
     """V10G composite signal: ensemble ADX + multi-lookback momentum + filters.
@@ -267,7 +266,11 @@ class V10GCompositeFactor:
                 if btc_indicators is not None and i >= bfl:
                     bc = btc_indicators["close"]
                     if i < len(bc) and i >= bfl:
-                        br = (bc[i] - bc[i - bfl]) / bc[i - bfl] if bc[i - bfl] > 0 else 0
+                        br = (
+                            (bc[i] - bc[i - bfl]) / bc[i - bfl]
+                            if bc[i - bfl] > 0
+                            else 0
+                        )
                         if raw > 0 and br < -0.05:
                             raw *= 0.5
                         elif raw < 0 and br > 0.05:

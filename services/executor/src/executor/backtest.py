@@ -15,7 +15,11 @@ import httpx
 import numpy as np
 import polars as pl
 
-from alpha_service.factors.v10g_composite import V10GCompositeFactor, V10GCompositeParams, _compute_atr
+from alpha_service.factors.v10g_composite import (
+    V10GCompositeFactor,
+    V10GCompositeParams,
+    _compute_atr,
+)
 from core.constants import V10G_SYMBOLS
 from data_service.fetcher import fetch_all_klines
 from data_service.store import ParquetStore
@@ -135,7 +139,7 @@ def precompute(
     factor = V10GCompositeFactor(params=factor_params)
 
     for sym, df in bars_dict.items():
-        ind = factor.precompute(df)
+        ind: dict[str, Any] = dict(factor.precompute(df))
         ind["atr"] = _compute_atr(ind["high"], ind["low"], ind["close"])
         ind["start_idx"] = 0
         ind["length"] = len(ind["close"])
