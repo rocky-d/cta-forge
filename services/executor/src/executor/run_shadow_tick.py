@@ -26,6 +26,8 @@ from .profiles.v16a_badscore_overlay import V16aOnlineTargetStrategy
 
 logger = logging.getLogger(__name__)
 
+COVERAGE_WARNING_THRESHOLD = 0.20
+
 
 @dataclass(frozen=True)
 class ShadowTickConfig:
@@ -89,6 +91,14 @@ def summarize_latest_target(journal_dir: str | Path) -> dict[str, Any]:
     orders = latest.get("orders", [])
     ignored_weights = latest.get("ignored_weights", {})
     weights = latest.get("weights", {})
+    ignored_gross_ratio = float(latest.get("ignored_gross_ratio", 0.0) or 0.0)
+    warnings = []
+    if ignored_gross_ratio > COVERAGE_WARNING_THRESHOLD:
+        warnings.append(
+            "execution coverage degraded: ignored_gross_ratio "
+            f"{ignored_gross_ratio:.1%} exceeds {COVERAGE_WARNING_THRESHOLD:.0%}"
+        )
+
     return {
         "status": "ok",
         "journal_dir": str(journal_dir),
@@ -97,12 +107,16 @@ def summarize_latest_target(journal_dir: str | Path) -> dict[str, Any]:
         "staleness_seconds": latest.get("staleness_seconds"),
         "target_gross": latest.get("target_gross"),
         "normalized_gross": latest.get("normalized_gross"),
+        "ignored_gross": latest.get("ignored_gross", 0.0),
+        "ignored_gross_ratio": ignored_gross_ratio,
+        "execution_coverage": latest.get("execution_coverage", 1.0),
         "n_weights": len(weights),
         "n_ignored_weights": len(ignored_weights),
         "n_orders": len(orders),
         "weights": weights,
         "ignored_weights": ignored_weights,
         "orders": orders,
+        "warnings": warnings,
     }
 
 

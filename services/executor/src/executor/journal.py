@@ -114,6 +114,13 @@ class TradeJournal:
         ignored_weights: dict[str, float] | None = None,
     ) -> None:
         """Record target-weight diagnostics for shadow/live reconciliation."""
+        ignored_gross = sum(abs(v) for v in (ignored_weights or {}).values())
+        execution_coverage = (
+            normalized_gross / target_gross if abs(target_gross) > 1e-12 else 1.0
+        )
+        ignored_gross_ratio = (
+            ignored_gross / target_gross if abs(target_gross) > 1e-12 else 0.0
+        )
         record = {
             "ts": datetime.now(tz=UTC).isoformat(),
             "bar": bar,
@@ -122,6 +129,9 @@ class TradeJournal:
             "staleness_seconds": round(staleness_seconds, 3),
             "target_gross": round(target_gross, 6),
             "normalized_gross": round(normalized_gross, 6),
+            "ignored_gross": round(ignored_gross, 6),
+            "ignored_gross_ratio": round(ignored_gross_ratio, 6),
+            "execution_coverage": round(execution_coverage, 6),
             "weights": {k: round(v, 8) for k, v in weights.items() if abs(v) > 1e-12},
             "ignored_weights": {
                 k: round(v, 8)

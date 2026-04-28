@@ -52,6 +52,28 @@ def test_summarize_latest_target_empty() -> None:
     assert summary["status"] == "error"
 
 
+def test_summarize_latest_target_has_no_warning_when_coverage_is_good() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        journal = TradeJournal(directory)
+        journal.record_target(
+            bar=1,
+            profile=V16A_PROFILE_SLUG,
+            target_ts="2026-04-28T12:00:00+00:00",
+            staleness_seconds=12.0,
+            target_gross=0.2,
+            normalized_gross=0.18,
+            weights={"BTC": 0.18},
+            ignored_weights={"XRPUSDT": 0.02},
+            orders=[],
+        )
+
+        summary = summarize_latest_target(directory)
+
+    assert summary["ignored_gross_ratio"] == 0.1
+    assert summary["execution_coverage"] == 0.9
+    assert summary["warnings"] == []
+
+
 def test_summarize_latest_target_roundtrip() -> None:
     with tempfile.TemporaryDirectory() as directory:
         journal = TradeJournal(directory)
@@ -74,3 +96,9 @@ def test_summarize_latest_target_roundtrip() -> None:
     assert summary["n_weights"] == 1
     assert summary["n_ignored_weights"] == 1
     assert summary["n_orders"] == 1
+    assert summary["ignored_gross"] == 0.05
+    assert summary["ignored_gross_ratio"] == 0.25
+    assert summary["execution_coverage"] == 0.5
+    assert summary["warnings"] == [
+        "execution coverage degraded: ignored_gross_ratio 25.0% exceeds 20%"
+    ]

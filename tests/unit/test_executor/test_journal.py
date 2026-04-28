@@ -44,6 +44,9 @@ class TestJournalLoad:
             assert targets[0]["profile"] == "test-profile"
             assert targets[0]["weights"] == {"BTC": 0.12345679}
             assert targets[0]["ignored_weights"] == {"XRPUSDT": 0.05}
+            assert targets[0]["ignored_gross"] == 0.05
+            assert targets[0]["ignored_gross_ratio"] == 0.166667
+            assert targets[0]["execution_coverage"] == 0.666667
 
 
 class TestJournalToReportFormat:

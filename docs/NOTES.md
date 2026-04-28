@@ -102,7 +102,7 @@ Ops:
 - `STRATEGY_PROFILE` default is `v10g-engine-6h`. `v16a-badscore-overlay` is only allowed with `DRY_RUN=true` for shadow validation until explicitly promoted.
 - One-shot v16a shadow command: `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick`. Run it locally, or as an explicit one-off executor command only after review; do not use the deploy workflow for experiments.
 - State persistence: `engine-state.json` for live mode and `engine-state-shadow.json` for shadow mode (auto-generated, gitignored)
-- Journal outputs: `equity.jsonl`, `trades.jsonl`, `signals.jsonl`, and target-mode `targets.jsonl` diagnostics.
+- Journal outputs: `equity.jsonl`, `trades.jsonl`, `signals.jsonl`, and target-mode `targets.jsonl` diagnostics. Target diagnostics include execution coverage and ignored gross so testnet/mainnet universe gaps stay visible.
 - Data cache: parquet files in DATA_DIR (live + backtest share via ParquetStore)
 - Deployment: GitHub Actions workflow_dispatch -> GHCR -> SSH EC2 (Tokyo t3.small)
 
