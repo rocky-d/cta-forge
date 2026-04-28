@@ -28,6 +28,10 @@ Ports and service URLs have sensible defaults in `core/constants.py`, overridabl
 
 Multi-factor trend-following with adaptive features.
 
+Research checkpoint: the current best robust iteration candidate is documented in
+[`STRATEGY_ITERATION_2026-04-28.md`](STRATEGY_ITERATION_2026-04-28.md). It is a
+research candidate, not a production deployment profile.
+
 Signals:
 - Multi-timeframe momentum (lookbacks: 20/60/120 bars)
 - Ensemble ADX filter (thresholds: 22/27/32, averaged)

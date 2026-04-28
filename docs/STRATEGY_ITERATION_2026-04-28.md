@@ -1,0 +1,80 @@
+# Strategy iteration checkpoint — 2026-04-28
+
+This note consolidates the current research state after the 1h-native CTA iteration.
+It is a checkpoint, not a production deployment decision.
+
+## Objective
+
+Improve the existing v10g trend-following system while avoiding self-deceptive
+backtests. The priority is stable, controllable profitability rather than the
+highest headline return.
+
+## Baselines
+
+| Strategy / validation view | Sharpe | Return | Max DD | Notes |
+|---|---:|---:|---:|---|
+| Original v10g reference | ~1.64 | +199% | 10.9% | Useful reference, but optimistic because signal and close execution happen on the same bar. |
+| Shifted v10g conservative engine view | ~1.21 | +122% | 9.9% | Uses a one-bar signal lag and engine-derived held positions. |
+| Fast-exit top2 1h overlay only | ~1.30 | +113% | 10.4% | Diversifying 1h sleeve; not a replacement for v10g. |
+
+The original v10g still has the highest total return, but its validation is less
+conservative. The conservative shifted view is the fairer baseline for new work.
+
+## Current best comprehensive candidate
+
+`joint-v10g-fast-overlay-badscore-v1`
+
+Configuration:
+
+- Core sleeve: shifted v10g 6h trend strategy.
+- Overlay sleeve: 1h fast-exit top2 overlay.
+  - Select only the strongest two 1h overlay signals.
+  - Fast exit profile: `min_hold_bars=8`, `max_hold_bars=48`, `atr_stop_mult=4.0`, `signal_reversal_threshold=0.22`.
+- Allocation: fixed 50% core / 50% overlay.
+- Regime risk gate: `badscore2_050`.
+  - Scale total exposure to 50% when at least two of these past-only conditions are true:
+    1. market volatility is above its expanding median;
+    2. market trend efficiency is below its expanding median;
+    3. mean cross-asset correlation is above its expanding 66% quantile.
+- Fees: 4 bp per turnover unit in the research harness.
+- Validation style: engine-derived position targets, symbol-level netting, gross cap, and next-hour mark-to-market.
+
+Performance:
+
+| Candidate | Sharpe | Return | Max DD | Interpretation |
+|---|---:|---:|---:|---|
+| 50/50 + old volatility gate | ~1.64 | +108% | 7.8% | Previous robust candidate. |
+| 50/50 + fixed badscore gate | ~1.95 | +123% | 5.9% | Current best balanced candidate. |
+| 30/70 + fixed badscore gate | ~1.92 | +120% | 6.8% | Slightly more overlay-heavy; later-period performance is better but drawdown is higher. |
+
+Why the 50/50 badscore candidate is preferred now:
+
+- It has the best overall Sharpe among the stable fixed-weight candidates.
+- It has the cleanest drawdown profile.
+- It avoids an aggressive fitted overlay multiplier.
+- It uses a fixed, interpretable regime rule rather than dynamic gate selection.
+
+## Robustness checks performed
+
+- Used one-bar-lagged v10g signals for conservative baseline comparison.
+- Rejected pure 1h replacement attempts; 1h works better as an overlay.
+- Rejected dynamic gate selection: walk-forward selection added noise and did not beat fixed rules.
+- Checked fee sensitivity: the badscore candidate remains better than the old volatility gate at higher fee assumptions, though performance degrades as expected.
+- Checked multiple OOS start dates: fixed badscore gate generally improves risk-adjusted results versus the simple volatility gate.
+- Found and fixed research-harness alignment bugs before trusting results.
+
+## Known limitations
+
+- This is not yet a production-grade shared-cash / shared-margin backtest.
+- The current joint validation combines engine-derived held position targets, but it is still a research approximation.
+- 2022-2023 remains the weakest regime; the badscore gate improves drawdown and risk-adjusted performance but does not fully solve that period.
+- Funding/carry showed high theoretical Sharpe only under a delta-hedged assumption; it is a separate future sleeve, not part of this candidate.
+
+## Recommended next step
+
+Promote `joint-v10g-fast-overlay-badscore-v1` into a proper research profile:
+
+1. implement a production-code-compatible joint portfolio backtest with shared cash, margin, gross exposure, and symbol-level netting;
+2. preserve the fixed 50/50 allocation and fixed badscore gate first, without adding new tuned parameters;
+3. compare against both original v10g reference and conservative shifted v10g;
+4. only after the joint backtest passes, consider integrating it into live/testnet research mode.
