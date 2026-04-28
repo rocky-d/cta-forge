@@ -46,7 +46,12 @@ from .decision import (
 )
 from .journal import TradeJournal
 from .notify import NullNotifier, _Notifier
-from .targeting import TargetOrder, TargetWeightStrategy, weights_to_orders
+from .targeting import (
+    PortfolioTarget,
+    TargetOrder,
+    TargetWeightStrategy,
+    weights_to_orders,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -589,17 +594,27 @@ class LiveEngine:
 
     def _normalize_target_weights(self, weights: dict[str, float]) -> dict[str, float]:
         """Normalize target symbols and only allow configured live universe opens."""
+        normalized, _ignored = self._normalize_target_weights_with_ignored(weights)
+        return normalized
+
+    def _normalize_target_weights_with_ignored(
+        self, weights: dict[str, float]
+    ) -> tuple[dict[str, float], dict[str, float]]:
+        """Normalize target symbols and keep rejected targets for diagnostics."""
         normalized: dict[str, float] = {}
+        ignored: dict[str, float] = {}
         allowed = set(self._symbols)
         for raw_symbol, weight in weights.items():
-            symbol = self._normalize_live_symbol(raw_symbol)
-            if symbol not in allowed:
+            live_symbol = self._normalize_live_symbol(raw_symbol)
+            weight = float(weight)
+            if live_symbol not in allowed:
                 logger.warning(
                     "Ignoring target for %s outside configured universe", raw_symbol
                 )
+                ignored[raw_symbol] = ignored.get(raw_symbol, 0.0) + weight
                 continue
-            normalized[symbol] = normalized.get(symbol, 0.0) + float(weight)
-        return normalized
+            normalized[live_symbol] = normalized.get(live_symbol, 0.0) + weight
+        return normalized, ignored
 
     def _sync_target_state_from_account(self, account: "AccountState") -> None:
         """Use exchange account positions as source of truth before target orders."""
@@ -641,8 +656,11 @@ class LiveEngine:
             return []
 
         self._sync_target_state_from_account(account)
-        target = self._target_strategy.target(datetime.now(tz=UTC)).capped()
-        target_weights = self._normalize_target_weights(dict(target.weights))
+        now = datetime.now(tz=UTC)
+        target = self._target_strategy.target(now).capped()
+        target_weights, ignored_weights = self._normalize_target_weights_with_ignored(
+            dict(target.weights)
+        )
         positions = {pos.symbol: float(pos.size) for pos in account.positions}
         symbols = set(positions) | set(target_weights)
         prices = await self._fetch_target_prices(symbols)
@@ -652,6 +670,9 @@ class LiveEngine:
             equity,
             target_weights,
             min_notional=self._min_order_notional,
+        )
+        self._record_target_diagnostics(
+            now, target, target_weights, orders, ignored_weights=ignored_weights
         )
 
         for order in orders:
@@ -667,6 +688,42 @@ class LiveEngine:
             target.gross,
         )
         return orders
+
+    def _record_target_diagnostics(
+        self,
+        now: datetime,
+        target: PortfolioTarget,
+        target_weights: dict[str, float],
+        orders: list[TargetOrder],
+        *,
+        ignored_weights: dict[str, float] | None = None,
+    ) -> None:
+        """Persist target portfolio diagnostics for shadow validation."""
+        normalized_gross = sum(abs(weight) for weight in target_weights.values())
+        staleness = (now - target.timestamp).total_seconds()
+        self._journal.record_target(
+            bar=self._state.bar_count + 1,
+            profile=self._strategy_profile,
+            target_ts=target.timestamp.isoformat(),
+            staleness_seconds=staleness,
+            target_gross=target.gross,
+            normalized_gross=normalized_gross,
+            weights=target_weights,
+            orders=[
+                {
+                    "symbol": order.symbol,
+                    "side": order.side,
+                    "qty": round(order.qty, 8),
+                    "current_weight": round(order.current_weight, 8),
+                    "target_weight": round(order.target_weight, 8),
+                    "delta_weight": round(order.delta_weight, 8),
+                    "delta_notional": round(order.delta_notional, 4),
+                    "reduce_only": order.reduce_only,
+                }
+                for order in orders
+            ],
+            ignored_weights=ignored_weights,
+        )
 
     async def _execute_target_order(self, order: TargetOrder, price: float) -> None:
         """Execute one target reconciliation order and update local state."""

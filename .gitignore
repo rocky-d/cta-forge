@@ -31,8 +31,8 @@ engine.log
 
 # Data & backtest output
 data/
-backtest-results/*.png
-backtest-results/*.json
+backtest-results/
+journal/
 
 # Legacy / scratch scripts
 *_legacy.py

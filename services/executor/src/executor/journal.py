@@ -7,6 +7,7 @@ Files written (inside the configured directory):
   - equity.jsonl: one line per tick {ts, bar, equity, peak, dd_pct, n_positions, positions}
   - trades.jsonl: one line per trade action {ts, bar, kind, symbol, qty, price, reason, pnl, ...}
   - signals.jsonl: one line per tick {ts, bar, signals: {symbol: value}}
+  - targets.jsonl: one line per target tick {ts, bar, profile, target_ts, weights, ignored_weights, orders}
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ class TradeJournal:
         self._equity_file = self._dir / "equity.jsonl"
         self._trades_file = self._dir / "trades.jsonl"
         self._signals_file = self._dir / "signals.jsonl"
+        self._targets_file = self._dir / "targets.jsonl"
         logger.info("TradeJournal initialized: %s", self._dir)
 
     def record_tick(
@@ -98,6 +100,38 @@ class TradeJournal:
         }
         self._append(self._signals_file, record)
 
+    def record_target(
+        self,
+        *,
+        bar: int,
+        profile: str,
+        target_ts: str,
+        staleness_seconds: float,
+        target_gross: float,
+        normalized_gross: float,
+        weights: dict[str, float],
+        orders: list[dict],
+        ignored_weights: dict[str, float] | None = None,
+    ) -> None:
+        """Record target-weight diagnostics for shadow/live reconciliation."""
+        record = {
+            "ts": datetime.now(tz=UTC).isoformat(),
+            "bar": bar,
+            "profile": profile,
+            "target_ts": target_ts,
+            "staleness_seconds": round(staleness_seconds, 3),
+            "target_gross": round(target_gross, 6),
+            "normalized_gross": round(normalized_gross, 6),
+            "weights": {k: round(v, 8) for k, v in weights.items() if abs(v) > 1e-12},
+            "ignored_weights": {
+                k: round(v, 8)
+                for k, v in (ignored_weights or {}).items()
+                if abs(v) > 1e-12
+            },
+            "orders": orders,
+        }
+        self._append(self._targets_file, record)
+
     def load_equity(self) -> list[dict]:
         """Load all equity snapshots from JSONL."""
         return self._read(self._equity_file)
@@ -109,6 +143,10 @@ class TradeJournal:
     def load_signals(self) -> list[dict]:
         """Load all signal records from JSONL."""
         return self._read(self._signals_file)
+
+    def load_targets(self) -> list[dict]:
+        """Load all target diagnostics from JSONL."""
+        return self._read(self._targets_file)
 
     def _read(self, path: Path) -> list[dict]:
         """Read all JSON records from a JSONL file."""

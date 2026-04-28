@@ -216,6 +216,12 @@ async def test_target_tick_splits_sign_flip_reduce_first(tmp_path) -> None:
         ("BTC", False, Decimal("0.04"), False),
     ]
     assert engine._state.positions["BTC"].qty == pytest.approx(-0.04)
+    targets = engine._journal.load_targets()
+    assert len(targets) == 1
+    assert targets[0]["profile"] == "test-target"
+    assert targets[0]["normalized_gross"] == pytest.approx(0.2)
+    assert targets[0]["ignored_weights"] == {}
+    assert [order["reduce_only"] for order in targets[0]["orders"]] == [True, False]
 
 
 @pytest.mark.asyncio
@@ -225,7 +231,7 @@ async def test_target_tick_skips_below_min_notional(tmp_path) -> None:
     exchange = FakeExchange(equity=Decimal("10000"), market_price=Decimal("50000"))
     strategy = StaticTargetStrategy(
         profile=StrategyProfile("test-target", "Test target", timeframe_hours=1),
-        weights={"BTCUSDT": 0.0005},
+        weights={"BTCUSDT": 0.0005, "XRPUSDT": 0.05},
     )
     engine = LiveEngine(
         exchange,
@@ -240,6 +246,10 @@ async def test_target_tick_skips_below_min_notional(tmp_path) -> None:
 
     assert exchange.orders == []
     assert engine._state.positions == {}
+    targets = engine._journal.load_targets()
+    assert len(targets) == 1
+    assert targets[0]["orders"] == []
+    assert targets[0]["ignored_weights"] == {"XRPUSDT": 0.05}
 
 
 def test_unknown_live_profile_requires_target_provider() -> None:
