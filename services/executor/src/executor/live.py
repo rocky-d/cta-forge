@@ -494,6 +494,10 @@ class LiveEngine:
         if self._target_strategy is None:
             # 1. Fetch latest bars for the v10g decision engine.
             await self._fetch_bars()
+        else:
+            # Keep the parquet cache fresh for target providers that build
+            # targets from local market data.
+            await self._fetch_target_data()
 
         # 2. Get current equity
         account = await self._exchange.get_account_state()
@@ -753,10 +757,24 @@ class LiveEngine:
 
     # ── Data fetching ────────────────────────────────────────────
 
-    async def _fetch_bars(self) -> None:
+    async def _fetch_target_data(self) -> None:
+        """Refresh data intervals requested by the target strategy."""
+        if self._target_strategy is None:
+            return
+        required = getattr(self._target_strategy, "required_timeframes", ())
+        for interval, timeframe_hours in required:
+            await self._fetch_bars(interval=interval, timeframe_hours=timeframe_hours)
+
+    async def _fetch_bars(
+        self,
+        *,
+        interval: str | None = None,
+        timeframe_hours: int | None = None,
+        min_bars: int = 200,
+    ) -> None:
         """Fetch bars from local cache (parquet), backfill from Binance as needed."""
-        interval = self._decision.p.timeframe_str or DEFAULT_TIMEFRAME
-        min_bars = 200  # strategy warm-up requirement
+        interval = interval or self._decision.p.timeframe_str or DEFAULT_TIMEFRAME
+        timeframe_hours = timeframe_hours or self._decision.p.timeframe_hours
 
         async def _fetch_symbol(
             client: httpx.AsyncClient, symbol: str
@@ -768,7 +786,7 @@ class LiveEngine:
                 latest = self._store.latest_timestamp(pair, interval)
                 if latest is not None:
                     age_hours = (datetime.now(tz=UTC) - latest).total_seconds() / 3600
-                    need_fetch = age_hours > self._decision.p.timeframe_hours
+                    need_fetch = age_hours > timeframe_hours
                 else:
                     need_fetch = True
 

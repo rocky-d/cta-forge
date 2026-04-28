@@ -109,11 +109,17 @@ Phase 2 has started in `LiveEngine`:
 - `LiveEngine` can accept an injected target-weight strategy and reconcile it into market-order deltas.
 - Target reconciliation normalizes `BTCUSDT`-style research symbols to live `BTC` symbols, applies `MIN_ORDER_NOTIONAL`, and splits sign flips into reduce-only close plus a separate new-side order.
 
+The online v16a provider is now available for dry-run/shadow validation:
+
+- `V16aOnlineTargetStrategy` refreshes local 1h/6h parquet cache and builds the latest v16a target set.
+- The live CLI allows `STRATEGY_PROFILE=v16a-badscore-overlay` only when `DRY_RUN=true`.
+- Non-dry-run v16a still fails fast; no real order submission is enabled for v16a yet.
+
 ## Recommended next step
 
-Build the actual online v16a target provider before enabling the profile in live/testnet:
+Run shadow/dry-run validation against live data before enabling real testnet orders:
 
-1. compute and carry forward the 6h core sleeve and 1h overlay sleeve from live/cache data;
-2. compute the past-only `badscore2_050` gate online;
-3. run shadow/dry-run target generation against live data without sending orders;
-4. only then allow `STRATEGY_PROFILE=v16a-badscore-overlay` in testnet.
+1. observe target generation staleness, gross exposure, and order deltas over several ticks;
+2. compare generated targets against the research script around the same timestamps;
+3. add persisted target diagnostics if needed;
+4. only then consider allowing non-dry-run `STRATEGY_PROFILE=v16a-badscore-overlay` on testnet.

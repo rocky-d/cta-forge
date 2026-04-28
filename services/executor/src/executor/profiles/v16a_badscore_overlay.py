@@ -9,7 +9,9 @@ boundary.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+import time
+from bisect import bisect_right
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -73,10 +75,7 @@ class V16aHistoricalStrategy:
         self._target_set = target_set
         self._index = {ts: i for i, ts in enumerate(target_set.timeline)}
 
-    def target(self, timestamp: datetime) -> PortfolioTarget:
-        idx = self._index.get(timestamp)
-        if idx is None:
-            raise KeyError(f"No v16a target for timestamp: {timestamp!r}")
+    def _portfolio_target(self, idx: int, timestamp: datetime) -> PortfolioTarget:
         return PortfolioTarget(
             timestamp=timestamp,
             weights={
@@ -85,6 +84,82 @@ class V16aHistoricalStrategy:
             },
             gross_cap=1.0,
         ).capped()
+
+    def target(self, timestamp: datetime) -> PortfolioTarget:
+        idx = self._index.get(timestamp)
+        if idx is None:
+            raise KeyError(f"No v16a target for timestamp: {timestamp!r}")
+        return self._portfolio_target(idx, timestamp)
+
+
+class V16aOnlineTargetStrategy:
+    """Cache-backed online v16a target provider.
+
+    This first live-compatible provider deliberately reuses the production
+    target builder over local parquet cache. It is intended for dry-run/shadow
+    validation before real order submission is enabled.
+    """
+
+    profile = V16A_PROFILE
+    required_timeframes = (("1h", 1), ("6h", 6))
+
+    def __init__(
+        self,
+        data_dir: str | Path,
+        *,
+        refresh_seconds: float = 3600.0,
+        max_staleness: timedelta = timedelta(hours=8),
+    ) -> None:
+        self._data_dir = Path(data_dir)
+        self._refresh_seconds = refresh_seconds
+        self._max_staleness = max_staleness
+        self._target_set: V16aTargetSet | None = None
+        self._loaded_at = 0.0
+
+    @property
+    def target_set(self) -> V16aTargetSet | None:
+        """Latest cached target set, exposed for diagnostics/tests."""
+        return self._target_set
+
+    def refresh(self, *, force: bool = False) -> V16aTargetSet:
+        """Refresh cached v16a targets from parquet data when stale."""
+        now = time.monotonic()
+        if (
+            not force
+            and self._target_set is not None
+            and now - self._loaded_at < self._refresh_seconds
+        ):
+            return self._target_set
+        self._target_set = build_v16a_target_set(self._data_dir)
+        self._loaded_at = now
+        return self._target_set
+
+    def target(self, timestamp: datetime) -> PortfolioTarget:
+        target_set = self.refresh()
+        idx = latest_target_index(target_set.timeline, timestamp)
+        target_ts = target_set.timeline[idx]
+        if timestamp - target_ts > self._max_staleness:
+            raise ValueError(
+                f"Latest v16a target is stale: {target_ts!r} for {timestamp!r}"
+            )
+        return PortfolioTarget(
+            timestamp=target_ts,
+            weights={
+                symbol: float(target_set.target_weights[idx, i])
+                for i, symbol in enumerate(target_set.symbols)
+            },
+            gross_cap=1.0,
+        ).capped()
+
+
+def latest_target_index(timeline: list[datetime], timestamp: datetime) -> int:
+    """Return the latest target index at or before ``timestamp``."""
+    if not timeline:
+        raise ValueError("No v16a targets available")
+    idx = bisect_right(timeline, timestamp) - 1
+    if idx < 0:
+        raise KeyError(f"No v16a target available before timestamp: {timestamp!r}")
+    return idx
 
 
 def v10g_params() -> V10GStrategyParams:
