@@ -30,12 +30,31 @@ uv sync
 # Run a single service (dev)
 cd services/data-service && uv run uvicorn data_service.app:app --reload
 
-# Run backtest script
+# Run the default v10g backtest
 uv run python scripts/backtest/v10g_maxrange.py
+
+# Reproduce the current v16a research checkpoint
+uv run python scripts/backtest/joint_badscore_research.py
+
+# Run one v16a target shadow tick (dry-run only; no real orders)
+DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick
 
 # Full stack
 docker compose up
 ```
+
+## Validation
+
+Local checks mirror the GitHub Lint/Test workflows:
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check
+uv run pytest -q
+```
+
+Deployment is manual via GitHub Actions `workflow_dispatch`; do not use deploys for strategy experiments.
 
 ## Tech Stack
 

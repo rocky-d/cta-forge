@@ -3,7 +3,9 @@
 ## Project Overview
 
 Crypto CTA (Commodity Trading Advisor) trend-following strategy engine.
-Monorepo with 5 microservices + 2 shared libraries, targeting Binance USDS-M perpetual futures.
+Monorepo with 5 microservices + 2 shared libraries. Historical/cache data
+currently comes primarily from Binance USDS-M futures, while live execution
+targets Hyperliquid.
 
 ## Architecture
 
@@ -98,8 +100,8 @@ positions before tick() if they need pre-tick state for settlement.
 Ops:
 - Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID, LARK_WEBHOOK_URL, DATA_DIR, JOURNAL_DIR, STRATEGY_PROFILE, MIN_ORDER_NOTIONAL, V16A_MAX_STALENESS_HOURS
 - `STRATEGY_PROFILE` default is `v10g-engine-6h`. `v16a-badscore-overlay` is only allowed with `DRY_RUN=true` for shadow validation until explicitly promoted.
-- One-shot v16a shadow command: `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick`. In Docker/EC2, run it as a one-off executor command; do not use deploy workflow for experiments.
-- State persistence: engine-state.json (auto-generated, gitignored)
+- One-shot v16a shadow command: `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick`. Run it locally, or as an explicit one-off executor command only after review; do not use the deploy workflow for experiments.
+- State persistence: `engine-state.json` for live mode and `engine-state-shadow.json` for shadow mode (auto-generated, gitignored)
 - Journal outputs: `equity.jsonl`, `trades.jsonl`, `signals.jsonl`, and target-mode `targets.jsonl` diagnostics.
 - Data cache: parquet files in DATA_DIR (live + backtest share via ParquetStore)
 - Deployment: GitHub Actions workflow_dispatch -> GHCR -> SSH EC2 (Tokyo t3.small)
@@ -109,7 +111,7 @@ Ops:
 - Lint: ruff check + ruff format + ty check (3 parallel jobs)
 - Test: pytest (unit + integration)
 - Deploy: workflow_dispatch -> check-ci gate -> build Docker -> push GHCR -> SSH deploy EC2
-- All actions on Node.js 22+ (checkout@v6, setup-uv@v7, docker/login-action@v4)
+- Workflow action runtime versions are owned by the referenced actions; watch GitHub annotations for upstream deprecation warnings.
 
 ## Backtest
 

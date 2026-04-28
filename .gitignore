@@ -27,12 +27,14 @@ infra/terraform/.terraform.lock.hcl
 
 # Runtime artifacts
 engine-state.json
+engine-state-shadow.json
 engine.log
+journal/
+live-report/
 
 # Data & backtest output
 data/
 backtest-results/
-journal/
 
 # Legacy / scratch scripts
 *_legacy.py
@@ -45,4 +47,3 @@ journal/
 # OS
 .DS_Store
 Thumbs.db
-live-report/
