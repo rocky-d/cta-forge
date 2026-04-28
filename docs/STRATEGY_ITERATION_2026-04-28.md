@@ -116,6 +116,7 @@ The online v16a provider is now available for dry-run/shadow validation:
 - Non-dry-run v16a still fails fast; no real order submission is enabled for v16a yet.
 - Target-mode ticks write `journal/targets.jsonl` diagnostics including profile, target timestamp, staleness, gross, executable normalized weights, ignored/out-of-universe weights, and order deltas.
 - First local one-shot shadow tick wrote `backtest-results/shadow-v16a-*` diagnostics successfully. On testnet, XRP/SEI targets were ignored because they are outside the configured testnet universe, reducing executable normalized gross versus research target gross. This is expected but must stay visible in shadow logs.
+- `executor.run_shadow_tick` provides a CI-checked, executor-image-compatible one-shot shadow command for this validation path: `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick`.
 
 ## Recommended next step
 
