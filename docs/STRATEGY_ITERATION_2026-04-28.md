@@ -70,11 +70,27 @@ Why the 50/50 badscore candidate is preferred now:
 - 2022-2023 remains the weakest regime; the badscore gate improves drawdown and risk-adjusted performance but does not fully solve that period.
 - Funding/carry showed high theoretical Sharpe only under a delta-hedged assumption; it is a separate future sleeve, not part of this candidate.
 
+## Reproduction
+
+A repo-native research script is available:
+
+```bash
+uv run python scripts/backtest/joint_badscore_research.py
+```
+
+It writes:
+
+- `backtest-results/metrics_joint_badscore_research.json`
+- `backtest-results/backtest_joint_badscore_research.png`
+
+These files are intentionally ignored as generated backtest outputs.
+
 ## Recommended next step
 
-Promote `joint-v10g-fast-overlay-badscore-v1` into a proper research profile:
+Promote `joint-v10g-fast-overlay-badscore-v1` from research script to a proper
+production-code-compatible joint portfolio backtest:
 
-1. implement a production-code-compatible joint portfolio backtest with shared cash, margin, gross exposure, and symbol-level netting;
+1. implement shared cash, margin, gross exposure, and symbol-level netting inside a reusable backtest module;
 2. preserve the fixed 50/50 allocation and fixed badscore gate first, without adding new tuned parameters;
 3. compare against both original v10g reference and conservative shifted v10g;
 4. only after the joint backtest passes, consider integrating it into live/testnet research mode.
