@@ -15,7 +15,7 @@ services/
   data-service/      -- Binance kline fetcher, parquet store, REST API
   alpha-service/     -- factor computation (TSMOM, Donchian, VolRegime, V10GComposite)
   strategy-service/  -- signal composition, allocation, risk
-  executor/          -- backtest engine (V10GDecisionEngine) & live execution
+  executor/          -- backtest engine, target-weight portfolio layer & live execution
   report-service/    -- metrics calculation, chart generation (3-panel backtest chart)
 scripts/backtest/    -- CLI entry point (thin wrapper, imports from services)
 backtest-results/    -- output charts, metrics JSON
@@ -29,8 +29,9 @@ Ports and service URLs have sensible defaults in `core/constants.py`, overridabl
 Multi-factor trend-following with adaptive features.
 
 Research checkpoint: the current best robust iteration candidate is documented in
-[`STRATEGY_ITERATION_2026-04-28.md`](STRATEGY_ITERATION_2026-04-28.md). It is a
-research candidate, not a production deployment profile.
+[`STRATEGY_ITERATION_2026-04-28.md`](STRATEGY_ITERATION_2026-04-28.md). It now
+has a reusable target-weight profile/backtest path, but is not yet the default
+live deployment profile.
 
 Signals:
 - Multi-timeframe momentum (lookbacks: 20/60/120 bars)
@@ -69,7 +70,10 @@ Architecture:
   - `ExchangeAdapter` Protocol interface (structural subtyping)
   - `HyperliquidAdapter` implementation (safe init, unified account, async executor)
 - `services/executor/src/executor/decision.py` -- V10GDecisionEngine (stateless decision logic, shared by live + backtest)
-- `services/executor/src/executor/live.py` -- LiveEngine (v10g strategy, 6h candle-aligned loop)
+- `services/executor/src/executor/targeting.py` -- target-weight portfolio abstractions and target-to-order delta calculation
+- `services/executor/src/executor/portfolio_backtest.py` -- target-weight portfolio simulation utilities
+- `services/executor/src/executor/profiles/v16a_badscore_overlay.py` -- reusable v16a Badscore Overlay target profile
+- `services/executor/src/executor/live.py` -- LiveEngine (current default: v10g strategy, 6h candle-aligned loop)
 - `services/executor/src/executor/notify.py` -- Notifier stack (Telegram, Lark/Feishu, multi-backend)
 - `services/executor/src/executor/run_live.py` -- CLI entry point
 
@@ -107,11 +111,13 @@ Ops:
 ## Backtest
 
 Architecture:
-- `services/executor/src/executor/backtest.py` -- core backtest module
+- `services/executor/src/executor/backtest.py` -- V10GDecisionEngine action-based backtest module
   - `fetch_bars()` -- ParquetStore cache + Binance incremental fetch
   - `precompute()`, `build_timeline()`, `align_data()`, `compute_signals()` -- data pipeline
   - `run_backtest()` -- V10GDecisionEngine loop (same engine as live trading)
   - `run_full_backtest()` -- single orchestration entry point
+- `services/executor/src/executor/portfolio_backtest.py` -- target-weight portfolio backtest path used by v16a
+- `scripts/backtest/joint_badscore_research.py` -- thin v16a reproduction CLI using the reusable profile/backtest modules
 - `services/report-service/src/report_service/plot.py` -- `plot_backtest()` three-panel chart
   (equity + BTC/ETH indexed overlay, drawdown, monthly returns)
 

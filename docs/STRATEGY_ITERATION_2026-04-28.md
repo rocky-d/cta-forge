@@ -85,12 +85,28 @@ It writes:
 
 These files are intentionally ignored as generated backtest outputs.
 
+## Productionization status
+
+Phase 1 is implemented locally in reusable executor modules:
+
+- `executor.targeting` defines `StrategyProfile`, `PortfolioTarget`, `SleeveTarget`, `TargetWeightStrategy`, and target-to-order delta utilities.
+- `executor.portfolio_backtest` provides a target-weight simulation path.
+- `executor.profiles.v16a_badscore_overlay` contains the reusable v16a profile and target construction logic.
+- `scripts/backtest/joint_badscore_research.py` is now a thin reproduction CLI over those modules.
+
+The reproduction command still matches the checkpoint metrics:
+
+| Candidate | Sharpe | Return | Max DD |
+|---|---:|---:|---:|
+| Shifted v10g sleeve | ~1.21 | +122% | 9.9% |
+| Fast-exit top2 1h overlay | ~1.30 | +113% | 10.4% |
+| v16a Badscore Overlay | ~1.95 | +123% | 5.9% |
+
 ## Recommended next step
 
-Promote `joint-v10g-fast-overlay-badscore-v1` from research script to a proper
-production-code-compatible joint portfolio backtest:
+Wire the target-weight layer into live/testnet safely without changing the current default v10g live path:
 
-1. implement shared cash, margin, gross exposure, and symbol-level netting inside a reusable backtest module;
-2. preserve the fixed 50/50 allocation and fixed badscore gate first, without adding new tuned parameters;
-3. compare against both original v10g reference and conservative shifted v10g;
-4. only after the joint backtest passes, consider integrating it into live/testnet research mode.
+1. add target-mode reconciliation to `LiveEngine` behind an explicit profile switch;
+2. execute reduce-only deltas before exposure-increasing deltas;
+3. handle symbol normalization, precision/min-notional, and persisted target state;
+4. run local/shadow/testnet validation before replacing the original live strategy logic.
