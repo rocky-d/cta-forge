@@ -25,6 +25,7 @@ def plot_backtest(
     title_extra: str = "",
     initial_equity: float = 10_000.0,
     dpi: int = 200,
+    strategy_label: str = "CTA-Forge v10g",
 ) -> bytes:
     """Generate three-panel backtest chart as PNG bytes.
 
@@ -110,7 +111,7 @@ def plot_backtest(
         eq_b,
         linewidth=1.8,
         color="#2ecc71",
-        label="CTA-Forge v10g",
+        label=strategy_label,
         zorder=10,
     )
     ax.axhline(
@@ -155,18 +156,23 @@ def plot_backtest(
     label_parts = []
     if metrics:
         m = metrics
-        label_parts.append(
-            f"Return: {m.get('total_return', 0) * 100:+.1f}%   "
-            f"Ann: {m.get('annualized_return', 0) * 100:+.1f}%   "
-            f"Sharpe: {m.get('sharpe_ratio', 0):.2f}   "
-            f"Sortino: {m.get('sortino_ratio', 0):.2f}   "
-            f"MaxDD: {m.get('max_drawdown', 0) * 100:.1f}%   "
-            f"Calmar: {m.get('calmar_ratio', 0):.2f}   "
-            f"PF: {m.get('profit_factor', 0):.2f}   "
-            f"Win: {m.get('win_rate', 0) * 100:.1f}%   "
-            f"Trades: {m.get('num_trades', 0)}   "
-            f"Ulcer: {m.get('ulcer_index', 0):.4f}"
-        )
+        metric_parts = [
+            f"Return: {m.get('total_return', 0) * 100:+.1f}%",
+            f"Ann: {m.get('annualized_return', 0) * 100:+.1f}%",
+            f"Sharpe: {m.get('sharpe_ratio', 0):.2f}",
+            f"Sortino: {m.get('sortino_ratio', 0):.2f}",
+            f"MaxDD: {m.get('max_drawdown', 0) * 100:.1f}%",
+            f"Calmar: {m.get('calmar_ratio', 0):.2f}",
+        ]
+        if m.get("profit_factor") is not None:
+            metric_parts.append(f"PF: {m.get('profit_factor', 0):.2f}")
+        if m.get("win_rate") is not None:
+            metric_parts.append(f"Win: {m.get('win_rate', 0) * 100:.1f}%")
+        if m.get("num_trades") is not None:
+            metric_parts.append(f"Trades: {m.get('num_trades', 0)}")
+        if m.get("ulcer_index") is not None:
+            metric_parts.append(f"Ulcer: {m.get('ulcer_index', 0):.4f}")
+        label_parts.append("   ".join(metric_parts))
     if btc_filt:
         btc_ret = (btc_filt[-1][1] / btc_filt[0][1] - 1) * 100
         label_parts.append(f"BTC B&H: {btc_ret:+.0f}%")

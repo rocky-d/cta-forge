@@ -21,22 +21,19 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import replace
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 
-from core.metrics import calculate_metrics
 from data_service.store import ParquetStore
 from executor.backtest import (
     DEFAULT_SYMBOLS,
     align_data,
     build_timeline,
-    calc_ulcer,
     compute_signals,
     precompute,
 )
+from report_service.plot import plot_backtest
 from executor.decision import (
     ActionKind,
     BarSnapshot,
@@ -496,40 +493,75 @@ def split_metrics(timeline, pnl):
     return out
 
 
-def plot_result(timeline, series: dict[str, np.ndarray], metrics: dict[str, dict]) -> None:
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 11), sharex=True, gridspec_kw={"height_ratios": [2.5, 1]})
-    colors = ["#111111", "#1f77b4", "#2ca02c"]
-    x = [ts.date().isoformat() for ts in timeline]
-    step = max(1, len(x) // 1500)
-    for color, (label, pnl) in zip(colors, series.items()):
-        m = metrics[label]
-        ax1.plot(
-            x[::step],
-            m["equity"][::step] / INITIAL_EQUITY,
-            color=color,
-            linewidth=2.2,
-            label=f"{label} | S {m['sharpe']:.2f}, Ret {m['return']*100:.0f}%, DD {m['max_dd']*100:.1f}%",
-        )
-        ax2.plot(x[::step], m["drawdown"][::step] * 100, color=color, linewidth=2.2)
-    ax1.set_title("Joint v10g + fast-exit 1h overlay + fixed badscore gate")
-    ax1.set_ylabel("Equity multiple")
-    ax1.grid(alpha=0.25)
-    ax1.legend(fontsize=8, loc="upper left")
-    ax2.set_ylabel("Drawdown %")
-    ax2.set_xlabel("Date")
-    ax2.grid(alpha=0.25)
-    ax2.tick_params(axis="x", rotation=25)
-    fig.tight_layout()
-    (OUT_DIR / "backtest_joint_badscore_research.png").write_bytes(fig_to_png(fig))
-    plt.close(fig)
+def price_series(sym: str, start_ts, end_ts) -> list[tuple[object, float]]:
+    df = ParquetStore(DATA_DIR).read(sym, "1h")
+    if df.is_empty():
+        return []
+    return [
+        (t, float(p))
+        for t, p in zip(df["open_time"].to_list(), df["close"].to_list())
+        if start_ts <= t <= end_ts
+    ]
 
 
-def fig_to_png(fig) -> bytes:
-    import io
+def yearly_percentages(timeline, equity: np.ndarray) -> dict[str, float]:
+    yearly: dict[int, dict[str, float]] = {}
+    for ts, value in zip(timeline, equity):
+        yearly.setdefault(ts.year, {"first": float(value)})
+        yearly[ts.year]["last"] = float(value)
+    return {
+        str(year): round((values["last"] / values["first"] - 1) * 100, 1)
+        for year, values in sorted(yearly.items())
+    }
 
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=180)
-    return buf.getvalue()
+
+def plot_result(
+    timeline,
+    pnl: np.ndarray,
+    metrics: dict,
+    syms: list[str],
+    target: np.ndarray,
+    turnover: np.ndarray,
+) -> None:
+    equity_curve = list(zip(timeline, metrics["equity"].tolist()))
+    downside = pnl[pnl < 0]
+    downside_vol = np.std(downside) * np.sqrt(365 * 24) if len(downside) else 0.0
+    sortino = metrics["ann_return"] / downside_vol if downside_vol > EPS else 0.0
+    calmar = (
+        metrics["ann_return"] / abs(metrics["max_dd"])
+        if abs(metrics["max_dd"]) > EPS
+        else 0.0
+    )
+
+    img = plot_backtest(
+        equity_curve=equity_curve,
+        btc_prices=price_series("BTCUSDT", timeline[0], timeline[-1]),
+        eth_prices=price_series("ETHUSDT", timeline[0], timeline[-1]),
+        metrics={
+            "total_return": metrics["return"],
+            "annualized_return": metrics["ann_return"],
+            "sharpe_ratio": metrics["sharpe"],
+            "sortino_ratio": sortino,
+            "max_drawdown": metrics["max_dd"],
+            "calmar_ratio": calmar,
+            "profit_factor": None,
+            "win_rate": None,
+            "num_trades": None,
+            "ulcer_index": metrics["ulcer"],
+        },
+        yearly=yearly_percentages(timeline, metrics["equity"]),
+        title_extra=(
+            "joint-v10g-fast-overlay-badscore-v1 · shifted v10g 6h core + "
+            "1h fast-exit top2 overlay · 50/50 · badscore2_050 · "
+            f"{len(syms)} symbols · ${INITIAL_EQUITY:,.0f} start · "
+            f"{(timeline[-1] - timeline[0]).days} days · "
+            f"avg gross {np.mean(np.sum(np.abs(target), axis=1)):.3f} · "
+            f"turn/h {np.mean(turnover):.4f} · vs BTC & ETH buy-and-hold"
+        ),
+        initial_equity=INITIAL_EQUITY,
+        strategy_label="Joint badscore 50/50",
+    )
+    (OUT_DIR / "backtest_joint_badscore_research.png").write_bytes(img)
 
 
 def main() -> None:
@@ -562,7 +594,7 @@ def main() -> None:
     }
     metrics = {label: metrics_from_hourly(pnl) for label, pnl in series.items()}
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    plot_result(timeline, series, metrics)
+    plot_result(timeline, joint, metrics["joint_badscore_50_50"], syms, target, turnover)
 
     result = {
         "profile": "joint-v10g-fast-overlay-badscore-v1",
