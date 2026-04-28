@@ -22,6 +22,7 @@ class StrategyProfile:
     slug: str
     name: str
     description: str = ""
+    timeframe_hours: int = 6
 
 
 @dataclass(frozen=True)

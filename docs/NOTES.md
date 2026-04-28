@@ -73,7 +73,7 @@ Architecture:
 - `services/executor/src/executor/targeting.py` -- target-weight portfolio abstractions and target-to-order delta calculation
 - `services/executor/src/executor/portfolio_backtest.py` -- target-weight portfolio simulation utilities
 - `services/executor/src/executor/profiles/v16a_badscore_overlay.py` -- reusable v16a Badscore Overlay target profile
-- `services/executor/src/executor/live.py` -- LiveEngine (current default: v10g strategy, 6h candle-aligned loop)
+- `services/executor/src/executor/live.py` -- LiveEngine (current default: v10g strategy, 6h candle-aligned loop; target-mode reconciliation is available behind explicit strategy injection)
 - `services/executor/src/executor/notify.py` -- Notifier stack (Telegram, Lark/Feishu, multi-backend)
 - `services/executor/src/executor/run_live.py` -- CLI entry point
 
@@ -96,7 +96,8 @@ positions, adjusts partial qty, updates best_price). Callers must snapshot
 positions before tick() if they need pre-tick state for settlement.
 
 Ops:
-- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID, LARK_WEBHOOK_URL, DATA_DIR
+- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID, LARK_WEBHOOK_URL, DATA_DIR, STRATEGY_PROFILE, MIN_ORDER_NOTIONAL
+- `STRATEGY_PROFILE` default is `v10g-engine-6h`. `v16a-badscore-overlay` intentionally fails fast in the live CLI until its online target provider is wired and validated.
 - State persistence: engine-state.json (auto-generated, gitignored)
 - Data cache: parquet files in DATA_DIR (live + backtest share via ParquetStore)
 - Deployment: GitHub Actions workflow_dispatch -> GHCR -> SSH EC2 (Tokyo t3.small)

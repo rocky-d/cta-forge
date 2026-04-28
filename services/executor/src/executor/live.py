@@ -23,7 +23,7 @@ from data_service.fetcher import fetch_klines
 from data_service.store import ParquetStore
 
 if TYPE_CHECKING:
-    from exchange.adapter import ExchangeAdapter
+    from exchange.adapter import AccountState, ExchangeAdapter
 
 from alpha_service.factors.v10g_composite import (
     V10GCompositeFactor,
@@ -33,7 +33,6 @@ from core.constants import (
     DEFAULT_TIMEFRAME,
     V10G_SYMBOLS,
     V10G_TESTNET_EXCLUDED,
-    V10G_TIMEFRAME_HOURS,
 )
 
 from .decision import (
@@ -47,8 +46,12 @@ from .decision import (
 )
 from .journal import TradeJournal
 from .notify import NullNotifier, _Notifier
+from .targeting import TargetOrder, TargetWeightStrategy, weights_to_orders
 
 logger = logging.getLogger(__name__)
+
+V10G_PROFILE_SLUG = "v10g-engine-6h"
+V16A_PROFILE_SLUG = "v16a-badscore-overlay"
 
 
 # ── v10g strategy defaults ───────────────────────────────────────
@@ -156,6 +159,9 @@ class LiveEngine:
         notify: _Notifier | None = None,
         params: V10GStrategyParams | None = None,
         clean_start: bool = False,
+        strategy_profile: str = V10G_PROFILE_SLUG,
+        target_strategy: TargetWeightStrategy | None = None,
+        min_order_notional: float = 10.0,
     ) -> None:
         self._exchange = exchange
         # Auto-filter symbols unavailable on testnet
@@ -173,6 +179,19 @@ class LiveEngine:
         self._store = ParquetStore(data_dir)
         self._journal = TradeJournal(journal_dir)
         self._notify = notify or NullNotifier()
+        self._target_strategy = target_strategy
+        self._strategy_profile = (
+            target_strategy.profile.slug
+            if target_strategy is not None
+            else strategy_profile
+        )
+        self._min_order_notional = min_order_notional
+        if target_strategy is None and self._strategy_profile != V10G_PROFILE_SLUG:
+            msg = (
+                f"Strategy profile {self._strategy_profile!r} has no live target "
+                "provider wired yet"
+            )
+            raise ValueError(msg)
         params = params or V10GStrategyParams()
         # Pass params to factor and decision engine
         self._factor = V10GCompositeFactor(
@@ -191,7 +210,8 @@ class LiveEngine:
     async def start(self) -> None:
         """Start the live trading loop."""
         logger.info(
-            "LiveEngine starting: %d symbols, dry_run=%s",
+            "LiveEngine starting: profile=%s, symbols=%d, dry_run=%s",
+            self._strategy_profile,
             len(self._symbols),
             self._dry_run,
         )
@@ -442,7 +462,11 @@ class LiveEngine:
         """Sleep until next candle close (e.g. UTC 00:00, 06:00, 12:00, 18:00 for 6h)."""
         now = datetime.now(tz=UTC)
         hours_since_midnight = now.hour
-        tf_hours = self._decision.p.timeframe_hours
+        tf_hours = (
+            self._target_strategy.profile.timeframe_hours
+            if self._target_strategy is not None
+            else self._decision.p.timeframe_hours
+        )
         next_close_hour = ((hours_since_midnight // tf_hours) + 1) * tf_hours
 
         if next_close_hour >= 24:
@@ -467,8 +491,9 @@ class LiveEngine:
         """One iteration of the trading loop."""
         logger.info("=== Tick #%d ===", self._state.bar_count + 1)
 
-        # 1. Fetch latest bars
-        await self._fetch_bars()
+        if self._target_strategy is None:
+            # 1. Fetch latest bars for the v10g decision engine.
+            await self._fetch_bars()
 
         # 2. Get current equity
         account = await self._exchange.get_account_state()
@@ -479,30 +504,38 @@ class LiveEngine:
             ret = (equity - self._state.peak_equity) / self._state.peak_equity
             self._state.recent_returns.append(ret)
 
-        # 3. Build snapshots for decision engine
-        snapshots = self._build_snapshots()
+        snapshots: dict[str, BarSnapshot] = {}
+        action_count = 0
+        if self._target_strategy is not None:
+            orders = await self._execute_target_portfolio(account, equity)
+            action_count = len(orders)
+            self._state.bar_count += 1
+        else:
+            # 3. Build snapshots for decision engine
+            snapshots = self._build_snapshots()
 
-        # 4. Snapshot positions BEFORE tick: tick() deletes closed positions
-        # from state internally (so opens can reuse the slot on the same bar).
-        # We need the pre-tick snapshot to execute closes and partials.
-        positions_before: dict[str, PositionState] = {
-            sym: PositionState(
-                symbol=pos.symbol,
-                qty=pos.qty,
-                entry_price=pos.entry_price,
-                entry_bar=pos.entry_bar,
-                best_price=pos.best_price,
-                partial_taken=pos.partial_taken,
-            )
-            for sym, pos in self._state.positions.items()
-        }
+            # 4. Snapshot positions BEFORE tick: tick() deletes closed positions
+            # from state internally (so opens can reuse the slot on the same bar).
+            # We need the pre-tick snapshot to execute closes and partials.
+            positions_before: dict[str, PositionState] = {
+                sym: PositionState(
+                    symbol=pos.symbol,
+                    qty=pos.qty,
+                    entry_price=pos.entry_price,
+                    entry_bar=pos.entry_bar,
+                    best_price=pos.best_price,
+                    partial_taken=pos.partial_taken,
+                )
+                for sym, pos in self._state.positions.items()
+            }
 
-        # 5. Get decisions from the unified engine
-        actions = self._decision.tick(self._state, equity, snapshots)
+            # 5. Get decisions from the unified engine
+            actions = self._decision.tick(self._state, equity, snapshots)
+            action_count = len(actions)
 
-        # 6. Execute actions (pass pre-tick snapshot for close/partial settlement)
-        for action in actions:
-            await self._execute_action(action, equity, positions_before)
+            # 6. Execute actions (pass pre-tick snapshot for close/partial settlement)
+            for action in actions:
+                await self._execute_action(action, equity, positions_before)
 
         # 6. Journal: record tick equity + signals
         pos_snapshot = {
@@ -540,14 +573,189 @@ class LiveEngine:
         )
         await self._notify.send(
             f"⏰ Tick #{self._state.bar_count} | ${equity:.0f} | "
-            f"DD {drawdown_pct:.1f}% | {len(actions)} actions | pos: {pos_summary}"
+            f"DD {drawdown_pct:.1f}% | {action_count} actions | pos: {pos_summary}"
+        )
+
+    # ── Target portfolio execution ───────────────────────────────
+
+    @staticmethod
+    def _normalize_live_symbol(symbol: str) -> str:
+        """Convert research symbols like BTCUSDT to live exchange symbols like BTC."""
+        return symbol[:-4] if symbol.endswith("USDT") else symbol
+
+    def _normalize_target_weights(self, weights: dict[str, float]) -> dict[str, float]:
+        """Normalize target symbols and only allow configured live universe opens."""
+        normalized: dict[str, float] = {}
+        allowed = set(self._symbols)
+        for raw_symbol, weight in weights.items():
+            symbol = self._normalize_live_symbol(raw_symbol)
+            if symbol not in allowed:
+                logger.warning(
+                    "Ignoring target for %s outside configured universe", raw_symbol
+                )
+                continue
+            normalized[symbol] = normalized.get(symbol, 0.0) + float(weight)
+        return normalized
+
+    def _sync_target_state_from_account(self, account: "AccountState") -> None:
+        """Use exchange account positions as source of truth before target orders."""
+        next_positions: dict[str, PositionState] = {}
+        for pos in account.positions:
+            size = float(pos.size)
+            if abs(size) <= 1e-12:
+                continue
+            existing = self._state.positions.get(pos.symbol)
+            next_positions[pos.symbol] = PositionState(
+                symbol=pos.symbol,
+                qty=size,
+                entry_price=float(pos.entry_price),
+                entry_bar=existing.entry_bar if existing else self._state.bar_count,
+                best_price=existing.best_price if existing else float(pos.entry_price),
+                partial_taken=existing.partial_taken if existing else False,
+            )
+        self._state.positions = next_positions
+
+    async def _fetch_target_prices(self, symbols: set[str]) -> dict[str, float]:
+        """Fetch live mark prices for target reconciliation."""
+        prices: dict[str, float] = {}
+        for symbol in sorted(symbols):
+            try:
+                snap = await self._exchange.get_market_snapshot(symbol)
+            except Exception:
+                logger.exception("Failed to fetch target price for %s", symbol)
+                continue
+            price = float(snap.mark_price or snap.mid_price)
+            if price > 0:
+                prices[symbol] = price
+        return prices
+
+    async def _execute_target_portfolio(
+        self, account: "AccountState", equity: float
+    ) -> list[TargetOrder]:
+        """Reconcile a target-weight strategy into market-order deltas."""
+        if self._target_strategy is None:
+            return []
+
+        self._sync_target_state_from_account(account)
+        target = self._target_strategy.target(datetime.now(tz=UTC)).capped()
+        target_weights = self._normalize_target_weights(dict(target.weights))
+        positions = {pos.symbol: float(pos.size) for pos in account.positions}
+        symbols = set(positions) | set(target_weights)
+        prices = await self._fetch_target_prices(symbols)
+        orders = weights_to_orders(
+            positions,
+            prices,
+            equity,
+            target_weights,
+            min_notional=self._min_order_notional,
+        )
+
+        for order in orders:
+            price = prices.get(order.symbol)
+            if price is None:
+                continue
+            await self._execute_target_order(order, price)
+
+        logger.info(
+            "Target profile %s produced %d order(s), gross=%.3f",
+            self._strategy_profile,
+            len(orders),
+            target.gross,
+        )
+        return orders
+
+    async def _execute_target_order(self, order: TargetOrder, price: float) -> None:
+        """Execute one target reconciliation order and update local state."""
+        is_buy = order.side == "buy"
+        size = Decimal(str(order.qty))
+        logger.info(
+            "Target order: %s %s qty=%.6f reduce_only=%s current=%.3f target=%.3f",
+            order.side.upper(),
+            order.symbol,
+            order.qty,
+            order.reduce_only,
+            order.current_weight,
+            order.target_weight,
+        )
+
+        fill_price = price
+        if self._dry_run:
+            logger.info(
+                "[DRY RUN] Would target-order %s %s %.6f @ ~%.2f reduce_only=%s",
+                order.side,
+                order.symbol,
+                order.qty,
+                price,
+                order.reduce_only,
+            )
+        else:
+            result = await self._exchange.place_market_order(
+                order.symbol,
+                is_buy,
+                size,
+                reduce_only=order.reduce_only,
+            )
+            if not result.success:
+                logger.error("Failed target order %s: %s", order.symbol, result.message)
+                return
+            if result.avg_price > 0:
+                fill_price = result.avg_price
+
+        self._apply_target_fill(order, fill_price)
+        self._journal.record_trade(
+            bar=self._state.bar_count,
+            kind="target_buy" if is_buy else "target_sell",
+            symbol=order.symbol,
+            qty=order.qty,
+            price=fill_price,
+            reason=f"target:{self._strategy_profile}",
+            side="long" if is_buy else "short",
+        )
+
+    def _apply_target_fill(self, order: TargetOrder, price: float) -> None:
+        """Apply a successfully executed target order to local engine state."""
+        signed_qty = order.qty if order.side == "buy" else -order.qty
+        current = self._state.positions.get(order.symbol)
+        old_qty = current.qty if current is not None else 0.0
+        new_qty = old_qty + signed_qty
+
+        if abs(new_qty) <= 1e-12 or (order.reduce_only and old_qty * new_qty <= 0):
+            self._state.positions.pop(order.symbol, None)
+            return
+
+        if current is None or old_qty * new_qty <= 0:
+            entry_price = price
+            entry_bar = self._state.bar_count
+            best_price = price
+            partial_taken = False
+        elif abs(new_qty) > abs(old_qty):
+            added_qty = abs(signed_qty)
+            entry_price = (
+                abs(old_qty) * current.entry_price + added_qty * price
+            ) / abs(new_qty)
+            entry_bar = current.entry_bar
+            best_price = current.best_price
+            partial_taken = current.partial_taken
+        else:
+            entry_price = current.entry_price
+            entry_bar = current.entry_bar
+            best_price = current.best_price
+            partial_taken = current.partial_taken
+
+        self._state.positions[order.symbol] = PositionState(
+            symbol=order.symbol,
+            qty=new_qty,
+            entry_price=entry_price,
+            entry_bar=entry_bar,
+            best_price=best_price,
+            partial_taken=partial_taken,
         )
 
     # ── Data fetching ────────────────────────────────────────────
 
     async def _fetch_bars(self) -> None:
         """Fetch bars from local cache (parquet), backfill from Binance as needed."""
-        interval = DEFAULT_TIMEFRAME
+        interval = self._decision.p.timeframe_str or DEFAULT_TIMEFRAME
         min_bars = 200  # strategy warm-up requirement
 
         async def _fetch_symbol(
@@ -560,7 +768,7 @@ class LiveEngine:
                 latest = self._store.latest_timestamp(pair, interval)
                 if latest is not None:
                     age_hours = (datetime.now(tz=UTC) - latest).total_seconds() / 3600
-                    need_fetch = age_hours > V10G_TIMEFRAME_HOURS
+                    need_fetch = age_hours > self._decision.p.timeframe_hours
                 else:
                     need_fetch = True
 

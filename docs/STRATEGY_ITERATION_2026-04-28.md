@@ -87,7 +87,7 @@ These files are intentionally ignored as generated backtest outputs.
 
 ## Productionization status
 
-Phase 1 is implemented locally in reusable executor modules:
+Phase 1 is implemented in reusable executor modules:
 
 - `executor.targeting` defines `StrategyProfile`, `PortfolioTarget`, `SleeveTarget`, `TargetWeightStrategy`, and target-to-order delta utilities.
 - `executor.portfolio_backtest` provides a target-weight simulation path.
@@ -102,11 +102,18 @@ The reproduction command still matches the checkpoint metrics:
 | Fast-exit top2 1h overlay | ~1.30 | +113% | 10.4% |
 | v16a Badscore Overlay | ~1.95 | +123% | 5.9% |
 
+Phase 2 has started in `LiveEngine`:
+
+- The live CLI accepts `STRATEGY_PROFILE`, defaulting to `v10g-engine-6h`.
+- Unknown/non-wired live profiles fail fast instead of silently falling back.
+- `LiveEngine` can accept an injected target-weight strategy and reconcile it into market-order deltas.
+- Target reconciliation normalizes `BTCUSDT`-style research symbols to live `BTC` symbols, applies `MIN_ORDER_NOTIONAL`, and splits sign flips into reduce-only close plus a separate new-side order.
+
 ## Recommended next step
 
-Wire the target-weight layer into live/testnet safely without changing the current default v10g live path:
+Build the actual online v16a target provider before enabling the profile in live/testnet:
 
-1. add target-mode reconciliation to `LiveEngine` behind an explicit profile switch;
-2. execute reduce-only deltas before exposure-increasing deltas;
-3. handle symbol normalization, precision/min-notional, and persisted target state;
-4. run local/shadow/testnet validation before replacing the original live strategy logic.
+1. compute and carry forward the 6h core sleeve and 1h overlay sleeve from live/cache data;
+2. compute the past-only `badscore2_050` gate online;
+3. run shadow/dry-run target generation against live data without sending orders;
+4. only then allow `STRATEGY_PROFILE=v16a-badscore-overlay` in testnet.

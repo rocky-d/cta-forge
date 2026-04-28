@@ -9,7 +9,7 @@ import sys
 
 from exchange.hyperliquid import HyperliquidAdapter
 
-from .live import LiveEngine
+from .live import LiveEngine, V10G_PROFILE_SLUG, V16A_PROFILE_SLUG
 from .notify import (
     LarkNotifier,
     MultiNotifier,
@@ -60,6 +60,19 @@ def main() -> None:
     journal_dir = os.environ.get("JOURNAL_DIR", "journal")
     data_dir = os.environ.get("DATA_DIR", "data")
     clean_start = os.environ.get("CLEAN_START", "false").lower() in ("true", "1", "yes")
+    strategy_profile = os.environ.get("STRATEGY_PROFILE", V10G_PROFILE_SLUG)
+    min_order_notional = float(os.environ.get("MIN_ORDER_NOTIONAL", "10"))
+
+    if strategy_profile == V16A_PROFILE_SLUG:
+        logging.error(
+            "%s is not wired as a live target provider yet; use the research "
+            "backtest path until shadow/testnet integration is complete",
+            V16A_PROFILE_SLUG,
+        )
+        sys.exit(1)
+    if strategy_profile != V10G_PROFILE_SLUG:
+        logging.error("Unknown STRATEGY_PROFILE=%s", strategy_profile)
+        sys.exit(1)
 
     notifier = _build_notifier()
 
@@ -72,6 +85,8 @@ def main() -> None:
         data_dir=data_dir,
         notify=notifier,
         clean_start=clean_start,
+        strategy_profile=strategy_profile,
+        min_order_notional=min_order_notional,
     )
 
     async def run() -> None:

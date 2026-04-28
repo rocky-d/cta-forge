@@ -44,6 +44,7 @@ V16A_PROFILE = StrategyProfile(
         "50% shifted v10g-engine-6h core + 50% 1h fast-exit top2 overlay, "
         "scaled by fixed badscore2_050 regime gate."
     ),
+    timeframe_hours=1,
 )
 
 
