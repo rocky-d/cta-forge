@@ -101,7 +101,11 @@ class V16aOnlineTargetStrategy:
     """
 
     profile = V16A_PROFILE
-    required_timeframes = (("1h", 1), ("6h", 6))
+    # (interval, timeframe_hours, minimum cached bars). The 1h overlay needs
+    # enough history for its 45-day warmup plus medium-horizon features; a fresh
+    # live host must therefore backfill beyond Binance's single-call 1000-bar
+    # limit before target construction can work.
+    required_timeframes = (("1h", 1, 5_000), ("6h", 6, 500))
 
     def __init__(
         self,
@@ -311,6 +315,9 @@ def map_local_to_global(
 
 def top_n_signals(signals: dict[str, np.ndarray], top_n: int) -> dict[str, np.ndarray]:
     syms = list(signals)
+    if not syms:
+        msg = "No overlay signals built; check 1h cache coverage and min_bars"
+        raise ValueError(msg)
     n = len(next(iter(signals.values())))
     out = {sym: np.zeros(n) for sym in syms}
     for t in range(n):

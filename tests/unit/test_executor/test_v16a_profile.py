@@ -15,6 +15,7 @@ from executor.profiles.v16a_badscore_overlay import (
     V16aTargetSet,
     latest_forward_filled_hour,
     latest_target_index,
+    top_n_signals,
 )
 
 
@@ -22,6 +23,18 @@ def test_v16a_profile_metadata_is_stable() -> None:
     assert V16A_PROFILE.slug == "v16a-badscore-overlay"
     assert "Badscore" in V16A_PROFILE.name
     assert V16A_PROFILE.timeframe_hours == 1
+
+
+def test_v16a_online_strategy_declares_live_cache_warmup_needs() -> None:
+    assert V16aOnlineTargetStrategy.required_timeframes == (
+        ("1h", 1, 5000),
+        ("6h", 6, 500),
+    )
+
+
+def test_top_n_signals_rejects_empty_signal_set() -> None:
+    with pytest.raises(ValueError, match="No overlay signals built"):
+        top_n_signals({}, top_n=2)
 
 
 def test_v16a_historical_strategy_returns_capped_portfolio_target() -> None:

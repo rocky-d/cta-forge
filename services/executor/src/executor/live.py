@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 import httpx
 import numpy as np
 import polars as pl
-from data_service.fetcher import fetch_klines
+from data_service.fetcher import fetch_all_klines, fetch_klines
 from data_service.store import ParquetStore
 
 if TYPE_CHECKING:
@@ -819,8 +819,14 @@ class LiveEngine:
         if self._target_strategy is None:
             return
         required = getattr(self._target_strategy, "required_timeframes", ())
-        for interval, timeframe_hours in required:
-            await self._fetch_bars(interval=interval, timeframe_hours=timeframe_hours)
+        for spec in required:
+            interval, timeframe_hours, *rest = spec
+            min_bars = int(rest[0]) if rest else 200
+            await self._fetch_bars(
+                interval=interval,
+                timeframe_hours=timeframe_hours,
+                min_bars=min_bars,
+            )
 
     async def _fetch_bars(
         self,
@@ -850,14 +856,29 @@ class LiveEngine:
                 if need_fetch:
                     # Re-fetch the latest stored open_time so a previously
                     # cached partial candle can be replaced by the closed bar.
-                    start_ms = int(latest.timestamp() * 1000) if latest else None
-                    new_bars = await fetch_klines(
-                        client,
-                        symbol=pair,
-                        interval=interval,
-                        start_ms=start_ms,
-                        limit=1000,
-                    )
+                    if latest is None and min_bars > 1000:
+                        # Binance returns at most 1000 klines per request. For
+                        # a fresh live cache, paginate from a bounded lookback
+                        # large enough to satisfy target-strategy warmups.
+                        lookback_bars = min_bars + max(10, min_bars // 20)
+                        start = datetime.now(tz=UTC) - timedelta(
+                            hours=timeframe_hours * lookback_bars
+                        )
+                        new_bars = await fetch_all_klines(
+                            client,
+                            symbol=pair,
+                            interval=interval,
+                            start_ms=int(start.timestamp() * 1000),
+                        )
+                    else:
+                        start_ms = int(latest.timestamp() * 1000) if latest else None
+                        new_bars = await fetch_klines(
+                            client,
+                            symbol=pair,
+                            interval=interval,
+                            start_ms=start_ms,
+                            limit=1000,
+                        )
                     if not new_bars.is_empty():
                         self._store.write(pair, interval, new_bars)
                         logger.info("Stored %d new bars for %s", len(new_bars), pair)

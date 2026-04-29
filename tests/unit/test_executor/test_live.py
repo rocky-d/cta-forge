@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import polars as pl
 import pytest
 from executor.live import LiveEngine
 from executor.targeting import PortfolioTarget, StrategyProfile
@@ -174,9 +175,91 @@ async def test_preflight_stale_orders() -> None:
 class StaticTargetStrategy:
     profile: StrategyProfile
     weights: dict[str, float]
+    required_timeframes = ()
 
     def target(self, timestamp: datetime) -> PortfolioTarget:
         return PortfolioTarget(timestamp=timestamp, weights=self.weights)
+
+
+@dataclass(frozen=True)
+class WarmupTargetStrategy(StaticTargetStrategy):
+    required_timeframes = (("1h", 1, 5000), ("6h", 6, 500))
+
+
+@pytest.mark.asyncio
+async def test_target_strategy_can_request_warmup_cache_sizes(monkeypatch) -> None:
+    """Target strategies can ask live fetch to backfill beyond one API page."""
+
+    exchange = FakeExchange()
+    strategy = WarmupTargetStrategy(
+        profile=StrategyProfile("test-target", "Test target", timeframe_hours=1),
+        weights={},
+    )
+    engine = LiveEngine(exchange, dry_run=True, target_strategy=strategy)
+    calls: list[dict] = []
+
+    async def fake_fetch_bars(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(engine, "_fetch_bars", fake_fetch_bars)
+
+    await engine._fetch_target_data()
+
+    assert calls == [
+        {"interval": "1h", "timeframe_hours": 1, "min_bars": 5000},
+        {"interval": "6h", "timeframe_hours": 6, "min_bars": 500},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_initial_large_warmup_fetch_uses_paginated_backfill(
+    monkeypatch, tmp_path
+) -> None:
+    """Fresh target-mode caches use paginated fetch for warmup-sized history."""
+
+    exchange = FakeExchange()
+    engine = LiveEngine(
+        exchange,
+        symbols=["BTC"],
+        dry_run=True,
+        data_dir=str(tmp_path / "data"),
+    )
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    bars = pl.DataFrame(
+        {
+            "open_time": [start, start + timedelta(hours=1)],
+            "open": [100.0, 101.0],
+            "high": [101.0, 102.0],
+            "low": [99.0, 100.0],
+            "close": [100.5, 101.5],
+            "volume": [1.0, 1.0],
+            "close_time": [start, start + timedelta(hours=1)],
+            "quote_volume": [100.0, 101.0],
+            "trades": [1, 1],
+            "taker_buy_volume": [0.5, 0.5],
+            "taker_buy_quote_volume": [50.0, 50.5],
+            "ignore": [0.0, 0.0],
+        }
+    )
+    paginated_calls: list[dict] = []
+
+    async def fake_fetch_all_klines(client, **kwargs):
+        paginated_calls.append(kwargs)
+        return bars
+
+    async def fail_single_page_fetch(*args, **kwargs):
+        raise AssertionError("single-page fetch should not be used")
+
+    monkeypatch.setattr("executor.live.fetch_all_klines", fake_fetch_all_klines)
+    monkeypatch.setattr("executor.live.fetch_klines", fail_single_page_fetch)
+
+    await engine._fetch_bars(interval="1h", timeframe_hours=1, min_bars=5000)
+
+    assert paginated_calls
+    assert paginated_calls[0]["symbol"] == "BTCUSDT"
+    assert paginated_calls[0]["interval"] == "1h"
+    assert paginated_calls[0]["start_ms"] is not None
+    assert len(engine._store.read("BTCUSDT", "1h")) == 2
 
 
 @pytest.mark.asyncio
