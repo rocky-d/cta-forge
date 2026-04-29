@@ -211,6 +211,26 @@ async def test_target_strategy_can_request_warmup_cache_sizes(monkeypatch) -> No
     ]
 
 
+def _bars_frame(start: datetime, rows: int = 2) -> pl.DataFrame:
+    times = [start + timedelta(hours=i) for i in range(rows)]
+    return pl.DataFrame(
+        {
+            "open_time": times,
+            "open": [100.0 + i for i in range(rows)],
+            "high": [101.0 + i for i in range(rows)],
+            "low": [99.0 + i for i in range(rows)],
+            "close": [100.5 + i for i in range(rows)],
+            "volume": [1.0] * rows,
+            "close_time": times,
+            "quote_volume": [100.0 + i for i in range(rows)],
+            "trades": [1] * rows,
+            "taker_buy_volume": [0.5] * rows,
+            "taker_buy_quote_volume": [50.0 + i for i in range(rows)],
+            "ignore": [0.0] * rows,
+        }
+    )
+
+
 @pytest.mark.asyncio
 async def test_initial_large_warmup_fetch_uses_paginated_backfill(
     monkeypatch, tmp_path
@@ -224,23 +244,7 @@ async def test_initial_large_warmup_fetch_uses_paginated_backfill(
         dry_run=True,
         data_dir=str(tmp_path / "data"),
     )
-    start = datetime(2024, 1, 1, tzinfo=UTC)
-    bars = pl.DataFrame(
-        {
-            "open_time": [start, start + timedelta(hours=1)],
-            "open": [100.0, 101.0],
-            "high": [101.0, 102.0],
-            "low": [99.0, 100.0],
-            "close": [100.5, 101.5],
-            "volume": [1.0, 1.0],
-            "close_time": [start, start + timedelta(hours=1)],
-            "quote_volume": [100.0, 101.0],
-            "trades": [1, 1],
-            "taker_buy_volume": [0.5, 0.5],
-            "taker_buy_quote_volume": [50.0, 50.5],
-            "ignore": [0.0, 0.0],
-        }
-    )
+    bars = _bars_frame(datetime(2024, 1, 1, tzinfo=UTC))
     paginated_calls: list[dict] = []
 
     async def fake_fetch_all_klines(client, **kwargs):
@@ -260,6 +264,40 @@ async def test_initial_large_warmup_fetch_uses_paginated_backfill(
     assert paginated_calls[0]["interval"] == "1h"
     assert paginated_calls[0]["start_ms"] is not None
     assert len(engine._store.read("BTCUSDT", "1h")) == 2
+
+
+@pytest.mark.asyncio
+async def test_underfilled_large_warmup_cache_uses_paginated_backfill(
+    monkeypatch, tmp_path
+) -> None:
+    """A recent but underfilled cache still needs warmup backfill."""
+
+    exchange = FakeExchange()
+    engine = LiveEngine(
+        exchange,
+        symbols=["BTC"],
+        dry_run=True,
+        data_dir=str(tmp_path / "data"),
+    )
+    cached = _bars_frame(datetime.now(tz=UTC) - timedelta(hours=2), rows=2)
+    engine._store.write("BTCUSDT", "1h", cached)
+    backfill = _bars_frame(datetime(2024, 1, 1, tzinfo=UTC), rows=3)
+    paginated_calls: list[dict] = []
+
+    async def fake_fetch_all_klines(client, **kwargs):
+        paginated_calls.append(kwargs)
+        return backfill
+
+    async def fail_single_page_fetch(*args, **kwargs):
+        raise AssertionError("single-page fetch should not be used")
+
+    monkeypatch.setattr("executor.live.fetch_all_klines", fake_fetch_all_klines)
+    monkeypatch.setattr("executor.live.fetch_klines", fail_single_page_fetch)
+
+    await engine._fetch_bars(interval="1h", timeframe_hours=1, min_bars=5000)
+
+    assert paginated_calls
+    assert len(engine._store.read("BTCUSDT", "1h")) == 5
 
 
 @pytest.mark.asyncio

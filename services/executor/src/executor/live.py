@@ -847,19 +847,22 @@ class LiveEngine:
             try:
                 # 1. Check local parquet
                 latest = self._store.latest_timestamp(pair, interval)
+                cached = self._store.read(pair, interval)
+                cached_bars = len(cached)
                 if latest is not None:
                     age_hours = (datetime.now(tz=UTC) - latest).total_seconds() / 3600
-                    need_fetch = age_hours > timeframe_hours
+                    need_fetch = age_hours > timeframe_hours or cached_bars < min_bars
                 else:
                     need_fetch = True
 
                 if need_fetch:
                     # Re-fetch the latest stored open_time so a previously
                     # cached partial candle can be replaced by the closed bar.
-                    if latest is None and min_bars > 1000:
+                    if min_bars > 1000 and cached_bars < min_bars:
                         # Binance returns at most 1000 klines per request. For
-                        # a fresh live cache, paginate from a bounded lookback
-                        # large enough to satisfy target-strategy warmups.
+                        # fresh or underfilled live caches, paginate from a
+                        # bounded lookback large enough to satisfy target-
+                        # strategy warmups.
                         lookback_bars = min_bars + max(10, min_bars // 20)
                         start = datetime.now(tz=UTC) - timedelta(
                             hours=timeframe_hours * lookback_bars
