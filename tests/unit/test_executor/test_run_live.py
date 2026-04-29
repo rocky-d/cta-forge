@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
-from executor.run_live import _is_truthy, _validate_v16a_live_mode
+from executor.run_live import (
+    _is_truthy,
+    _suppress_secret_bearing_http_logs,
+    _validate_v16a_live_mode,
+)
 
 
 def test_is_truthy_accepts_common_env_values() -> None:
@@ -48,3 +54,13 @@ def test_validate_v16a_live_mode_allows_explicit_testnet_live() -> None:
         testnet=True,
         allow_testnet_live=True,
     )
+
+
+def test_suppress_secret_bearing_http_logs() -> None:
+    logging.getLogger("httpx").setLevel(logging.INFO)
+    logging.getLogger("httpcore").setLevel(logging.INFO)
+
+    _suppress_secret_bearing_http_logs()
+
+    assert logging.getLogger("httpx").level == logging.WARNING
+    assert logging.getLogger("httpcore").level == logging.WARNING

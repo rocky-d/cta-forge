@@ -40,6 +40,12 @@ def _validate_v16a_live_mode(
         raise ValueError(msg)
 
 
+def _suppress_secret_bearing_http_logs() -> None:
+    """Avoid logging notification URLs that can contain webhook or bot secrets."""
+    for logger_name in ("httpx", "httpcore"):
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+
 def _build_notifier() -> _Notifier:
     """Build notifier from env vars. Multiple backends stack via MultiNotifier."""
     notifiers: list[_Notifier] = []
@@ -68,6 +74,7 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    _suppress_secret_bearing_http_logs()
 
     pk = os.environ.get("HL_PRIVATE_KEY", "")
     addr = os.environ.get("HL_ACCOUNT_ADDRESS", "")
