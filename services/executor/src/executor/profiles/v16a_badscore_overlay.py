@@ -612,14 +612,17 @@ def split_metrics(timeline, pnl):
 def latest_forward_filled_hour(
     core_ts: datetime, overlay_ts: datetime, *, core_timeframe_hours: int
 ) -> datetime:
-    """Return latest hourly target time while forward-filling the core sleeve.
+    """Return latest hourly tail target while forward-filling the core sleeve.
 
-    A 6h core target at 12:00 can be held for 12:00..17:00, but not past the
-    next scheduled 6h decision time unless a new core target exists.
+    Interior history has a fresh core sleeve every ``core_timeframe_hours``. The
+    online tail is different: the latest core timestamp labels the last closed
+    core bar, so that signal remains actionable until the next core bar closes.
+    For a 6h core target labeled 12:00, allow hourly overlay refreshes through
+    23:00, but not past the next 6h bar's close unless a newer core exists.
     """
     if core_timeframe_hours < 1:
         raise ValueError("core_timeframe_hours must be positive")
-    core_valid_until = core_ts + timedelta(hours=core_timeframe_hours - 1)
+    core_valid_until = core_ts + timedelta(hours=core_timeframe_hours * 2 - 1)
     return min(overlay_ts, core_valid_until)
 
 

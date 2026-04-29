@@ -115,7 +115,7 @@ A simple execution-realistic backtest variant now applies live-like minimum-noti
 The online v16a provider is now available for dry-run/shadow validation:
 
 - `V16aOnlineTargetStrategy` refreshes local 1h/6h parquet cache and builds the latest v16a target set.
-- The target builder forward-fills the 6h v10g core within its current 6h window so the 1h overlay can update hourly between core decisions; it does not forward-fill past the next scheduled 6h decision time.
+- The target builder forward-fills the latest 6h v10g core bar across the following live 6h window so the 1h overlay can keep updating hourly after the core bar has closed; it does not forward-fill past the next 6h bar close unless a newer core target exists.
 - The live CLI allows `STRATEGY_PROFILE=v16a-badscore-overlay` only when `DRY_RUN=true`.
 - Non-dry-run v16a still fails fast; no real order submission is enabled for v16a yet.
 - Target-mode ticks write `journal/targets.jsonl` diagnostics including profile, target timestamp, staleness, gross, executable normalized weights, ignored/out-of-universe weights, ignored gross, execution coverage, and order deltas.
