@@ -106,7 +106,7 @@ Ops:
 - State persistence: `engine-state.json` for live mode and `engine-state-shadow.json` for shadow mode (auto-generated, gitignored)
 - Journal outputs: `equity.jsonl`, `trades.jsonl`, `signals.jsonl`, and target-mode `targets.jsonl` diagnostics. Target diagnostics include staleness, execution coverage, and ignored gross so testnet/mainnet universe gaps stay visible.
 - Data cache: parquet files in DATA_DIR (live + backtest share via ParquetStore)
-- Deployment: GitHub Actions workflow_dispatch -> GHCR -> SSH EC2 (Tokyo t3.small). Prefer this CI/CD path for v16a promotion; avoid ad hoc EC2 changes except read-only checks or urgent diagnostics.
+- Deployment: GitHub Actions workflow_dispatch -> GHCR -> SSH EC2 (Tokyo t3.small). Prefer this CI/CD path for v16a promotion; avoid ad hoc EC2 changes except read-only checks or urgent diagnostics. The production compose file carries only non-secret v16a testnet-live promotion flags; secrets and notification endpoints remain in the EC2 `.env`.
 
 ## CI/CD
 
