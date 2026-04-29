@@ -100,7 +100,8 @@ The reproduction command still matches the checkpoint metrics:
 |---|---:|---:|---:|
 | Shifted v10g sleeve | ~1.21 | +122% | 9.9% |
 | Fast-exit top2 1h overlay | ~1.30 | +113% | 10.4% |
-| v16a Badscore Overlay | ~1.95 | +123% | 5.9% |
+| v16a Badscore Overlay | ~1.94 | +122% | 5.9% |
+| v16a Execution-Realistic | ~1.90 | +119% | 5.9% |
 
 Phase 2 has started in `LiveEngine`:
 
@@ -108,6 +109,8 @@ Phase 2 has started in `LiveEngine`:
 - Unknown/non-wired live profiles fail fast instead of silently falling back.
 - `LiveEngine` can accept an injected target-weight strategy and reconcile it into market-order deltas.
 - Target reconciliation normalizes `BTCUSDT`-style research symbols to live `BTC` symbols, applies `MIN_ORDER_NOTIONAL`, and splits sign flips into reduce-only close plus a separate new-side order.
+
+A simple execution-realistic backtest variant now applies live-like minimum-notional order handling, split sign-flip legs, normal commission, and a conservative slippage assumption. It remains close to the target-weight result, which is a good sign, but funding, liquidity depth, and exchange margin are still approximations.
 
 The online v16a provider is now available for dry-run/shadow validation:
 

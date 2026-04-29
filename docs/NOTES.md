@@ -122,7 +122,7 @@ Architecture:
   - `precompute()`, `build_timeline()`, `align_data()`, `compute_signals()` -- data pipeline
   - `run_backtest()` -- V10GDecisionEngine loop (same engine as live trading)
   - `run_full_backtest()` -- single orchestration entry point
-- `services/executor/src/executor/portfolio_backtest.py` -- target-weight portfolio backtest path used by v16a
+- `services/executor/src/executor/portfolio_backtest.py` -- target-weight and simple execution-realistic portfolio backtest paths used by v16a
 - `scripts/backtest/joint_badscore_research.py` -- thin v16a reproduction CLI using the reusable profile/backtest modules
 - `services/report-service/src/report_service/plot.py` -- `plot_backtest()` three-panel chart
   (equity + BTC/ETH indexed overlay, drawdown, monthly returns)

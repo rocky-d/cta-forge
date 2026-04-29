@@ -21,6 +21,7 @@ import numpy as np
 from data_service.store import ParquetStore
 from executor.portfolio_backtest import (
     calculate_hourly_metrics,
+    run_execution_backtest,
     run_target_weight_backtest,
 )
 from executor.profiles.v16a_badscore_overlay import (
@@ -136,6 +137,15 @@ def main() -> None:
         target_set.target_weights,
         initial_equity=INITIAL_EQUITY,
     )
+    realistic = run_execution_backtest(
+        target_set.timeline,
+        target_set.returns,
+        target_set.target_weights,
+        initial_equity=INITIAL_EQUITY,
+        fee=0.0004,
+        slippage=0.0001,
+        min_order_notional=10.0,
+    )
 
     metrics = {
         "shifted_v10g": calculate_hourly_metrics(
@@ -146,6 +156,9 @@ def main() -> None:
         ),
         "v16a_badscore_overlay": calculate_hourly_metrics(
             joint.returns, initial_equity=INITIAL_EQUITY
+        ),
+        "v16a_execution_realistic": calculate_hourly_metrics(
+            realistic.returns, initial_equity=INITIAL_EQUITY
         ),
     }
     plot_result(
@@ -164,6 +177,17 @@ def main() -> None:
         "symbols": target_set.symbols,
         "gross_cap": 1.0,
         "commission": 0.0004,
+        "execution_realistic_assumptions": {
+            "commission": 0.0004,
+            "slippage": 0.0001,
+            "min_order_notional": 10.0,
+            "funding_rates": "not included yet",
+            "notes": [
+                "target orders are constrained by minimum notional",
+                "sign flips are split into close-to-flat and open-new-side legs",
+                "realized weights can differ from target weights when an order is below the notional threshold",
+            ],
+        },
         "allocation": {"shifted_v10g": 0.5, "fast_exit_top2_overlay": 0.5},
         "badscore_gate": {
             "scale_when_active": 0.5,
@@ -181,10 +205,22 @@ def main() -> None:
                 target_set.timeline, overlay.returns
             ),
             "v16a_badscore_overlay": split_metrics(target_set.timeline, joint.returns),
+            "v16a_execution_realistic": split_metrics(
+                target_set.timeline, realistic.returns
+            ),
         },
         "avg_gross": float(np.mean(np.sum(np.abs(target_set.target_weights), axis=1))),
         "avg_turnover_per_hour": float(np.mean(joint.turnover)),
-        "validation_note": "Target-weight research backtest; live integration still requires target-order execution and state handling.",
+        "execution_realistic": {
+            "avg_realized_gross": float(
+                np.mean(np.sum(np.abs(realistic.realized_weights), axis=1))
+            ),
+            "avg_turnover_per_hour": float(np.mean(realistic.turnover)),
+            "avg_orders_per_hour": float(np.mean(realistic.order_counts)),
+            "avg_ignored_gross": float(np.mean(realistic.ignored_gross)),
+            "max_ignored_gross": float(np.max(realistic.ignored_gross)),
+        },
+        "validation_note": "Target-weight research backtest plus simple execution-realistic variant; funding, liquidity depth, and exchange margin are still approximations.",
     }
     (OUT_DIR / "metrics_joint_badscore_research.json").write_text(
         json.dumps(result, indent=2)
@@ -198,6 +234,12 @@ def main() -> None:
         )
     print(f"  Avg gross: {result['avg_gross']:.3f}")
     print(f"  Avg turnover/hour: {result['avg_turnover_per_hour']:.4f}")
+    print(
+        "  Execution realistic: "
+        f"avg gross {result['execution_realistic']['avg_realized_gross']:.3f}, "
+        f"turn/h {result['execution_realistic']['avg_turnover_per_hour']:.4f}, "
+        f"orders/h {result['execution_realistic']['avg_orders_per_hour']:.4f}"
+    )
     print(f"\nMetrics: {OUT_DIR / 'metrics_joint_badscore_research.json'}")
     print(f"Chart:   {OUT_DIR / 'backtest_joint_badscore_research.png'}")
     print(f"Done in {time.time() - t0:.0f}s")
