@@ -14,6 +14,7 @@ from alpha_service.app import app as alpha_app
 from alpha_service.registry import registry as alpha_registry
 from data_service.app import app as data_app
 from data_service.store import ParquetStore
+from executor.app import app as executor_app
 from report_service.app import app as report_app
 from strategy_service.app import app as strategy_app
 
@@ -266,6 +267,45 @@ class TestStrategyService:
 
 
 # ---------------------------------------------------------------------------
+# Executor service
+# ---------------------------------------------------------------------------
+
+
+class TestExecutorService:
+    """Integration tests for executor HTTP metadata endpoints."""
+
+    @pytest.fixture
+    def client(self):
+        return AsyncClient(
+            transport=ASGITransport(app=executor_app), base_url="http://test"
+        )
+
+    @pytest.mark.asyncio
+    async def test_health(self, client: AsyncClient):
+        resp = await client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_status(self, client: AsyncClient):
+        resp = await client.get("/status")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ready"
+
+    @pytest.mark.asyncio
+    async def test_config_exposes_non_secret_live_rollout_metadata(
+        self, client: AsyncClient
+    ):
+        resp = await client.get("/config")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["default_strategy_profile"] == "v10g-engine-6h"
+        assert data["v16a_profile"] == "v16a-badscore-overlay"
+        assert "private" not in data
+        assert "token" not in data
+
+
+# ---------------------------------------------------------------------------
 # Report-service
 # ---------------------------------------------------------------------------
 
@@ -368,6 +408,45 @@ class TestReportService:
         assert "image" in data
         assert data["media_type"] == "image/png"
         # Valid base64
+        import base64
+
+        decoded = base64.b64decode(data["image"])
+        assert decoded[:4] == b"\x89PNG"
+
+    @pytest.mark.asyncio
+    async def test_plot_backtest(
+        self, client: AsyncClient, sample_curve: list[tuple[str, float]]
+    ):
+        payload = {
+            "equity_curve": sample_curve,
+            "btc_prices": [
+                (ts, 100.0 + idx) for idx, (ts, _) in enumerate(sample_curve)
+            ],
+            "eth_prices": [
+                (ts, 50.0 + idx) for idx, (ts, _) in enumerate(sample_curve)
+            ],
+            "metrics": {"sharpe_ratio": 1.2, "max_drawdown": 0.05},
+            "yearly": {"2024": 12.3},
+            "initial_equity": 10000.0,
+            "title_extra": "Integration",
+            "dpi": 80,
+        }
+        resp = await client.post("/plot/backtest", json=payload)
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"
+        assert len(resp.content) > 100
+
+    @pytest.mark.asyncio
+    async def test_plot_backtest_base64(
+        self, client: AsyncClient, sample_curve: list[tuple[str, float]]
+    ):
+        resp = await client.post(
+            "/plot/backtest/base64",
+            json={"equity_curve": sample_curve, "dpi": 80},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["media_type"] == "image/png"
         import base64
 
         decoded = base64.b64decode(data["image"])

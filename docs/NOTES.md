@@ -32,8 +32,9 @@ Multi-factor trend-following with adaptive features.
 
 Research checkpoint: the current best robust iteration candidate is documented in
 [`STRATEGY_ITERATION_2026-04-28.md`](STRATEGY_ITERATION_2026-04-28.md). It now
-has a reusable target-weight profile/backtest path, but is not yet the default
-live deployment profile.
+has a reusable target-weight profile/backtest path. The code default remains
+v10g, while the production testnet compose can explicitly promote v16a with
+separate guard flags.
 
 Signals:
 - Multi-timeframe momentum (lookbacks: 20/60/120 bars)
@@ -75,7 +76,7 @@ Architecture:
 - `services/executor/src/executor/targeting.py` -- target-weight portfolio abstractions and target-to-order delta calculation
 - `services/executor/src/executor/portfolio_backtest.py` -- target-weight portfolio simulation utilities
 - `services/executor/src/executor/profiles/v16a_badscore_overlay.py` -- reusable v16a Badscore Overlay target profile
-- `services/executor/src/executor/live.py` -- LiveEngine (current default: v10g strategy, 6h candle-aligned loop; target-mode reconciliation is available behind explicit strategy injection)
+- `services/executor/src/executor/live.py` -- LiveEngine (code default: v10g strategy, 6h candle-aligned loop; target-mode reconciliation is available behind explicit strategy injection and is used by the guarded v16a testnet-live deployment)
 - `services/executor/src/executor/notify.py` -- Notifier stack (Telegram, Lark/Feishu, multi-backend)
 - `services/executor/src/executor/run_live.py` -- CLI entry point
 
@@ -98,11 +99,11 @@ positions, adjusts partial qty, updates best_price). Callers must snapshot
 positions before tick() if they need pre-tick state for settlement.
 
 Ops:
-- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID, LARK_WEBHOOK_URL, DATA_DIR, JOURNAL_DIR, STRATEGY_PROFILE, MIN_ORDER_NOTIONAL, V16A_MAX_STALENESS_HOURS
-- `STRATEGY_PROFILE` default is `v10g-engine-6h`. `v16a-badscore-overlay` is shadow-safe by default; non-dry-run v16a requires both `HL_NETWORK=testnet` and explicit `ALLOW_V16A_TESTNET_LIVE=true`. Mainnet v16a remains blocked.
+- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID, LARK_WEBHOOK_URL, DATA_DIR, JOURNAL_DIR, STRATEGY_PROFILE, MIN_ORDER_NOTIONAL, V16A_MAX_STALENESS_HOURS, ALLOW_V16A_TESTNET_LIVE
+- `STRATEGY_PROFILE` code default is `v10g-engine-6h`. `v16a-badscore-overlay` is shadow-safe by default; non-dry-run v16a requires both `HL_NETWORK=testnet` and explicit `ALLOW_V16A_TESTNET_LIVE=true`. Mainnet v16a remains blocked. Current production testnet compose intentionally sets those non-secret v16a flags for live-readiness observation.
 - One-shot v16a shadow command: `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick`. Run it locally, or as an explicit one-off executor command only after review; do not use the deploy workflow for experiments. The command requires `HL_PRIVATE_KEY` and `HL_ACCOUNT_ADDRESS` in the environment so it can read account/position state, but it rejects `DRY_RUN=false`.
 - v16a target freshness: the latest 6h v10g core bar is forward-filled across the following live 6h window while the 1h overlay can update hourly. Do not forward-fill past the next 6h bar close unless a newer core target exists.
-- v16a staleness guard: `V16A_MAX_STALENESS_HOURS` defaults to 8 for shadow observation. If shadow ticks show targets older than the expected 1h overlay cadence outside data/API outages, investigate before promotion.
+- v16a staleness guard: `V16A_MAX_STALENESS_HOURS` defaults to 8 for shadow and guarded testnet-live target generation. If ticks show targets older than the expected 1h overlay cadence outside data/API outages, investigate before further rollout or any mainnet discussion.
 - State persistence: `engine-state.json` for live mode and `engine-state-shadow.json` for shadow mode (auto-generated, gitignored)
 - Journal outputs: `equity.jsonl`, `trades.jsonl`, `signals.jsonl`, and target-mode `targets.jsonl` diagnostics. Target diagnostics include staleness, execution coverage, and ignored gross so testnet/mainnet universe gaps stay visible.
 - Data cache: parquet files in DATA_DIR (live + backtest share via ParquetStore)

@@ -35,7 +35,6 @@ services:
       target: executor
     ports:
       - "8004:8004"
-    env_file: .env
     depends_on:
       - data-service
       - strategy-service
@@ -49,6 +48,7 @@ services:
       context: .
       target: executor
     command: ["uv", "run", "python", "-m", "executor.run_live"]
+    # Live profile intentionally requires a local .env with exchange credentials.
     env_file: .env
     volumes:
       - ./data:/app/data

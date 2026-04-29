@@ -40,8 +40,9 @@ uv run python scripts/backtest/joint_badscore_research.py
 # Requires HL_PRIVATE_KEY/HL_ACCOUNT_ADDRESS in the environment or sourced .env.
 DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick
 
-# Inspect target-mode diagnostics after a shadow run
+# Inspect target-mode diagnostics after a shadow/live run
 cat journal/shadow-v16a/targets.jsonl
+cat journal/targets.jsonl
 
 # Full stack
 docker compose up
@@ -60,7 +61,7 @@ uv run pytest -q
 
 Deployment is manual via GitHub Actions `workflow_dispatch`; do not use deploys for strategy experiments.
 
-v16a is shadow-safe by default: use `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay` for observation. Non-dry-run v16a requires `HL_NETWORK=testnet` plus explicit `ALLOW_V16A_TESTNET_LIVE=true`; mainnet v16a remains blocked.
+v16a is shadow-safe by default: use `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay` for observation. Non-dry-run v16a requires `HL_NETWORK=testnet` plus explicit `ALLOW_V16A_TESTNET_LIVE=true`; mainnet v16a remains blocked. The production compose currently promotes v16a only for Hyperliquid testnet-live readiness, so rollout work should focus on observation and execution-quality checks before any mainnet design discussion.
 
 ## Tech Stack
 

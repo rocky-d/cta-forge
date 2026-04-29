@@ -1,4 +1,5 @@
 # Production compose: live trading engine only, pulls from GHCR.
+# Current rollout: guarded v16a Hyperliquid testnet-live observation.
 # Usage: docker compose -f docker-compose.prod.yml up -d
 
 services:
@@ -18,8 +19,6 @@ services:
       - ./data:/app/data
       - ./engine-state.json:/app/engine-state.json
       - ./journal:/app/journal
-    ports:
-      - "8004:8004"
     logging:
       driver: json-file
       options:

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from .backtest import BacktestResult, calc_ulcer, run_full_backtest
 from .decision import V10GStrategyParams
 from .journal import TradeJournal
+from .live import V10G_PROFILE_SLUG, V16A_PROFILE_SLUG
 
 router = APIRouter()
 
@@ -93,9 +94,36 @@ def _format_result(result: BacktestResult) -> dict[str, Any]:
     }
 
 
+def _is_truthy(value: str | None) -> bool:
+    return (value or "").lower() in {"1", "true", "yes", "y"}
+
+
 @router.get("/status")
 async def get_status() -> dict:
     return {"status": "ready"}
+
+
+@router.get("/config")
+async def get_config() -> dict[str, Any]:
+    """Return non-secret executor configuration for API clients and smoke tests."""
+    strategy_profile = os.environ.get("STRATEGY_PROFILE", V10G_PROFILE_SLUG)
+    return {
+        "data_dir": os.environ.get("DATA_DIR", DATA_DIR),
+        "journal_dir": os.environ.get("JOURNAL_DIR", JOURNAL_DIR),
+        "report_service_url": os.environ.get("REPORT_SERVICE_URL", REPORT_SERVICE_URL),
+        "hl_network": os.environ.get("HL_NETWORK", "testnet"),
+        "dry_run": _is_truthy(os.environ.get("DRY_RUN", "false")),
+        "strategy_profile": strategy_profile,
+        "default_strategy_profile": V10G_PROFILE_SLUG,
+        "v16a_profile": V16A_PROFILE_SLUG,
+        "allow_v16a_testnet_live": _is_truthy(
+            os.environ.get("ALLOW_V16A_TESTNET_LIVE")
+        ),
+        "v16a_max_staleness_hours": float(
+            os.environ.get("V16A_MAX_STALENESS_HOURS", "8")
+        ),
+        "min_order_notional": float(os.environ.get("MIN_ORDER_NOTIONAL", "10")),
+    }
 
 
 @router.post("/backtest")
