@@ -38,10 +38,35 @@ def test_load_shadow_tick_config_rejects_non_dry_run() -> None:
         load_shadow_tick_config(env)
 
 
+def test_load_shadow_tick_config_accepts_shadow_overrides() -> None:
+    env = _base_env() | {
+        "DATA_DIR": "custom-data",
+        "JOURNAL_DIR": "custom-journal",
+        "STATE_FILE": "custom-state.json",
+        "MIN_ORDER_NOTIONAL": "25",
+        "V16A_MAX_STALENESS_HOURS": "2.5",
+    }
+
+    config = load_shadow_tick_config(env)
+
+    assert config.data_dir == "custom-data"
+    assert config.journal_dir == "custom-journal"
+    assert config.state_file == "custom-state.json"
+    assert config.min_order_notional == 25.0
+    assert config.max_staleness == timedelta(hours=2.5)
+
+
 def test_load_shadow_tick_config_rejects_other_profiles() -> None:
     env = _base_env() | {"STRATEGY_PROFILE": "v10g-engine-6h"}
 
     with pytest.raises(ValueError, match="only supports"):
+        load_shadow_tick_config(env)
+
+
+def test_load_shadow_tick_config_requires_exchange_identity() -> None:
+    env = _base_env() | {"HL_PRIVATE_KEY": ""}
+
+    with pytest.raises(ValueError, match="HL_PRIVATE_KEY"):
         load_shadow_tick_config(env)
 
 

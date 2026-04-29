@@ -100,10 +100,11 @@ positions before tick() if they need pre-tick state for settlement.
 Ops:
 - Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID, LARK_WEBHOOK_URL, DATA_DIR, JOURNAL_DIR, STRATEGY_PROFILE, MIN_ORDER_NOTIONAL, V16A_MAX_STALENESS_HOURS
 - `STRATEGY_PROFILE` default is `v10g-engine-6h`. `v16a-badscore-overlay` is only allowed with `DRY_RUN=true` for shadow validation until explicitly promoted.
-- One-shot v16a shadow command: `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick`. Run it locally, or as an explicit one-off executor command only after review; do not use the deploy workflow for experiments.
+- One-shot v16a shadow command: `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick`. Run it locally, or as an explicit one-off executor command only after review; do not use the deploy workflow for experiments. The command requires `HL_PRIVATE_KEY` and `HL_ACCOUNT_ADDRESS` in the environment so it can read account/position state, but it rejects `DRY_RUN=false`.
 - v16a target freshness: the latest 6h v10g core bar is forward-filled across the following live 6h window while the 1h overlay can update hourly. Do not forward-fill past the next 6h bar close unless a newer core target exists.
+- v16a staleness guard: `V16A_MAX_STALENESS_HOURS` defaults to 8 for shadow observation. If shadow ticks show targets older than the expected 1h overlay cadence outside data/API outages, investigate before promotion.
 - State persistence: `engine-state.json` for live mode and `engine-state-shadow.json` for shadow mode (auto-generated, gitignored)
-- Journal outputs: `equity.jsonl`, `trades.jsonl`, `signals.jsonl`, and target-mode `targets.jsonl` diagnostics. Target diagnostics include execution coverage and ignored gross so testnet/mainnet universe gaps stay visible.
+- Journal outputs: `equity.jsonl`, `trades.jsonl`, `signals.jsonl`, and target-mode `targets.jsonl` diagnostics. Target diagnostics include staleness, execution coverage, and ignored gross so testnet/mainnet universe gaps stay visible.
 - Data cache: parquet files in DATA_DIR (live + backtest share via ParquetStore)
 - Deployment: GitHub Actions workflow_dispatch -> GHCR -> SSH EC2 (Tokyo t3.small)
 

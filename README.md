@@ -37,7 +37,11 @@ uv run python scripts/backtest/v10g_maxrange.py
 uv run python scripts/backtest/joint_badscore_research.py
 
 # Run one v16a target shadow tick (dry-run only; no real orders)
+# Requires HL_PRIVATE_KEY/HL_ACCOUNT_ADDRESS in the environment or sourced .env.
 DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick
+
+# Inspect target-mode diagnostics after a shadow run
+cat journal/shadow-v16a/targets.jsonl
 
 # Full stack
 docker compose up
@@ -55,6 +59,8 @@ uv run pytest -q
 ```
 
 Deployment is manual via GitHub Actions `workflow_dispatch`; do not use deploys for strategy experiments.
+
+v16a is currently shadow-only: use `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay` for observation, and keep `DRY_RUN=false` on the default v10g profile unless v16a is explicitly promoted.
 
 ## Tech Stack
 
