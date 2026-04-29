@@ -120,9 +120,9 @@ async def fetch_all_klines(
         last_open_time = df["open_time"].max()
 
         # Move cursor past the last bar
-        if last_open_time is None:
+        if not isinstance(last_open_time, datetime):
             break
-        cursor = int(last_open_time.timestamp() * 1000) + 1  # type: ignore[union-attr]
+        cursor = int(last_open_time.timestamp() * 1000) + 1
 
         if len(df) < BINANCE_KLINE_LIMIT:
             break

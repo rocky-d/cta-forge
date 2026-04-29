@@ -848,7 +848,9 @@ class LiveEngine:
                     need_fetch = True
 
                 if need_fetch:
-                    start_ms = int(latest.timestamp() * 1000) + 1 if latest else None
+                    # Re-fetch the latest stored open_time so a previously
+                    # cached partial candle can be replaced by the closed bar.
+                    start_ms = int(latest.timestamp() * 1000) if latest else None
                     new_bars = await fetch_klines(
                         client,
                         symbol=pair,

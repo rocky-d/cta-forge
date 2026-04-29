@@ -82,7 +82,9 @@ async def fetch_bars(
                 # Incremental update
                 latest = store.latest_timestamp(sym, timeframe)
                 if latest is not None:
-                    new_start = int(latest.timestamp() * 1000) + 1
+                    # Re-fetch the latest stored open_time so a previously
+                    # cached partial candle can be replaced by the closed bar.
+                    new_start = int(latest.timestamp() * 1000)
                     new_bars = await fetch_all_klines(
                         client, symbol=sym, interval=timeframe, start_ms=new_start
                     )

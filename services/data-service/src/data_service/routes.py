@@ -103,7 +103,9 @@ async def sync_data(
             if effective_start is None:
                 latest = store.latest_timestamp(sym, tf)
                 if latest is not None:
-                    effective_start = int(latest.timestamp() * 1000) + 1
+                    # Re-fetch the latest stored open_time so an older partial
+                    # candle can be overwritten once the closed bar is available.
+                    effective_start = int(latest.timestamp() * 1000)
 
             df = await fetcher.fetch_all_klines(
                 client,
