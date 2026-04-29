@@ -13,6 +13,7 @@ from executor.profiles.v16a_badscore_overlay import (
     V16aHistoricalStrategy,
     V16aOnlineTargetStrategy,
     V16aTargetSet,
+    latest_forward_filled_hour,
     latest_target_index,
 )
 
@@ -70,6 +71,21 @@ def _target_set(timeline: list[datetime], weights: np.ndarray) -> V16aTargetSet:
         overlay_weights=np.zeros((len(timeline), len(symbols))),
         gate=np.ones(len(timeline)),
     )
+
+
+def test_latest_forward_filled_hour_extends_core_within_timeframe() -> None:
+    core_ts = datetime(2024, 1, 1, hour=12, tzinfo=UTC)
+
+    assert latest_forward_filled_hour(
+        core_ts,
+        datetime(2024, 1, 1, hour=16, tzinfo=UTC),
+        core_timeframe_hours=6,
+    ) == datetime(2024, 1, 1, hour=16, tzinfo=UTC)
+    assert latest_forward_filled_hour(
+        core_ts,
+        datetime(2024, 1, 1, hour=18, tzinfo=UTC),
+        core_timeframe_hours=6,
+    ) == datetime(2024, 1, 1, hour=17, tzinfo=UTC)
 
 
 def test_latest_target_index_uses_latest_target_at_or_before_timestamp() -> None:

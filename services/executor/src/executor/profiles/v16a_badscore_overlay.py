@@ -609,6 +609,20 @@ def split_metrics(timeline, pnl):
     return out
 
 
+def latest_forward_filled_hour(
+    core_ts: datetime, overlay_ts: datetime, *, core_timeframe_hours: int
+) -> datetime:
+    """Return latest hourly target time while forward-filling the core sleeve.
+
+    A 6h core target at 12:00 can be held for 12:00..17:00, but not past the
+    next scheduled 6h decision time unless a new core target exists.
+    """
+    if core_timeframe_hours < 1:
+        raise ValueError("core_timeframe_hours must be positive")
+    core_valid_until = core_ts + timedelta(hours=core_timeframe_hours - 1)
+    return min(overlay_ts, core_valid_until)
+
+
 def build_v16a_target_set(
     data_dir: str | Path,
     *,
@@ -624,7 +638,11 @@ def build_v16a_target_set(
     o_syms, o_weights, o_curve, _o_trades, o_timeline = build_overlay_sleeve()
 
     start = max(v_curve[0][0], o_curve[0][0])
-    end = min(v_curve[-1][0], o_curve[-1][0])
+    end = latest_forward_filled_hour(
+        v_curve[-1][0],
+        o_curve[-1][0],
+        core_timeframe_hours=v10g_params().timeframe_hours,
+    )
     timeline = [ts for ts in o_timeline if start <= ts <= end]
     symbols = sorted(set(v_syms) | set(o_syms))
 
