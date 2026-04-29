@@ -21,6 +21,25 @@ from .notify import (
 )
 
 
+def _is_truthy(value: str | None) -> bool:
+    """Return whether an environment-style flag is enabled."""
+    return (value or "").lower() in {"1", "true", "yes", "y"}
+
+
+def _validate_v16a_live_mode(
+    *, dry_run: bool, testnet: bool, allow_testnet_live: bool
+) -> None:
+    """Validate v16a live-mode guardrails before constructing the engine."""
+    if dry_run:
+        return
+    if not testnet:
+        msg = f"{V16A_PROFILE_SLUG} non-dry-run is only allowed on HL_NETWORK=testnet"
+        raise ValueError(msg)
+    if not allow_testnet_live:
+        msg = f"{V16A_PROFILE_SLUG} testnet live requires ALLOW_V16A_TESTNET_LIVE=true"
+        raise ValueError(msg)
+
+
 def _build_notifier() -> _Notifier:
     """Build notifier from env vars. Multiple backends stack via MultiNotifier."""
     notifiers: list[_Notifier] = []
@@ -57,22 +76,26 @@ def main() -> None:
         sys.exit(1)
 
     testnet = os.environ.get("HL_NETWORK", "testnet") == "testnet"
-    dry_run = os.environ.get("DRY_RUN", "false").lower() in ("true", "1", "yes")
+    dry_run = _is_truthy(os.environ.get("DRY_RUN", "false"))
     state_file = os.environ.get("STATE_FILE", "engine-state.json")
     journal_dir = os.environ.get("JOURNAL_DIR", "journal")
     data_dir = os.environ.get("DATA_DIR", "data")
-    clean_start = os.environ.get("CLEAN_START", "false").lower() in ("true", "1", "yes")
+    clean_start = _is_truthy(os.environ.get("CLEAN_START", "false"))
     strategy_profile = os.environ.get("STRATEGY_PROFILE", V10G_PROFILE_SLUG)
     min_order_notional = float(os.environ.get("MIN_ORDER_NOTIONAL", "10"))
     v16a_max_staleness_hours = float(os.environ.get("V16A_MAX_STALENESS_HOURS", "8"))
+    allow_v16a_testnet_live = _is_truthy(os.environ.get("ALLOW_V16A_TESTNET_LIVE"))
 
     target_strategy = None
     if strategy_profile == V16A_PROFILE_SLUG:
-        if not dry_run:
-            logging.error(
-                "%s is only enabled for DRY_RUN=true shadow validation for now",
-                V16A_PROFILE_SLUG,
+        try:
+            _validate_v16a_live_mode(
+                dry_run=dry_run,
+                testnet=testnet,
+                allow_testnet_live=allow_v16a_testnet_live,
             )
+        except ValueError as exc:
+            logging.error("%s", exc)
             sys.exit(1)
         target_strategy = V16aOnlineTargetStrategy(
             data_dir,

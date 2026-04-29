@@ -60,7 +60,7 @@ uv run pytest -q
 
 Deployment is manual via GitHub Actions `workflow_dispatch`; do not use deploys for strategy experiments.
 
-v16a is currently shadow-only: use `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay` for observation, and keep `DRY_RUN=false` on the default v10g profile unless v16a is explicitly promoted.
+v16a is shadow-safe by default: use `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay` for observation. Non-dry-run v16a requires `HL_NETWORK=testnet` plus explicit `ALLOW_V16A_TESTNET_LIVE=true`; mainnet v16a remains blocked.
 
 ## Tech Stack
 
