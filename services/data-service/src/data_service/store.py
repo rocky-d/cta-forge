@@ -66,7 +66,9 @@ class ParquetStore:
         if path.exists():
             existing = pl.read_parquet(path)
             df = (
-                pl.concat([existing, df]).unique(subset=["open_time"]).sort("open_time")
+                pl.concat([existing, df])
+                .unique(subset=["open_time"], keep="last")
+                .sort("open_time")
             )
 
         df.write_parquet(path, compression=PARQUET_COMPRESSION)

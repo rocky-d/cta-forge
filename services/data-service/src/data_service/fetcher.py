@@ -60,8 +60,10 @@ async def fetch_klines(
     start_ms: int | None = None,
     end_ms: int | None = None,
     limit: int = BINANCE_KLINE_LIMIT,
+    *,
+    include_incomplete: bool = False,
 ) -> pl.DataFrame:
-    """Fetch klines for a single symbol. Returns a polars DataFrame."""
+    """Fetch klines for a single symbol. Returns closed bars by default."""
     params: dict[str, str | int] = {
         "symbol": symbol,
         "interval": interval,
@@ -82,7 +84,10 @@ async def fetch_klines(
     if not raw:
         return _empty_bars_df()
 
-    return _parse_klines(raw)
+    df = _parse_klines(raw)
+    if not include_incomplete:
+        df = _drop_unclosed_bars(df)
+    return df
 
 
 async def fetch_all_klines(
@@ -91,8 +96,10 @@ async def fetch_all_klines(
     interval: str = "6h",
     start_ms: int | None = None,
     end_ms: int | None = None,
+    *,
+    include_incomplete: bool = False,
 ) -> pl.DataFrame:
-    """Fetch all klines for a symbol by paginating through Binance API."""
+    """Fetch all closed klines for a symbol by paginating through Binance API."""
     frames: list[pl.DataFrame] = []
     cursor = start_ms
 
@@ -104,6 +111,7 @@ async def fetch_all_klines(
             start_ms=cursor,
             end_ms=end_ms,
             limit=BINANCE_KLINE_LIMIT,
+            include_incomplete=include_incomplete,
         )
         if df.is_empty():
             break
@@ -126,8 +134,20 @@ async def fetch_all_klines(
         return _empty_bars_df()
 
     result = pl.concat(frames).unique(subset=["open_time"]).sort("open_time")
+    if not include_incomplete:
+        result = _drop_unclosed_bars(result)
     logger.info("Fetched %d bars for %s", len(result), symbol)
     return result
+
+
+def _drop_unclosed_bars(
+    df: pl.DataFrame, *, now: datetime | None = None
+) -> pl.DataFrame:
+    """Drop bars whose scheduled close time has not passed yet."""
+    if df.is_empty():
+        return df
+    now = now or datetime.now(tz=UTC)
+    return df.filter(pl.col("close_time") < now)
 
 
 def _parse_klines(raw: list[list]) -> pl.DataFrame:

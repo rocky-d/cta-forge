@@ -57,6 +57,18 @@ def test_write_merge_dedup(store: ParquetStore):
     assert total == 4  # 3 overlap + 1 new
 
 
+def test_write_overwrites_existing_open_time(store: ParquetStore):
+    stale = _make_bars(1).with_columns(pl.lit(101.0).alias("close"))
+    corrected = _make_bars(1).with_columns(pl.lit(202.0).alias("close"))
+
+    store.write("BTCUSDT", "6h", stale)
+    total = store.write("BTCUSDT", "6h", corrected)
+
+    result = store.read("BTCUSDT", "6h")
+    assert total == 1
+    assert result["close"].to_list() == [202.0]
+
+
 def test_read_empty(store: ParquetStore):
     df = store.read("NONEXISTENT", "6h")
     assert df.is_empty()
