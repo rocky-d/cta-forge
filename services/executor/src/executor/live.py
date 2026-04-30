@@ -16,10 +16,8 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-import httpx
 import numpy as np
 import polars as pl
-from data_service.fetcher import fetch_all_klines, fetch_klines
 from data_service.store import ParquetStore
 
 if TYPE_CHECKING:
@@ -45,6 +43,7 @@ from .decision import (
     V10GStrategyParams,
 )
 from .journal import TradeJournal
+from .live_data import fetch_live_bars
 from .live_target import execute_target_portfolio
 from .notify import NullNotifier, _Notifier
 from .targeting import TargetOrder, TargetWeightStrategy
@@ -626,78 +625,15 @@ class LiveEngine:
         """Fetch bars from local cache (parquet), backfill from Binance as needed."""
         interval = interval or self._decision.p.timeframe_str or DEFAULT_TIMEFRAME
         timeframe_hours = timeframe_hours or self._decision.p.timeframe_hours
-
-        async def _fetch_symbol(
-            client: httpx.AsyncClient, symbol: str
-        ) -> tuple[str, pl.DataFrame | None]:
-            """Fetch one symbol, return (symbol, df) or (symbol, None)."""
-            pair = f"{symbol}USDT"
-            try:
-                # 1. Check local parquet
-                latest = self._store.latest_timestamp(pair, interval)
-                cached = self._store.read(pair, interval)
-                cached_bars = len(cached)
-                if latest is not None:
-                    age_hours = (datetime.now(tz=UTC) - latest).total_seconds() / 3600
-                    need_fetch = age_hours > timeframe_hours or cached_bars < min_bars
-                else:
-                    need_fetch = True
-
-                if need_fetch:
-                    # Re-fetch the latest stored open_time so a previously
-                    # cached partial candle can be replaced by the closed bar.
-                    if min_bars > 1000 and cached_bars < min_bars:
-                        # Binance returns at most 1000 klines per request. For
-                        # fresh or underfilled live caches, paginate from a
-                        # bounded lookback large enough to satisfy target-
-                        # strategy warmups.
-                        lookback_bars = min_bars + max(10, min_bars // 20)
-                        start = datetime.now(tz=UTC) - timedelta(
-                            hours=timeframe_hours * lookback_bars
-                        )
-                        new_bars = await fetch_all_klines(
-                            client,
-                            symbol=pair,
-                            interval=interval,
-                            start_ms=int(start.timestamp() * 1000),
-                        )
-                    else:
-                        start_ms = int(latest.timestamp() * 1000) if latest else None
-                        new_bars = await fetch_klines(
-                            client,
-                            symbol=pair,
-                            interval=interval,
-                            start_ms=start_ms,
-                            limit=1000,
-                        )
-                    if not new_bars.is_empty():
-                        self._store.write(pair, interval, new_bars)
-                        logger.info("Stored %d new bars for %s", len(new_bars), pair)
-
-                # 2. Read from store
-                df = self._store.read(pair, interval)
-                if df.is_empty():
-                    logger.warning("No data available for %s", pair)
-                    return symbol, None
-
-                if len(df) > min_bars:
-                    df = df.tail(min_bars)
-
-                return symbol, df
-
-            except Exception:
-                logger.exception("Error fetching %s", pair)
-                return symbol, None
-
-        # Fetch all symbols concurrently
-        async with httpx.AsyncClient(timeout=30) as client:
-            results = await asyncio.gather(
-                *(_fetch_symbol(client, sym) for sym in self._symbols)
+        self._bars_cache.update(
+            await fetch_live_bars(
+                store=self._store,
+                symbols=self._symbols,
+                interval=interval,
+                timeframe_hours=timeframe_hours,
+                min_bars=min_bars,
             )
-
-        for symbol, df in results:
-            if df is not None:
-                self._bars_cache[symbol] = df
+        )
 
     # ── Build market snapshots ───────────────────────────────────
 

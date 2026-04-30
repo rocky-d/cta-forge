@@ -254,8 +254,8 @@ async def test_initial_large_warmup_fetch_uses_paginated_backfill(
     async def fail_single_page_fetch(*args, **kwargs):
         raise AssertionError("single-page fetch should not be used")
 
-    monkeypatch.setattr("executor.live.fetch_all_klines", fake_fetch_all_klines)
-    monkeypatch.setattr("executor.live.fetch_klines", fail_single_page_fetch)
+    monkeypatch.setattr("executor.live_data.fetch_all_klines", fake_fetch_all_klines)
+    monkeypatch.setattr("executor.live_data.fetch_klines", fail_single_page_fetch)
 
     await engine._fetch_bars(interval="1h", timeframe_hours=1, min_bars=5000)
 
@@ -291,8 +291,8 @@ async def test_underfilled_large_warmup_cache_uses_paginated_backfill(
     async def fail_single_page_fetch(*args, **kwargs):
         raise AssertionError("single-page fetch should not be used")
 
-    monkeypatch.setattr("executor.live.fetch_all_klines", fake_fetch_all_klines)
-    monkeypatch.setattr("executor.live.fetch_klines", fail_single_page_fetch)
+    monkeypatch.setattr("executor.live_data.fetch_all_klines", fake_fetch_all_klines)
+    monkeypatch.setattr("executor.live_data.fetch_klines", fail_single_page_fetch)
 
     await engine._fetch_bars(interval="1h", timeframe_hours=1, min_bars=5000)
 
