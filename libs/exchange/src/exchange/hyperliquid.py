@@ -17,6 +17,7 @@ from hyperliquid.api import API
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
+from hyperliquid.utils.types import Meta, SpotMeta
 
 from .adapter import AccountState, MarketSnapshot, OrderResult, Position
 
@@ -40,23 +41,24 @@ def _is_transient(msg: str) -> bool:
     return any(p in msg.lower() for p in TRANSIENT_PATTERNS)
 
 
-def _safe_init_info(api_url: str, *, skip_ws: bool = True) -> Info:
-    """Initialize Info with workaround for testnet spot_meta IndexError.
+def _safe_metadata(api_url: str) -> tuple[Meta, SpotMeta]:
+    """Fetch metadata and drop malformed spot pairs defensively.
 
-    The testnet spot_meta sometimes references token indices that don't exist.
-    We pre-fetch and filter the data before passing to Info constructor.
+    hyperliquid-python-sdk 0.23.0 fixed token lookup by using each token's
+    `index` field instead of assuming token indices match array positions.
+    Keep a small guard anyway so bad testnet spot metadata cannot break perp
+    trading initialization.
     """
     api = API(api_url)
     spot_meta = api.post("/info", {"type": "spotMeta"})
-    max_idx = len(spot_meta.get("tokens", [])) - 1
-    if max_idx >= 0:
-        spot_meta["universe"] = [
-            u
-            for u in spot_meta.get("universe", [])
-            if u["tokens"][0] <= max_idx and u["tokens"][1] <= max_idx
-        ]
+    token_indexes = {token["index"] for token in spot_meta.get("tokens", [])}
+    spot_meta["universe"] = [
+        pair
+        for pair in spot_meta.get("universe", [])
+        if all(token in token_indexes for token in pair.get("tokens", []))
+    ]
     meta = api.post("/info", {"type": "meta"})
-    return Info(api_url, skip_ws=skip_ws, meta=meta, spot_meta=spot_meta)
+    return meta, spot_meta
 
 
 class HyperliquidAdapter:
@@ -80,26 +82,18 @@ class HyperliquidAdapter:
 
         wallet = eth_account.Account.from_key(private_key)
 
-        # Initialize SDK instances (safe init for testnet spot_meta bug)
-        self._info = _safe_init_info(self._api_url, skip_ws=True)
-
-        # Monkey-patch Info to avoid spot_meta IndexError in Exchange.__init__.
-        # Use setattr so this intentional runtime patch does not look like a
-        # normal typed assignment to the checker.
-        _orig_init = Info.__init__
-
-        def _patched_init(self_info: Info, *args: Any, **kwargs: Any) -> None:
-            self_info.__dict__.update(self._info.__dict__)
-
-        setattr(Info, "__init__", _patched_init)
-        try:
-            self._exchange = Exchange(
-                wallet,
-                self._api_url,
-                account_address=account_address,
-            )
-        finally:
-            setattr(Info, "__init__", _orig_init)
+        # Initialize SDK instances with pre-fetched metadata. Passing the same
+        # metadata into Exchange avoids a second spot_meta fetch and no longer
+        # needs the old Info.__init__ monkey-patch on SDK >=0.23.0.
+        meta, spot_meta = _safe_metadata(self._api_url)
+        self._info = Info(self._api_url, skip_ws=True, meta=meta, spot_meta=spot_meta)
+        self._exchange = Exchange(
+            wallet,
+            self._api_url,
+            meta=meta,
+            spot_meta=spot_meta,
+            account_address=account_address,
+        )
 
         # Serialize exchange writes to avoid nonce collisions
         self._order_lock = asyncio.Lock()

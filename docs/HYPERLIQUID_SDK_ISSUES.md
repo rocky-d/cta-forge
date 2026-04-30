@@ -1,10 +1,11 @@
 # Hyperliquid Python SDK 已知问题
 
-_更新: 2026-04-13_
+_更新: 2026-04-30_
 
 ## 问题 1: Testnet `Info()` 初始化崩溃 (IndexError)
 
 - SDK 版本: `hyperliquid-python-sdk==0.22.0`
+- 官方状态: upstream issue/PR 已存在，`0.23.0` release note 写明 `Fix constructing Info object`；本项目已升级到 `0.23.0`。
 - 环境: Testnet (`https://api.hyperliquid-testnet.xyz`)
 - 错误: `IndexError: list index out of range` at `info.py:48`
 
@@ -24,6 +25,12 @@ SDK 没有做边界检查，直接越界崩溃。
 - 只影响 testnet，mainnet 数据一致性应该没问题
 - 所有需要 `Info()` 的操作都受影响（查余额、持仓、挂单等）
 - 如果你只用 perp，这个 bug 也会阻止你
+
+### 当前项目处理
+
+`cta-forge` 现在使用 `hyperliquid-python-sdk==0.23.0`，并在初始化时预取 `meta` / `spotMeta` 后同时传给 `Info` 和 `Exchange`，避免重复拉取 metadata。代码仍保留一个轻量防御：按 token 的 `index` 字段过滤掉引用不存在 token 的 spot pair，防止 testnet 脏数据影响 perp 初始化。
+
+旧版本 workaround 曾经需要 monkey-patch `Info.__init__`，现在已经不需要。
 
 ### 绕过方案
 
