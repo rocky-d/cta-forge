@@ -35,7 +35,8 @@ cd services/data-service && uv run uvicorn data_service.app:app --reload
 uv run python scripts/backtest/v10g_maxrange.py
 
 # Reproduce the current v16a research checkpoint and three-panel chart
-# Core logic lives in executor.profiles.v16a_badscore_overlay and executor.portfolio_backtest.
+# Core logic lives in executor.profiles.v16a_badscore_overlay,
+# executor.signal_pipeline, and executor.portfolio_backtest.
 uv run python scripts/backtest/joint_badscore_research.py
 
 # Run one v16a target shadow tick (dry-run only; no real orders)

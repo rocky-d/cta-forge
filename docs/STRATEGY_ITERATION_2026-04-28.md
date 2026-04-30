@@ -90,6 +90,7 @@ These files are intentionally ignored as generated backtest outputs.
 Phase 1 is implemented in reusable executor modules:
 
 - `executor.targeting` defines `StrategyProfile`, `PortfolioTarget`, `SleeveTarget`, `TargetWeightStrategy`, and target-to-order delta utilities.
+- `executor.signal_pipeline` provides the shared historical data/cache and signal computation pipeline.
 - `executor.portfolio_backtest` provides a target-weight simulation path.
 - `executor.profiles.v16a_badscore_overlay` contains the reusable v16a profile and target construction logic.
 - `scripts/backtest/joint_badscore_research.py` is now a thin reproduction CLI over those modules.
@@ -98,10 +99,10 @@ The reproduction command still matches the checkpoint metrics:
 
 | Candidate | Sharpe | Return | Max DD |
 |---|---:|---:|---:|
-| Shifted v10g sleeve | ~1.21 | +122% | 9.9% |
-| Fast-exit top2 1h overlay | ~1.30 | +113% | 10.4% |
-| v16a Badscore Overlay | ~1.94 | +122% | 5.9% |
-| v16a Execution-Realistic | ~1.90 | +119% | 5.9% |
+| Shifted v10g sleeve | ~1.19 | +119% | 9.9% |
+| Fast-exit top2 1h overlay | ~1.30 | +112% | 10.4% |
+| v16a Badscore Overlay | ~1.92 | +121% | 5.9% |
+| v16a Execution-Realistic | ~1.88 | +118% | 5.9% |
 
 Phase 2 has started in `LiveEngine`:
 

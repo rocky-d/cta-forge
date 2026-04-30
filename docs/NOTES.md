@@ -71,7 +71,7 @@ Position management:
 Architecture:
 - `libs/exchange/` -- HL SDK wrapper library
   - `ExchangeAdapter` Protocol interface (structural subtyping)
-  - `HyperliquidAdapter` implementation (safe init, unified account, async executor)
+  - `HyperliquidAdapter` implementation (SDK 0.23 metadata-safe init, unified account, async executor)
 - `services/executor/src/executor/decision.py` -- V10GDecisionEngine (stateless decision logic, shared by live + backtest)
 - `services/executor/src/executor/targeting.py` -- target-weight portfolio abstractions and target-to-order delta calculation
 - `services/executor/src/executor/portfolio_backtest.py` -- target-weight portfolio simulation utilities
@@ -121,12 +121,13 @@ Ops:
 Architecture:
 - `executor` is the source of truth for strategy and backtest logic.
 - `scripts/backtest/*.py` are intentionally thin reproduction CLIs: they choose a profile, call executor modules, call report-service plotting, and write local artifacts.
-- `services/executor/src/executor/backtest.py` -- V10GDecisionEngine action-based backtest module
+- `services/executor/src/executor/signal_pipeline.py` -- shared historical data and signal pipeline
   - `fetch_bars()` -- ParquetStore cache + Binance incremental fetch
-  - `precompute()`, `build_timeline()`, `align_data()`, `compute_signals()` -- data pipeline
+  - `precompute()`, `build_timeline()`, `align_data()`, `compute_signals()` -- shared data pipeline
+- `services/executor/src/executor/backtest.py` -- V10GDecisionEngine action-based backtest module
   - `run_backtest()` -- V10GDecisionEngine loop (same engine as live trading)
-  - `run_full_backtest()` -- single orchestration entry point
-- `services/executor/src/executor/profiles/v16a_badscore_overlay.py` -- reusable v16a profile and target construction logic
+  - `run_full_backtest()` -- single orchestration entry point over `signal_pipeline`
+- `services/executor/src/executor/profiles/v16a_badscore_overlay.py` -- reusable v16a profile and target construction logic, also using `signal_pipeline`
 - `services/executor/src/executor/portfolio_backtest.py` -- target-weight and simple execution-realistic portfolio backtest paths used by v16a
 - `services/report-service/src/report_service/plot.py` -- `plot_backtest()` three-panel chart
   (equity + BTC/ETH indexed overlay, drawdown, monthly returns)
