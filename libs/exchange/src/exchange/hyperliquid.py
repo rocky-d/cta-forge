@@ -83,13 +83,15 @@ class HyperliquidAdapter:
         # Initialize SDK instances (safe init for testnet spot_meta bug)
         self._info = _safe_init_info(self._api_url, skip_ws=True)
 
-        # Monkey-patch Info to avoid spot_meta IndexError in Exchange.__init__
+        # Monkey-patch Info to avoid spot_meta IndexError in Exchange.__init__.
+        # Use setattr so this intentional runtime patch does not look like a
+        # normal typed assignment to the checker.
         _orig_init = Info.__init__
 
-        def _patched_init(self_info, *args, **kwargs):
+        def _patched_init(self_info: Info, *args: Any, **kwargs: Any) -> None:
             self_info.__dict__.update(self._info.__dict__)
 
-        Info.__init__ = _patched_init
+        setattr(Info, "__init__", _patched_init)
         try:
             self._exchange = Exchange(
                 wallet,
@@ -97,7 +99,7 @@ class HyperliquidAdapter:
                 account_address=account_address,
             )
         finally:
-            Info.__init__ = _orig_init
+            setattr(Info, "__init__", _orig_init)
 
         # Serialize exchange writes to avoid nonce collisions
         self._order_lock = asyncio.Lock()
