@@ -62,6 +62,7 @@ async def fetch_klines(
     limit: int = BINANCE_KLINE_LIMIT,
     *,
     include_incomplete: bool = False,
+    max_retries: int = 6,
 ) -> pl.DataFrame:
     """Fetch klines for a single symbol. Returns closed bars by default."""
     params: dict[str, str | int] = {
@@ -74,11 +75,25 @@ async def fetch_klines(
     if end_ms is not None:
         params["endTime"] = end_ms
 
-    resp = await client.get(
-        f"{BINANCE_FUTURES_BASE}{BINANCE_KLINES_ENDPOINT}",
-        params=params,
-    )
-    resp.raise_for_status()
+    for attempt in range(max_retries + 1):
+        resp = await client.get(
+            f"{BINANCE_FUTURES_BASE}{BINANCE_KLINES_ENDPOINT}",
+            params=params,
+        )
+        if resp.status_code not in {418, 429}:
+            resp.raise_for_status()
+            break
+        if attempt >= max_retries:
+            resp.raise_for_status()
+        retry_after = resp.headers.get("Retry-After")
+        delay = float(retry_after) if retry_after else min(2.0 * 2**attempt, 30.0)
+        logger.warning(
+            "Binance rate limited %s %s; retrying in %.1fs",
+            symbol,
+            interval,
+            delay,
+        )
+        await asyncio.sleep(delay)
     raw = resp.json()
 
     if not raw:
@@ -127,8 +142,9 @@ async def fetch_all_klines(
         if len(df) < BINANCE_KLINE_LIMIT:
             break
 
-        # Rate limit courtesy
-        await asyncio.sleep(0.1)
+        # Rate limit courtesy. Fresh-cache research runs paginate through many
+        # symbols, so keep this deliberately conservative.
+        await asyncio.sleep(0.25)
 
     if not frames:
         return _empty_bars_df()
