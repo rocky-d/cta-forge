@@ -221,7 +221,10 @@ class LiveEngine:
             logger.error("Preflight checks FAILED — aborting")
             return
 
-        # Try to restore state from disk, then reconcile with exchange
+        # Try to restore state from disk, then reconcile with exchange.
+        # Keep this import local: state.py imports LiveState/LivePosition from this
+        # module for backward-compatible persistence, so a top-level import would
+        # create a circular dependency.
         from .state import load_state, save_state
 
         restored = load_state(self._state_file)

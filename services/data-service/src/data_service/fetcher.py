@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 import polars as pl
 from core.constants import (
@@ -17,6 +17,11 @@ from core.constants import (
 
 if TYPE_CHECKING:
     import httpx
+
+
+class _HttpClient(Protocol):
+    async def get(self, *args: Any, **kwargs: Any) -> "httpx.Response": ...
+
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +42,7 @@ _KLINE_COLUMNS = [
 ]
 
 
-async def fetch_symbols(client: httpx.AsyncClient) -> list[str]:
+async def fetch_symbols(client: _HttpClient) -> list[str]:
     """Fetch all active USDT-margined perpetual symbols from Binance."""
     resp = await client.get(f"{BINANCE_FUTURES_BASE}{BINANCE_EXCHANGE_INFO_ENDPOINT}")
     resp.raise_for_status()
@@ -54,7 +59,7 @@ async def fetch_symbols(client: httpx.AsyncClient) -> list[str]:
 
 
 async def fetch_klines(
-    client: httpx.AsyncClient,
+    client: _HttpClient,
     symbol: str,
     interval: str = "6h",
     start_ms: int | None = None,
@@ -106,7 +111,7 @@ async def fetch_klines(
 
 
 async def fetch_all_klines(
-    client: httpx.AsyncClient,
+    client: _HttpClient,
     symbol: str,
     interval: str = "6h",
     start_ms: int | None = None,

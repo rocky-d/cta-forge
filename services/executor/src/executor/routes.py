@@ -7,7 +7,10 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
+
+from core.metrics import calculate_metrics
 
 from .backtest import BacktestResult, calc_ulcer, run_full_backtest
 from .decision import V10GStrategyParams
@@ -44,8 +47,6 @@ def _format_result(result: BacktestResult) -> dict[str, Any]:
     """Format BacktestResult for JSON response."""
     if not result.equity_curve:
         return {"status": "error", "message": "No data available"}
-
-    from core.metrics import calculate_metrics
 
     m = calculate_metrics(result.equity_curve, result.trades)
     ulcer = calc_ulcer(result.equity_curve)
@@ -187,8 +188,6 @@ async def get_live_report() -> dict[str, Any]:
     if data.get("status") == "error":
         return data
 
-    from core.metrics import calculate_metrics
-
     curve = data["equity_curve"]
     m = calculate_metrics(
         [(ts, eq) for ts, eq in curve],
@@ -227,8 +226,6 @@ async def get_live_report_plot() -> Any:
     data = _journal_to_report_format(journal)
 
     if data.get("status") == "error":
-        from fastapi.responses import JSONResponse
-
         return JSONResponse(content=data, status_code=404)
 
     curve = data["equity_curve"]
@@ -244,7 +241,5 @@ async def get_live_report_plot() -> Any:
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(f"{REPORT_SERVICE_URL}/plot/backtest", json=payload)
         resp.raise_for_status()
-
-    from fastapi.responses import Response
 
     return Response(content=resp.content, media_type="image/png")

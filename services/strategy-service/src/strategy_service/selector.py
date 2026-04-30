@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, SupportsFloat, cast
 
 import numpy as np
 
@@ -39,7 +39,7 @@ def select_assets(
         # Average volume filter
         if min_volume > 0 and "volume" in recent.columns:
             avg_vol = recent["volume"].mean()
-            if avg_vol is not None and float(avg_vol) < min_volume:
+            if avg_vol is not None and float(cast(SupportsFloat, avg_vol)) < min_volume:
                 continue
 
         # Calculate Sharpe on log returns

@@ -6,6 +6,8 @@ return correct responses. No external dependencies (Binance, Hyperliquid).
 
 from __future__ import annotations
 
+import base64
+
 import numpy as np
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -408,8 +410,6 @@ class TestReportService:
         assert "image" in data
         assert data["media_type"] == "image/png"
         # Valid base64
-        import base64
-
         decoded = base64.b64decode(data["image"])
         assert decoded[:4] == b"\x89PNG"
 
@@ -447,8 +447,6 @@ class TestReportService:
         assert resp.status_code == 200
         data = resp.json()
         assert data["media_type"] == "image/png"
-        import base64
-
         decoded = base64.b64decode(data["image"])
         assert decoded[:4] == b"\x89PNG"
 

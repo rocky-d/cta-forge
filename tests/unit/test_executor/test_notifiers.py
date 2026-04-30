@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-
+import httpx
+import lark_bots
 import pytest
 
 from executor.notify import (
@@ -29,8 +30,6 @@ async def test_telegram_notifier_handles_failure(monkeypatch) -> None:
         raise ConnectionError("no network")
 
     # Patch httpx.AsyncClient to fail
-    import httpx
-
     class FailClient:
         async def __aenter__(self):
             return self
@@ -50,8 +49,6 @@ async def test_telegram_notifier_handles_failure(monkeypatch) -> None:
 async def test_lark_notifier_handles_failure(monkeypatch) -> None:
     """LarkNotifier swallows errors from ABot."""
     n = LarkNotifier("https://fake-webhook.example.com")
-
-    import lark_bots
 
     class FailBot:
         def __init__(self, *a, **kw):

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import matplotlib
 import matplotlib.dates as mdates
@@ -272,11 +272,12 @@ def plot_equity_curve(
         return buf.read()
 
     timestamps = [e[0] for e in equity_curve]
+    timestamps_for_plot = cast(Any, timestamps)
     equities = [e[1] for e in equity_curve]
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.plot(timestamps, equities, linewidth=1.5, color="#2ecc71")
-    ax.fill_between(timestamps, equities, alpha=0.2, color="#2ecc71")
+    ax.plot(timestamps_for_plot, equities, linewidth=1.5, color="#2ecc71")
+    ax.fill_between(timestamps_for_plot, equities, alpha=0.2, color="#2ecc71")
 
     ax.set_title(title, fontsize=14, fontweight="bold")
     ax.set_xlabel("Date")
@@ -306,14 +307,15 @@ def plot_drawdown(equity_curve: list[tuple[datetime, float]]) -> bytes:
         return buf.read()
 
     timestamps = [e[0] for e in equity_curve]
+    timestamps_for_plot = cast(Any, timestamps)
     equities = np.array([e[1] for e in equity_curve])
 
     running_max = np.maximum.accumulate(equities)
     drawdowns = (running_max - equities) / running_max * 100
 
     fig, ax = plt.subplots(figsize=(12, 4))
-    ax.fill_between(timestamps, 0, -drawdowns, color="#e74c3c", alpha=0.6)
-    ax.plot(timestamps, -drawdowns, color="#c0392b", linewidth=1)
+    ax.fill_between(timestamps_for_plot, 0, -drawdowns, color="#e74c3c", alpha=0.6)
+    ax.plot(timestamps_for_plot, -drawdowns, color="#c0392b", linewidth=1)
 
     ax.set_title("Drawdown", fontsize=14, fontweight="bold")
     ax.set_xlabel("Date")

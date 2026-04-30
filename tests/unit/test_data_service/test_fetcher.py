@@ -45,9 +45,9 @@ class _FakeClient:
     def __init__(self):
         self.calls = 0
 
-    async def get(self, url, params):
+    async def get(self, url, **kwargs):
         self.calls += 1
-        request = httpx.Request("GET", url, params=params)
+        request = httpx.Request("GET", url, params=kwargs.get("params"))
         if self.calls == 1:
             return httpx.Response(
                 429,
