@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
+import polars as pl
 import pytest
 
 import executor.profiles.v16a_badscore_overlay as v16a_module
@@ -35,6 +36,25 @@ def test_v16a_online_strategy_declares_live_cache_warmup_needs() -> None:
 def test_top_n_signals_rejects_empty_signal_set() -> None:
     with pytest.raises(ValueError, match="No overlay signals built"):
         top_n_signals({}, top_n=2)
+
+
+def test_load_bars_backfills_cache_with_executor_fetch_path(
+    monkeypatch, tmp_path
+) -> None:
+    calls = []
+    expected = {
+        "BTCUSDT": pl.DataFrame({"open_time": [datetime(2024, 1, 1, tzinfo=UTC)]})
+    }
+
+    async def fake_fetch_bars(data_dir, *, symbols, timeframe, min_bars):
+        calls.append((data_dir, symbols, timeframe, min_bars))
+        return expected
+
+    monkeypatch.setattr(v16a_module, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(v16a_module, "fetch_cached_bars", fake_fetch_bars)
+
+    assert v16a_module.load_bars("1h", min_bars=5_000) is expected
+    assert calls == [(str(tmp_path), v16a_module.DEFAULT_SYMBOLS, "1h", 5_000)]
 
 
 def test_v16a_historical_strategy_returns_capped_portfolio_target() -> None:

@@ -119,20 +119,23 @@ Ops:
 ## Backtest
 
 Architecture:
+- `executor` is the source of truth for strategy and backtest logic.
+- `scripts/backtest/*.py` are intentionally thin reproduction CLIs: they choose a profile, call executor modules, call report-service plotting, and write local artifacts.
 - `services/executor/src/executor/backtest.py` -- V10GDecisionEngine action-based backtest module
   - `fetch_bars()` -- ParquetStore cache + Binance incremental fetch
   - `precompute()`, `build_timeline()`, `align_data()`, `compute_signals()` -- data pipeline
   - `run_backtest()` -- V10GDecisionEngine loop (same engine as live trading)
   - `run_full_backtest()` -- single orchestration entry point
+- `services/executor/src/executor/profiles/v16a_badscore_overlay.py` -- reusable v16a profile and target construction logic
 - `services/executor/src/executor/portfolio_backtest.py` -- target-weight and simple execution-realistic portfolio backtest paths used by v16a
-- `scripts/backtest/joint_badscore_research.py` -- thin v16a reproduction CLI using the reusable profile/backtest modules
 - `services/report-service/src/report_service/plot.py` -- `plot_backtest()` three-panel chart
   (equity + BTC/ETH indexed overlay, drawdown, monthly returns)
 
 Usage:
-- CLI: `uv run python scripts/backtest/v10g_maxrange.py` (thin wrapper, imports from services)
+- v10g CLI: `uv run python scripts/backtest/v10g_maxrange.py` (thin wrapper around `executor.backtest`)
+- v16a CLI: `uv run python scripts/backtest/joint_badscore_research.py` (thin wrapper around `executor.profiles.v16a_badscore_overlay` + `executor.portfolio_backtest`)
 - REST API:
-  1. `POST :8004/backtest` -> JSON (metrics, equity_curve, btc/eth prices, yearly)
+  1. `POST :8004/backtest` -> v10g JSON (metrics, equity_curve, btc/eth prices, yearly)
   2. `POST :8005/plot/backtest` -> PNG (three-panel chart with BTC/ETH overlay)
 
-Output: `backtest-results/backtest_v10g_engine.png`, `backtest-results/metrics_v10g_engine.json`
+Output examples: `backtest-results/backtest_v10g_6h_default.png`, `backtest-results/backtest_joint_badscore_research.png`, and matching `metrics_*.json` files.

@@ -30,10 +30,12 @@ uv sync
 # Run a single service (dev)
 cd services/data-service && uv run uvicorn data_service.app:app --reload
 
-# Run the default v10g backtest
+# Reproduce the default v10g backtest
+# scripts/backtest is a thin CLI wrapper; strategy logic lives in executor.*
 uv run python scripts/backtest/v10g_maxrange.py
 
-# Reproduce the current v16a research checkpoint
+# Reproduce the current v16a research checkpoint and three-panel chart
+# Core logic lives in executor.profiles.v16a_badscore_overlay and executor.portfolio_backtest.
 uv run python scripts/backtest/joint_badscore_research.py
 
 # Run one v16a target shadow tick (dry-run only; no real orders)

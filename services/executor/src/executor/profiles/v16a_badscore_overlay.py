@@ -8,6 +8,7 @@ boundary.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import time
 from bisect import bisect_right
@@ -23,6 +24,7 @@ from executor.backtest import (
     align_data,
     build_timeline,
     compute_signals,
+    fetch_bars as fetch_cached_bars,
     precompute,
 )
 from executor.decision import (
@@ -208,13 +210,20 @@ def overlay_params() -> V10GStrategyParams:
 
 
 def load_bars(tf: str, min_bars: int = 500) -> dict[str, pl.DataFrame]:
-    store = ParquetStore(DATA_DIR)
-    bars = {}
-    for sym in DEFAULT_SYMBOLS:
-        df = store.read(sym, tf)
-        if not df.is_empty() and len(df) >= min_bars:
-            bars[sym] = df
-    return bars
+    """Load historical bars, backfilling the parquet cache when needed.
+
+    This mirrors the v10g backtest path: local cache is preferred, but a fresh
+    clone can still reproduce the checkpoint by downloading missing Binance
+    futures klines into ``DATA_DIR``.
+    """
+    return asyncio.run(
+        fetch_cached_bars(
+            str(DATA_DIR),
+            symbols=DEFAULT_SYMBOLS,
+            timeframe=tf,
+            min_bars=min_bars,
+        )
+    )
 
 
 def rolling_mean_prev(x: np.ndarray, window: int) -> np.ndarray:
