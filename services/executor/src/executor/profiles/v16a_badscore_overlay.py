@@ -19,7 +19,7 @@ import numpy as np
 import polars as pl
 
 from data_service.store import ParquetStore
-from executor.backtest import (
+from executor.signal_pipeline import (
     DEFAULT_SYMBOLS,
     align_data,
     build_timeline,
