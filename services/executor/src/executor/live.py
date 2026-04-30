@@ -45,13 +45,9 @@ from .decision import (
     V10GStrategyParams,
 )
 from .journal import TradeJournal
+from .live_target import execute_target_portfolio
 from .notify import NullNotifier, _Notifier
-from .targeting import (
-    PortfolioTarget,
-    TargetOrder,
-    TargetWeightStrategy,
-    weights_to_orders,
-)
+from .targeting import TargetOrder, TargetWeightStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -587,229 +583,21 @@ class LiveEngine:
 
     # ── Target portfolio execution ───────────────────────────────
 
-    @staticmethod
-    def _normalize_live_symbol(symbol: str) -> str:
-        """Convert research symbols like BTCUSDT to live exchange symbols like BTC."""
-        return symbol[:-4] if symbol.endswith("USDT") else symbol
-
-    def _normalize_target_weights(self, weights: dict[str, float]) -> dict[str, float]:
-        """Normalize target symbols and only allow configured live universe opens."""
-        normalized, _ignored = self._normalize_target_weights_with_ignored(weights)
-        return normalized
-
-    def _normalize_target_weights_with_ignored(
-        self, weights: dict[str, float]
-    ) -> tuple[dict[str, float], dict[str, float]]:
-        """Normalize target symbols and keep rejected targets for diagnostics."""
-        normalized: dict[str, float] = {}
-        ignored: dict[str, float] = {}
-        allowed = set(self._symbols)
-        for raw_symbol, weight in weights.items():
-            live_symbol = self._normalize_live_symbol(raw_symbol)
-            weight = float(weight)
-            if live_symbol not in allowed:
-                logger.warning(
-                    "Ignoring target for %s outside configured universe", raw_symbol
-                )
-                ignored[raw_symbol] = ignored.get(raw_symbol, 0.0) + weight
-                continue
-            normalized[live_symbol] = normalized.get(live_symbol, 0.0) + weight
-        return normalized, ignored
-
-    def _sync_target_state_from_account(self, account: "AccountState") -> None:
-        """Use exchange account positions as source of truth before target orders."""
-        next_positions: dict[str, PositionState] = {}
-        for pos in account.positions:
-            size = float(pos.size)
-            if abs(size) <= 1e-12:
-                continue
-            existing = self._state.positions.get(pos.symbol)
-            next_positions[pos.symbol] = PositionState(
-                symbol=pos.symbol,
-                qty=size,
-                entry_price=float(pos.entry_price),
-                entry_bar=existing.entry_bar if existing else self._state.bar_count,
-                best_price=existing.best_price if existing else float(pos.entry_price),
-                partial_taken=existing.partial_taken if existing else False,
-            )
-        self._state.positions = next_positions
-
-    async def _fetch_target_prices(self, symbols: set[str]) -> dict[str, float]:
-        """Fetch live mark prices for target reconciliation."""
-        prices: dict[str, float] = {}
-        for symbol in sorted(symbols):
-            try:
-                snap = await self._exchange.get_market_snapshot(symbol)
-            except Exception:
-                logger.exception("Failed to fetch target price for %s", symbol)
-                continue
-            price = float(snap.mark_price or snap.mid_price)
-            if price > 0:
-                prices[symbol] = price
-        return prices
-
     async def _execute_target_portfolio(
         self, account: "AccountState", equity: float
     ) -> list[TargetOrder]:
         """Reconcile a target-weight strategy into market-order deltas."""
-        if self._target_strategy is None:
-            return []
-
-        self._sync_target_state_from_account(account)
-        now = datetime.now(tz=UTC)
-        target = self._target_strategy.target(now).capped()
-        target_weights, ignored_weights = self._normalize_target_weights_with_ignored(
-            dict(target.weights)
-        )
-        positions = {pos.symbol: float(pos.size) for pos in account.positions}
-        symbols = set(positions) | set(target_weights)
-        prices = await self._fetch_target_prices(symbols)
-        orders = weights_to_orders(
-            positions,
-            prices,
-            equity,
-            target_weights,
-            min_notional=self._min_order_notional,
-        )
-        self._record_target_diagnostics(
-            now, target, target_weights, orders, ignored_weights=ignored_weights
-        )
-
-        for order in orders:
-            price = prices.get(order.symbol)
-            if price is None:
-                continue
-            await self._execute_target_order(order, price)
-
-        logger.info(
-            "Target profile %s produced %d order(s), gross=%.3f",
-            self._strategy_profile,
-            len(orders),
-            target.gross,
-        )
-        return orders
-
-    def _record_target_diagnostics(
-        self,
-        now: datetime,
-        target: PortfolioTarget,
-        target_weights: dict[str, float],
-        orders: list[TargetOrder],
-        *,
-        ignored_weights: dict[str, float] | None = None,
-    ) -> None:
-        """Persist target portfolio diagnostics for shadow validation."""
-        normalized_gross = sum(abs(weight) for weight in target_weights.values())
-        staleness = (now - target.timestamp).total_seconds()
-        self._journal.record_target(
-            bar=self._state.bar_count + 1,
+        return await execute_target_portfolio(
+            exchange=self._exchange,
+            journal=self._journal,
+            state=self._state,
+            account=account,
+            equity=equity,
+            target_strategy=self._target_strategy,
+            symbols=self._symbols,
             profile=self._strategy_profile,
-            target_ts=target.timestamp.isoformat(),
-            staleness_seconds=staleness,
-            target_gross=target.gross,
-            normalized_gross=normalized_gross,
-            weights=target_weights,
-            orders=[
-                {
-                    "symbol": order.symbol,
-                    "side": order.side,
-                    "qty": round(order.qty, 8),
-                    "current_weight": round(order.current_weight, 8),
-                    "target_weight": round(order.target_weight, 8),
-                    "delta_weight": round(order.delta_weight, 8),
-                    "delta_notional": round(order.delta_notional, 4),
-                    "reduce_only": order.reduce_only,
-                }
-                for order in orders
-            ],
-            ignored_weights=ignored_weights,
-        )
-
-    async def _execute_target_order(self, order: TargetOrder, price: float) -> None:
-        """Execute one target reconciliation order and update local state."""
-        is_buy = order.side == "buy"
-        size = Decimal(str(order.qty))
-        logger.info(
-            "Target order: %s %s qty=%.6f reduce_only=%s current=%.3f target=%.3f",
-            order.side.upper(),
-            order.symbol,
-            order.qty,
-            order.reduce_only,
-            order.current_weight,
-            order.target_weight,
-        )
-
-        fill_price = price
-        if self._dry_run:
-            logger.info(
-                "[DRY RUN] Would target-order %s %s %.6f @ ~%.2f reduce_only=%s",
-                order.side,
-                order.symbol,
-                order.qty,
-                price,
-                order.reduce_only,
-            )
-        else:
-            result = await self._exchange.place_market_order(
-                order.symbol,
-                is_buy,
-                size,
-                reduce_only=order.reduce_only,
-            )
-            if not result.success:
-                logger.error("Failed target order %s: %s", order.symbol, result.message)
-                return
-            if result.avg_price > 0:
-                fill_price = result.avg_price
-
-        self._apply_target_fill(order, fill_price)
-        self._journal.record_trade(
-            bar=self._state.bar_count,
-            kind="target_buy" if is_buy else "target_sell",
-            symbol=order.symbol,
-            qty=order.qty,
-            price=fill_price,
-            reason=f"target:{self._strategy_profile}",
-            side="long" if is_buy else "short",
-        )
-
-    def _apply_target_fill(self, order: TargetOrder, price: float) -> None:
-        """Apply a successfully executed target order to local engine state."""
-        signed_qty = order.qty if order.side == "buy" else -order.qty
-        current = self._state.positions.get(order.symbol)
-        old_qty = current.qty if current is not None else 0.0
-        new_qty = old_qty + signed_qty
-
-        if abs(new_qty) <= 1e-12 or (order.reduce_only and old_qty * new_qty <= 0):
-            self._state.positions.pop(order.symbol, None)
-            return
-
-        if current is None or old_qty * new_qty <= 0:
-            entry_price = price
-            entry_bar = self._state.bar_count
-            best_price = price
-            partial_taken = False
-        elif abs(new_qty) > abs(old_qty):
-            added_qty = abs(signed_qty)
-            entry_price = (
-                abs(old_qty) * current.entry_price + added_qty * price
-            ) / abs(new_qty)
-            entry_bar = current.entry_bar
-            best_price = current.best_price
-            partial_taken = current.partial_taken
-        else:
-            entry_price = current.entry_price
-            entry_bar = current.entry_bar
-            best_price = current.best_price
-            partial_taken = current.partial_taken
-
-        self._state.positions[order.symbol] = PositionState(
-            symbol=order.symbol,
-            qty=new_qty,
-            entry_price=entry_price,
-            entry_bar=entry_bar,
-            best_price=best_price,
-            partial_taken=partial_taken,
+            dry_run=self._dry_run,
+            min_order_notional=self._min_order_notional,
         )
 
     # ── Data fetching ────────────────────────────────────────────
