@@ -93,3 +93,33 @@ def test_weights_to_orders_reduce_first_and_skip_small_orders() -> None:
     assert orders[0].side == "buy"
     assert orders[1].reduce_only is False
     assert orders[1].side == "buy"
+
+
+def test_weights_to_orders_splits_short_to_long_sign_flip() -> None:
+    orders = weights_to_orders(
+        positions={"ETH": -2.0},
+        prices={"ETH": 2_500.0},
+        equity=10_000.0,
+        target_weights={"ETH": 0.3},
+        min_notional=20.0,
+    )
+
+    assert len(orders) == 2
+    assert orders[0].reduce_only is True
+    assert orders[0].side == "buy"
+    assert orders[0].delta_weight == pytest.approx(0.5)
+    assert orders[1].reduce_only is False
+    assert orders[1].side == "buy"
+    assert orders[1].delta_weight == pytest.approx(0.3)
+
+
+def test_weights_to_orders_skips_symbols_without_valid_price() -> None:
+    orders = weights_to_orders(
+        positions={"BTC": 0.1, "ETH": 1.0},
+        prices={"BTC": 0.0},
+        equity=10_000.0,
+        target_weights={"BTC": 0.0, "ETH": 0.5, "SOL": 0.1},
+        min_notional=20.0,
+    )
+
+    assert orders == []
