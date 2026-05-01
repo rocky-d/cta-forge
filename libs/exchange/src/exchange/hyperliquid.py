@@ -114,7 +114,7 @@ class HyperliquidAdapter:
         self, func: Any, *args: Any, timeout: float = SDK_TIMEOUT
     ) -> Any:
         """Run sync SDK call in executor with timeout."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         async with asyncio.timeout(timeout):
             return await loop.run_in_executor(None, lambda: func(*args))
 

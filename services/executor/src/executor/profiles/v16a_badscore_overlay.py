@@ -128,7 +128,7 @@ class V16aOnlineTargetStrategy:
         return self._target_set
 
     def refresh(self, *, force: bool = False) -> V16aTargetSet:
-        """Refresh cached v16a targets from parquet data when stale."""
+        """Refresh cached v16a targets from the live parquet cache when stale."""
         now = time.monotonic()
         if (
             not force
@@ -136,7 +136,7 @@ class V16aOnlineTargetStrategy:
             and now - self._loaded_at < self._refresh_seconds
         ):
             return self._target_set
-        self._target_set = build_v16a_target_set(self._data_dir)
+        self._target_set = build_v16a_target_set(self._data_dir, backfill=False)
         self._loaded_at = now
         return self._target_set
 
@@ -209,21 +209,18 @@ def overlay_params() -> V10GStrategyParams:
     )
 
 
-def load_bars(tf: str, min_bars: int = 500) -> dict[str, pl.DataFrame]:
-    """Load historical bars, backfilling the parquet cache when needed.
+def load_bars(
+    tf: str, min_bars: int = 500, *, backfill: bool = True
+) -> dict[str, pl.DataFrame]:
+    """Load historical bars from parquet, optionally backfilling missing cache.
 
-    This mirrors the v10g backtest path: local cache is preferred, but a fresh
-    clone can still reproduce the checkpoint by downloading missing Binance
-    futures klines into ``DATA_DIR``.
-
-    Live execution calls this from inside an already-running asyncio event loop
-    after ``LiveEngine`` has refreshed the target cache asynchronously. In that
-    context we must not call ``asyncio.run()``; instead, read the prepared local
-    parquet cache synchronously.
+    Research/backtest entry points keep ``backfill=True`` so a fresh clone can
+    reproduce the checkpoint by downloading missing Binance futures klines.
+    Live execution sets ``backfill=False`` because ``LiveEngine`` has already
+    refreshed the required cache asynchronously before synchronous target
+    construction begins; target generation must not start its own event loop.
     """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
+    if backfill:
         return asyncio.run(
             fetch_cached_bars(
                 str(DATA_DIR),
@@ -478,9 +475,9 @@ def run_engine_positions(data, sigs, timeline, warmup: int, params: V10GStrategy
     return syms, weights, curve, trades
 
 
-def build_v10g_sleeve():
+def build_v10g_sleeve(*, backfill: bool = True):
     params = v10g_params()
-    bars = load_bars("6h")
+    bars = load_bars("6h", backfill=backfill)
     data = precompute(bars, params)
     timeline, ts_to_idx = build_timeline(bars)
     align_data(bars, data, ts_to_idx)
@@ -492,9 +489,9 @@ def build_v10g_sleeve():
     return (*run_engine_positions(data, shifted, timeline, 200, params), timeline)
 
 
-def build_overlay_sleeve():
+def build_overlay_sleeve(*, backfill: bool = True):
     params = overlay_params()
-    bars = load_bars("1h", min_bars=5_000)
+    bars = load_bars("1h", min_bars=5_000, backfill=backfill)
     data = precompute(bars, params)
     timeline, ts_to_idx = build_timeline(bars)
     align_data(bars, data, ts_to_idx)
@@ -664,13 +661,18 @@ def build_v16a_target_set(
     v10g_allocation: float = 0.5,
     overlay_allocation: float = 0.5,
     gross_cap: float = 1.0,
+    backfill: bool = True,
 ) -> V16aTargetSet:
     """Build the full historical v16a target-weight matrix from local data."""
     global DATA_DIR
     DATA_DIR = Path(data_dir)
 
-    v_syms, v_weights, v_curve, _v_trades, v_timeline = build_v10g_sleeve()
-    o_syms, o_weights, o_curve, _o_trades, o_timeline = build_overlay_sleeve()
+    v_syms, v_weights, v_curve, _v_trades, v_timeline = build_v10g_sleeve(
+        backfill=backfill
+    )
+    o_syms, o_weights, o_curve, _o_trades, o_timeline = build_overlay_sleeve(
+        backfill=backfill
+    )
 
     start = max(v_curve[0][0], o_curve[0][0])
     end = latest_forward_filled_hour(

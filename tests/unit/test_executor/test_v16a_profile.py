@@ -57,13 +57,9 @@ def test_load_bars_backfills_cache_with_executor_fetch_path(
     assert calls == [(str(tmp_path), v16a_module.DEFAULT_SYMBOLS, "1h", 5_000)]
 
 
-async def test_load_bars_reads_local_cache_inside_running_loop(
-    monkeypatch, tmp_path
-) -> None:
+def test_load_bars_can_read_local_cache_without_backfill(monkeypatch, tmp_path) -> None:
     async def fail_fetch_bars(*args, **kwargs):
-        raise AssertionError(
-            "load_bars must not call asyncio.run/fetch inside live loop"
-        )
+        raise AssertionError("live cache-only load must not fetch/backfill")
 
     monkeypatch.setattr(v16a_module, "DATA_DIR", tmp_path)
     monkeypatch.setattr(v16a_module, "DEFAULT_SYMBOLS", ["BTCUSDT", "ETHUSDT"])
@@ -88,7 +84,7 @@ async def test_load_bars_reads_local_cache_inside_running_loop(
         pl.DataFrame({"open_time": [datetime(2024, 1, 1, tzinfo=UTC)]}),
     )
 
-    bars = v16a_module.load_bars("1h", min_bars=2)
+    bars = v16a_module.load_bars("1h", min_bars=2, backfill=False)
 
     assert list(bars) == ["BTCUSDT"]
     assert len(bars["BTCUSDT"]) == 2
@@ -188,10 +184,10 @@ def test_v16a_online_strategy_returns_latest_non_stale_target(
         datetime(2024, 1, 1, hour=1, tzinfo=UTC),
     ]
     target_set = _target_set(timeline, np.array([[0.1, 0.0], [0.2, -0.1]]))
-    calls: list[str] = []
+    calls: list[tuple[str, bool]] = []
 
-    def fake_build(data_dir):
-        calls.append(str(data_dir))
+    def fake_build(data_dir, *, backfill=True):
+        calls.append((str(data_dir), backfill))
         return target_set
 
     monkeypatch.setattr(v16a_module, "build_v16a_target_set", fake_build)
@@ -199,21 +195,23 @@ def test_v16a_online_strategy_returns_latest_non_stale_target(
     strategy = V16aOnlineTargetStrategy(tmp_path, refresh_seconds=3600.0)
     target = strategy.target(datetime(2024, 1, 1, hour=1, minute=30, tzinfo=UTC))
 
-    assert calls == [str(tmp_path)]
+    assert calls == [(str(tmp_path), False)]
     assert target.timestamp == timeline[1]
     assert target.weights["BTCUSDT"] == pytest.approx(0.2)
     assert target.weights["ETHUSDT"] == pytest.approx(-0.1)
 
     # Cached target set should be reused inside refresh_seconds.
     strategy.target(datetime(2024, 1, 1, hour=1, minute=45, tzinfo=UTC))
-    assert calls == [str(tmp_path)]
+    assert calls == [(str(tmp_path), False)]
 
 
 def test_v16a_online_strategy_rejects_stale_target(monkeypatch, tmp_path) -> None:
     timeline = [datetime(2024, 1, 1, hour=0, tzinfo=UTC)]
     target_set = _target_set(timeline, np.array([[0.1, 0.0]]))
     monkeypatch.setattr(
-        v16a_module, "build_v16a_target_set", lambda data_dir: target_set
+        v16a_module,
+        "build_v16a_target_set",
+        lambda data_dir, *, backfill=True: target_set,
     )
 
     strategy = V16aOnlineTargetStrategy(tmp_path, max_staleness=timedelta(hours=1))
