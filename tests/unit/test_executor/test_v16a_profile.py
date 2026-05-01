@@ -57,6 +57,43 @@ def test_load_bars_backfills_cache_with_executor_fetch_path(
     assert calls == [(str(tmp_path), v16a_module.DEFAULT_SYMBOLS, "1h", 5_000)]
 
 
+async def test_load_bars_reads_local_cache_inside_running_loop(
+    monkeypatch, tmp_path
+) -> None:
+    async def fail_fetch_bars(*args, **kwargs):
+        raise AssertionError(
+            "load_bars must not call asyncio.run/fetch inside live loop"
+        )
+
+    monkeypatch.setattr(v16a_module, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(v16a_module, "DEFAULT_SYMBOLS", ["BTCUSDT", "ETHUSDT"])
+    monkeypatch.setattr(v16a_module, "fetch_cached_bars", fail_fetch_bars)
+
+    store = v16a_module.ParquetStore(tmp_path)
+    store.write(
+        "BTCUSDT",
+        "1h",
+        pl.DataFrame(
+            {
+                "open_time": [
+                    datetime(2024, 1, 1, tzinfo=UTC),
+                    datetime(2024, 1, 1, hour=1, tzinfo=UTC),
+                ]
+            }
+        ),
+    )
+    store.write(
+        "ETHUSDT",
+        "1h",
+        pl.DataFrame({"open_time": [datetime(2024, 1, 1, tzinfo=UTC)]}),
+    )
+
+    bars = v16a_module.load_bars("1h", min_bars=2)
+
+    assert list(bars) == ["BTCUSDT"]
+    assert len(bars["BTCUSDT"]) == 2
+
+
 def test_v16a_historical_strategy_returns_capped_portfolio_target() -> None:
     ts = datetime(2024, 1, 1, tzinfo=UTC)
     target_set = V16aTargetSet(

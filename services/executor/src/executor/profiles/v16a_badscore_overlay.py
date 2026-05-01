@@ -215,15 +215,31 @@ def load_bars(tf: str, min_bars: int = 500) -> dict[str, pl.DataFrame]:
     This mirrors the v10g backtest path: local cache is preferred, but a fresh
     clone can still reproduce the checkpoint by downloading missing Binance
     futures klines into ``DATA_DIR``.
+
+    Live execution calls this from inside an already-running asyncio event loop
+    after ``LiveEngine`` has refreshed the target cache asynchronously. In that
+    context we must not call ``asyncio.run()``; instead, read the prepared local
+    parquet cache synchronously.
     """
-    return asyncio.run(
-        fetch_cached_bars(
-            str(DATA_DIR),
-            symbols=DEFAULT_SYMBOLS,
-            timeframe=tf,
-            min_bars=min_bars,
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(
+            fetch_cached_bars(
+                str(DATA_DIR),
+                symbols=DEFAULT_SYMBOLS,
+                timeframe=tf,
+                min_bars=min_bars,
+            )
         )
-    )
+
+    store = ParquetStore(DATA_DIR)
+    bars: dict[str, pl.DataFrame] = {}
+    for symbol in DEFAULT_SYMBOLS:
+        df = store.read(symbol, tf)
+        if not df.is_empty() and len(df) >= min_bars:
+            bars[symbol] = df
+    return bars
 
 
 def rolling_mean_prev(x: np.ndarray, window: int) -> np.ndarray:
