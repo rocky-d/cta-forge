@@ -99,8 +99,8 @@ positions, adjusts partial qty, updates best_price). Callers must snapshot
 positions before tick() if they need pre-tick state for settlement.
 
 Ops:
-- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID, LARK_WEBHOOK_URL, DATA_DIR, JOURNAL_DIR, STRATEGY_PROFILE, MIN_ORDER_NOTIONAL, V16A_MAX_STALENESS_HOURS, ALLOW_V16A_TESTNET_LIVE
-- `STRATEGY_PROFILE` code default is `v10g-engine-6h`. `v16a-badscore-overlay` is shadow-safe by default; non-dry-run v16a requires both `HL_NETWORK=testnet` and explicit `ALLOW_V16A_TESTNET_LIVE=true`. Mainnet v16a remains blocked. Current production testnet compose intentionally sets those non-secret v16a flags for live-readiness observation.
+- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID, LARK_WEBHOOK_URL, DATA_DIR, JOURNAL_DIR, STRATEGY_PROFILE, MIN_ORDER_NOTIONAL, MAX_ORDER_NOTIONAL, MIN_EQUITY, MIN_AVAILABLE_BALANCE, MAX_EQUITY, TARGET_GROSS_CAP, HL_LEVERAGE, LIVE_SYMBOLS, V16A_MAX_STALENESS_HOURS, ALLOW_V16A_TESTNET_LIVE, ALLOW_MAINNET_PILOT_LIVE
+- `STRATEGY_PROFILE` code default is `v10g-engine-6h`. `v16a-badscore-overlay` is shadow-safe by default; non-dry-run v16a requires both `HL_NETWORK=testnet` and explicit `ALLOW_V16A_TESTNET_LIVE=true`. Mainnet uses the separate `v16a-mainnet-pilot` profile: start with `DRY_RUN=true`; real mainnet orders additionally require `ALLOW_MAINNET_PILOT_LIVE=true` plus the low pilot caps documented in `MAINNET_PILOT_RUNBOOK_2026-05-04.md`.
 - One-shot v16a shadow command: `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick`. Run it locally, or as an explicit one-off executor command only after review; do not use the deploy workflow for experiments. The command requires `HL_PRIVATE_KEY` and `HL_ACCOUNT_ADDRESS` in the environment so it can read account/position state, but it rejects `DRY_RUN=false`.
 - v16a target freshness: the latest 6h v10g core bar is forward-filled across the following live 6h window while the 1h overlay can update hourly. Do not forward-fill past the next 6h bar close unless a newer core target exists.
 - v16a live target construction is cache-only: `LiveEngine` refreshes required parquet data asynchronously before target generation, and `V16aOnlineTargetStrategy` must not fetch/backfill or start an event loop inside synchronous target calculation.
@@ -108,7 +108,7 @@ Ops:
 - State persistence: `engine-state.json` for live mode and `engine-state-shadow.json` for shadow mode (auto-generated, gitignored)
 - Journal outputs: `equity.jsonl`, `trades.jsonl`, `signals.jsonl`, and target-mode `targets.jsonl` diagnostics. Target diagnostics include staleness, execution coverage, and ignored gross so testnet/mainnet universe gaps stay visible.
 - Data cache: parquet files in DATA_DIR (live + backtest share via ParquetStore)
-- Deployment: GitHub Actions workflow_dispatch -> GHCR -> SSH EC2 (Tokyo t3.small). Prefer this CI/CD path for v16a promotion; avoid ad hoc EC2 changes except read-only checks or urgent diagnostics. The production compose file carries only non-secret v16a testnet-live promotion flags; secrets and notification endpoints remain in the EC2 `.env`.
+- Deployment: GitHub Actions workflow_dispatch -> GHCR -> SSH EC2 (Tokyo t3.small). Prefer this CI/CD path for v16a promotion; avoid ad hoc EC2 changes except read-only checks or urgent diagnostics. Deploy target `testnet-live` uses only `docker-compose.prod.yml`; target `mainnet-pilot-dry-run` overlays `docker-compose.mainnet-pilot.yml`. Secrets and notification endpoints remain in the EC2 `.env`.
 
 ## CI/CD
 

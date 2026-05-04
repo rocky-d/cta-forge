@@ -24,7 +24,7 @@ Initial risk defaults:
 
 - `TARGET_GROSS_CAP=0.20`
 - `MIN_EQUITY=50` (pilot allows slightly below 100 USDC after transfer fees)
-- `MIN_AVAILABLE_BALANCE=50` (requires funds to be usable as perp collateral, not only spot balance)
+- `MIN_AVAILABLE_BALANCE=50` (requires Hyperliquid account funds to be available for trading; unified spot USDC can count before the first perp trade)
 - `MAX_EQUITY=200`
 - `MAX_ORDER_NOTIONAL=25`
 - `HL_LEVERAGE=5` with low real gross exposure
@@ -53,7 +53,9 @@ The command performs no exchange writes. It checks mainnet account state, open o
 
 Prefer GitHub Actions CI/CD. Avoid ad hoc EC2 mutation except read-only checks and emergency stop/diagnostics.
 
-For dry-run pilot deployment, compose overlay:
+For dry-run pilot deployment, prefer the Deploy workflow with `target=mainnet-pilot-dry-run`. It builds the executor image, syncs `docker-compose.prod.yml` plus `docker-compose.mainnet-pilot.yml`, and verifies the resulting container env includes `HL_NETWORK=mainnet`, `DRY_RUN=true`, and `STRATEGY_PROFILE=v16a-mainnet-pilot`.
+
+Equivalent manual compose command, for emergency/operator use only:
 
 ```bash
 docker compose -f docker-compose.prod.yml -f docker-compose.mainnet-pilot.yml up -d
