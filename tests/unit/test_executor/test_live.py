@@ -19,11 +19,15 @@ class FakeExchange:
     def __init__(
         self,
         equity: Decimal = Decimal("2000"),
+        available_balance: Decimal | None = None,
         positions: list[Position] | None = None,
         open_orders: list[dict] | None = None,
         market_price: Decimal = Decimal("73000"),
     ) -> None:
         self._equity = equity
+        self._available_balance = (
+            equity if available_balance is None else available_balance
+        )
         self._positions = positions or []
         self._open_orders = open_orders or []
         self._market_price = market_price
@@ -34,7 +38,7 @@ class FakeExchange:
     async def get_account_state(self) -> AccountState:
         return AccountState(
             equity=self._equity,
-            available_balance=self._equity,
+            available_balance=self._available_balance,
             total_margin_used=Decimal("0"),
             positions=self._positions,
         )
@@ -115,6 +119,41 @@ async def test_preflight_low_equity() -> None:
 
     exchange = FakeExchange(equity=Decimal("50"))
     engine = LiveEngine(exchange, dry_run=True)
+    result = await engine._preflight()
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_preflight_allows_pilot_min_equity_override() -> None:
+    """Small pilot accounts can lower the minimum equity gate explicitly."""
+
+    exchange = FakeExchange(equity=Decimal("99.7"))
+    engine = LiveEngine(exchange, dry_run=True, min_equity=50.0)
+    result = await engine._preflight()
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_preflight_rejects_equity_above_cap() -> None:
+    """Pilot accounts fail closed when they exceed the configured equity cap."""
+
+    exchange = FakeExchange(equity=Decimal("250"))
+    engine = LiveEngine(exchange, dry_run=True, max_equity=200.0)
+    result = await engine._preflight()
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_preflight_rejects_low_available_balance() -> None:
+    """Pilot accounts require usable perp collateral, not only total equity."""
+
+    exchange = FakeExchange(equity=Decimal("99.7"), available_balance=Decimal("0"))
+    engine = LiveEngine(
+        exchange,
+        dry_run=True,
+        min_equity=50.0,
+        min_available_balance=50.0,
+    )
     result = await engine._preflight()
     assert result is False
 

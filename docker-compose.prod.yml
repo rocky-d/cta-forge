@@ -1,5 +1,6 @@
 # Production compose: live trading engine only, pulls from GHCR.
 # Current rollout: guarded v16a Hyperliquid testnet-live observation.
+# For mainnet pilot, switch only after read-only preflight + dry-run review.
 # Usage: docker compose -f docker-compose.prod.yml up -d
 
 services:

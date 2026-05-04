@@ -196,11 +196,13 @@ class HyperliquidAdapter:
                 )
             )
 
+        raw_usd = Decimal(str(margin.get("totalRawUsd", "0")))
         return AccountState(
             equity=equity,
-            available_balance=Decimal(str(margin.get("totalRawUsd", "0")))
-            if equity > 0
-            else equity,
+            # In unified/classic account mode, idle spot USDC is available as
+            # trading equity even when perp marginSummary is still zero before
+            # the first perp trade. Treat it as available pilot collateral.
+            available_balance=raw_usd + spot_usdc if equity > 0 else equity,
             total_margin_used=Decimal(str(margin.get("totalMarginUsed", "0"))),
             positions=positions,
         )

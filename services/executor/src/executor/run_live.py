@@ -11,7 +11,10 @@ from datetime import timedelta
 from exchange.hyperliquid import HyperliquidAdapter
 
 from .live import LiveEngine, V10G_PROFILE_SLUG, V16A_PROFILE_SLUG
-from .profiles.v16a_badscore_overlay import V16aOnlineTargetStrategy
+from .profiles.v16a_badscore_overlay import (
+    V16A_MAINNET_PILOT_PROFILE,
+    V16aOnlineTargetStrategy,
+)
 from .notify import (
     LarkNotifier,
     MultiNotifier,
@@ -27,10 +30,23 @@ def _is_truthy(value: str | None) -> bool:
 
 
 def _validate_v16a_live_mode(
-    *, dry_run: bool, testnet: bool, allow_testnet_live: bool
+    *,
+    dry_run: bool,
+    testnet: bool,
+    strategy_profile: str = V16A_PROFILE_SLUG,
+    allow_testnet_live: bool = False,
+    allow_mainnet_pilot_live: bool = False,
 ) -> None:
     """Validate v16a live-mode guardrails before constructing the engine."""
     if dry_run:
+        return
+    if strategy_profile == V16A_MAINNET_PILOT_PROFILE.slug:
+        if testnet:
+            msg = f"{V16A_MAINNET_PILOT_PROFILE.slug} requires HL_NETWORK=mainnet"
+            raise ValueError(msg)
+        if not allow_mainnet_pilot_live:
+            msg = f"{V16A_MAINNET_PILOT_PROFILE.slug} requires ALLOW_MAINNET_PILOT_LIVE=true"
+            raise ValueError(msg)
         return
     if not testnet:
         msg = f"{V16A_PROFILE_SLUG} non-dry-run is only allowed on HL_NETWORK=testnet"
@@ -38,6 +54,22 @@ def _validate_v16a_live_mode(
     if not allow_testnet_live:
         msg = f"{V16A_PROFILE_SLUG} testnet live requires ALLOW_V16A_TESTNET_LIVE=true"
         raise ValueError(msg)
+
+
+def _parse_symbols(value: str | None) -> list[str] | None:
+    """Parse comma-separated live symbols from env."""
+    if not value:
+        return None
+    symbols = [symbol.strip().upper() for symbol in value.split(",")]
+    return [symbol for symbol in symbols if symbol]
+
+
+def _parse_optional_float(value: str | None) -> float | None:
+    """Parse optional positive float env values."""
+    if value is None or value == "":
+        return None
+    parsed = float(value)
+    return parsed if parsed > 0 else None
 
 
 def _suppress_secret_bearing_http_logs() -> None:
@@ -90,16 +122,28 @@ def main() -> None:
     clean_start = _is_truthy(os.environ.get("CLEAN_START", "false"))
     strategy_profile = os.environ.get("STRATEGY_PROFILE", V10G_PROFILE_SLUG)
     min_order_notional = float(os.environ.get("MIN_ORDER_NOTIONAL", "10"))
+    max_order_notional = _parse_optional_float(os.environ.get("MAX_ORDER_NOTIONAL"))
+    min_equity = _parse_optional_float(os.environ.get("MIN_EQUITY"))
+    min_available_balance = _parse_optional_float(
+        os.environ.get("MIN_AVAILABLE_BALANCE")
+    )
+    max_equity = _parse_optional_float(os.environ.get("MAX_EQUITY"))
+    target_gross_cap = float(os.environ.get("TARGET_GROSS_CAP", "1"))
+    leverage = int(os.environ.get("HL_LEVERAGE", str(LiveEngine.DEFAULT_LEVERAGE)))
+    symbols = _parse_symbols(os.environ.get("LIVE_SYMBOLS"))
     v16a_max_staleness_hours = float(os.environ.get("V16A_MAX_STALENESS_HOURS", "8"))
     allow_v16a_testnet_live = _is_truthy(os.environ.get("ALLOW_V16A_TESTNET_LIVE"))
+    allow_mainnet_pilot_live = _is_truthy(os.environ.get("ALLOW_MAINNET_PILOT_LIVE"))
 
     target_strategy = None
-    if strategy_profile == V16A_PROFILE_SLUG:
+    if strategy_profile in {V16A_PROFILE_SLUG, V16A_MAINNET_PILOT_PROFILE.slug}:
         try:
             _validate_v16a_live_mode(
                 dry_run=dry_run,
                 testnet=testnet,
+                strategy_profile=strategy_profile,
                 allow_testnet_live=allow_v16a_testnet_live,
+                allow_mainnet_pilot_live=allow_mainnet_pilot_live,
             )
         except ValueError as exc:
             logging.error("%s", exc)
@@ -107,6 +151,10 @@ def main() -> None:
         target_strategy = V16aOnlineTargetStrategy(
             data_dir,
             max_staleness=timedelta(hours=v16a_max_staleness_hours),
+            gross_cap=target_gross_cap,
+            profile=V16A_MAINNET_PILOT_PROFILE
+            if strategy_profile == V16A_MAINNET_PILOT_PROFILE.slug
+            else V16aOnlineTargetStrategy.profile,
         )
     elif strategy_profile != V10G_PROFILE_SLUG:
         logging.error("Unknown STRATEGY_PROFILE=%s", strategy_profile)
@@ -117,6 +165,7 @@ def main() -> None:
     adapter = HyperliquidAdapter(pk, addr, testnet=testnet)
     engine = LiveEngine(
         adapter,
+        symbols=symbols,
         dry_run=dry_run,
         state_file=state_file,
         journal_dir=journal_dir,
@@ -126,6 +175,11 @@ def main() -> None:
         strategy_profile=strategy_profile,
         target_strategy=target_strategy,
         min_order_notional=min_order_notional,
+        max_order_notional=max_order_notional,
+        min_equity=min_equity,
+        min_available_balance=min_available_balance,
+        max_equity=max_equity,
+        leverage=leverage,
     )
 
     async def run() -> None:

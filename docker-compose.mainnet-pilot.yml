@@ -1,0 +1,23 @@
+# Mainnet pilot compose overlay. Use only after read-only preflight + dry-run review.
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.mainnet-pilot.yml up -d
+
+services:
+  executor-live:
+    environment:
+      HL_NETWORK: mainnet
+      DRY_RUN: "true"
+      STRATEGY_PROFILE: v16a-mainnet-pilot
+      ALLOW_MAINNET_PILOT_LIVE: "false"
+      TARGET_GROSS_CAP: "0.20"
+      MIN_EQUITY: "50"
+      MIN_AVAILABLE_BALANCE: "50"
+      MAX_EQUITY: "200"
+      MAX_ORDER_NOTIONAL: "25"
+      HL_LEVERAGE: "5"
+      LIVE_SYMBOLS: BTC,ETH,SOL,BNB,DOGE,AVAX,ADA,SUI
+      STATE_FILE: /app/state/engine-state-mainnet-pilot.json
+      JOURNAL_DIR: /app/journal/mainnet-pilot
+    volumes:
+      - ./state:/app/state
+      - ./journal:/app/journal

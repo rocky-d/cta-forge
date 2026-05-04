@@ -135,6 +135,7 @@ def weights_to_orders(
     target_weights: Mapping[str, float],
     *,
     min_notional: float = 10.0,
+    max_notional: float | None = None,
 ) -> list[TargetOrder]:
     """Create delta orders to move current positions toward target weights.
 
@@ -159,6 +160,10 @@ def weights_to_orders(
         reduce_only: bool,
     ) -> None:
         delta_notional = delta * equity
+        if max_notional is not None and max_notional > 0:
+            cap = float(max_notional)
+            delta_notional = max(-cap, min(cap, delta_notional))
+            delta = delta_notional / equity
         if abs(delta_notional) < min_notional:
             return
         side: Literal["buy", "sell"] = "buy" if delta_notional > 0 else "sell"
@@ -191,6 +196,10 @@ def weights_to_orders(
                 -current,
                 reduce_only=True,
             )
+            current_notional = abs(current * equity)
+            max_cap = float(max_notional or 0.0)
+            if max_cap > 0 and current_notional > max_cap:
+                continue
             append_order(
                 symbol,
                 price,

@@ -162,6 +162,11 @@ class LiveEngine:
         strategy_profile: str = V10G_PROFILE_SLUG,
         target_strategy: TargetWeightStrategy | None = None,
         min_order_notional: float = 10.0,
+        max_order_notional: float | None = None,
+        min_equity: float | None = None,
+        min_available_balance: float | None = None,
+        max_equity: float | None = None,
+        leverage: int | None = None,
     ) -> None:
         self._exchange = exchange
         # Auto-filter symbols unavailable on testnet
@@ -186,6 +191,11 @@ class LiveEngine:
             else strategy_profile
         )
         self._min_order_notional = min_order_notional
+        self._max_order_notional = max_order_notional
+        self._min_equity = min_equity or self.MIN_EQUITY
+        self._min_available_balance = min_available_balance
+        self._max_equity = max_equity
+        self._leverage = leverage or self.DEFAULT_LEVERAGE
         if target_strategy is None and self._strategy_profile != V10G_PROFILE_SLUG:
             msg = (
                 f"Strategy profile {self._strategy_profile!r} has no live target "
@@ -337,11 +347,29 @@ class LiveEngine:
 
         # 2. Equity check
         equity = float(account.equity)
-        if equity < self.MIN_EQUITY:
+        if equity < self._min_equity:
             logger.error(
                 "[✗] Insufficient equity: $%.2f < $%.2f minimum",
                 equity,
-                self.MIN_EQUITY,
+                self._min_equity,
+            )
+            return False
+        if self._max_equity is not None and equity > self._max_equity:
+            logger.error(
+                "[✗] Equity cap exceeded: $%.2f > $%.2f maximum",
+                equity,
+                self._max_equity,
+            )
+            return False
+        available_balance = float(account.available_balance)
+        if (
+            self._min_available_balance is not None
+            and available_balance < self._min_available_balance
+        ):
+            logger.error(
+                "[✗] Insufficient available balance: $%.2f < $%.2f minimum",
+                available_balance,
+                self._min_available_balance,
             )
             return False
         logger.info("[✓] Equity: $%.2f", equity)
@@ -422,19 +450,19 @@ class LiveEngine:
             for symbol in self._symbols:
                 try:
                     await self._exchange.set_leverage(
-                        symbol, self.DEFAULT_LEVERAGE, cross=True
+                        symbol, self._leverage, cross=True
                     )
                 except Exception:
                     logger.warning("[!] Failed to set leverage for %s", symbol)
             logger.info(
                 "[✓] Leverage set to %dx cross for %d symbols",
-                self.DEFAULT_LEVERAGE,
+                self._leverage,
                 len(self._symbols),
             )
         else:
             logger.info(
                 "[DRY RUN] Would set %dx cross leverage for %d symbols",
-                self.DEFAULT_LEVERAGE,
+                self._leverage,
                 len(self._symbols),
             )
 
@@ -600,6 +628,7 @@ class LiveEngine:
             profile=self._strategy_profile,
             dry_run=self._dry_run,
             min_order_notional=self._min_order_notional,
+            max_order_notional=self._max_order_notional,
         )
 
     # ── Data fetching ────────────────────────────────────────────

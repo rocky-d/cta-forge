@@ -10,6 +10,7 @@ import pytest
 
 import executor.profiles.v16a_badscore_overlay as v16a_module
 from executor.profiles.v16a_badscore_overlay import (
+    V16A_MAINNET_PILOT_PROFILE,
     V16A_PROFILE,
     V16aHistoricalStrategy,
     V16aOnlineTargetStrategy,
@@ -31,6 +32,11 @@ def test_v16a_online_strategy_declares_live_cache_warmup_needs() -> None:
         ("1h", 1, 5000),
         ("6h", 6, 500),
     )
+
+
+def test_v16a_mainnet_pilot_profile_metadata_is_distinct() -> None:
+    assert V16A_MAINNET_PILOT_PROFILE.slug == "v16a-mainnet-pilot"
+    assert V16A_MAINNET_PILOT_PROFILE.timeframe_hours == 1
 
 
 def test_top_n_signals_rejects_empty_signal_set() -> None:
@@ -192,13 +198,20 @@ def test_v16a_online_strategy_returns_latest_non_stale_target(
 
     monkeypatch.setattr(v16a_module, "build_v16a_target_set", fake_build)
 
-    strategy = V16aOnlineTargetStrategy(tmp_path, refresh_seconds=3600.0)
+    strategy = V16aOnlineTargetStrategy(
+        tmp_path,
+        refresh_seconds=3600.0,
+        gross_cap=0.2,
+        profile=V16A_MAINNET_PILOT_PROFILE,
+    )
     target = strategy.target(datetime(2024, 1, 1, hour=1, minute=30, tzinfo=UTC))
 
     assert calls == [(str(tmp_path), False)]
+    assert strategy.profile == V16A_MAINNET_PILOT_PROFILE
     assert target.timestamp == timeline[1]
-    assert target.weights["BTCUSDT"] == pytest.approx(0.2)
-    assert target.weights["ETHUSDT"] == pytest.approx(-0.1)
+    assert target.gross == pytest.approx(0.2)
+    assert target.weights["BTCUSDT"] == pytest.approx(0.2 / 0.3 * 0.2)
+    assert target.weights["ETHUSDT"] == pytest.approx(-0.1 / 0.3 * 0.2)
 
     # Cached target set should be reused inside refresh_seconds.
     strategy.target(datetime(2024, 1, 1, hour=1, minute=45, tzinfo=UTC))

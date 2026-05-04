@@ -238,6 +238,7 @@ async def execute_target_portfolio(
     profile: str,
     dry_run: bool,
     min_order_notional: float,
+    max_order_notional: float | None = None,
 ) -> list[TargetOrder]:
     """Reconcile a target-weight strategy into market-order deltas."""
     if target_strategy is None:
@@ -258,6 +259,7 @@ async def execute_target_portfolio(
         equity,
         target_weights,
         min_notional=min_order_notional,
+        max_notional=max_order_notional,
     )
     record_target_diagnostics(
         journal,

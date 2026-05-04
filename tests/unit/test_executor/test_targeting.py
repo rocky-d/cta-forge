@@ -123,3 +123,35 @@ def test_weights_to_orders_skips_symbols_without_valid_price() -> None:
     )
 
     assert orders == []
+
+
+def test_weights_to_orders_caps_single_order_notional() -> None:
+    orders = weights_to_orders(
+        positions={},
+        prices={"BTC": 50_000.0},
+        equity=10_000.0,
+        target_weights={"BTC": 0.5},
+        min_notional=20.0,
+        max_notional=100.0,
+    )
+
+    assert len(orders) == 1
+    assert orders[0].delta_notional == pytest.approx(100.0)
+    assert orders[0].delta_weight == pytest.approx(0.01)
+    assert orders[0].qty == pytest.approx(0.002)
+
+
+def test_weights_to_orders_does_not_open_flip_before_capped_reduce_completes() -> None:
+    orders = weights_to_orders(
+        positions={"BTC": 0.1},
+        prices={"BTC": 50_000.0},
+        equity=10_000.0,
+        target_weights={"BTC": -0.2},
+        min_notional=20.0,
+        max_notional=100.0,
+    )
+
+    assert len(orders) == 1
+    assert orders[0].reduce_only is True
+    assert orders[0].side == "sell"
+    assert orders[0].delta_notional == pytest.approx(-100.0)

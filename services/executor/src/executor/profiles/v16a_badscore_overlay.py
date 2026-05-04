@@ -51,6 +51,16 @@ V16A_PROFILE = StrategyProfile(
     timeframe_hours=1,
 )
 
+V16A_MAINNET_PILOT_PROFILE = StrategyProfile(
+    slug="v16a-mainnet-pilot",
+    name="v16a Mainnet Pilot",
+    description=(
+        "Mainnet-only pilot wrapper for v16a with explicit live guardrails, "
+        "reduced gross cap, and optional reduced symbol universe."
+    ),
+    timeframe_hours=1,
+)
+
 
 @dataclass(frozen=True)
 class V16aTargetSet:
@@ -115,10 +125,14 @@ class V16aOnlineTargetStrategy:
         *,
         refresh_seconds: float = 3600.0,
         max_staleness: timedelta = timedelta(hours=8),
+        gross_cap: float = 1.0,
+        profile: StrategyProfile = V16A_PROFILE,
     ) -> None:
+        self.profile = profile
         self._data_dir = Path(data_dir)
         self._refresh_seconds = refresh_seconds
         self._max_staleness = max_staleness
+        self._gross_cap = gross_cap
         self._target_set: V16aTargetSet | None = None
         self._loaded_at = 0.0
 
@@ -154,7 +168,7 @@ class V16aOnlineTargetStrategy:
                 symbol: float(target_set.target_weights[idx, i])
                 for i, symbol in enumerate(target_set.symbols)
             },
-            gross_cap=1.0,
+            gross_cap=self._gross_cap,
         ).capped()
 
 
