@@ -23,7 +23,7 @@ Mainnet v16a is not enabled by the existing testnet profile. It uses a distinct 
 Current live-pilot risk defaults for the 99.7 USDC wallet:
 
 - `TARGET_SCALE=5.0` (scales v16a target weights so small-account orders clear Hyperliquid minimum notional)
-- `TARGET_GROSS_CAP=1.00`
+- `TARGET_GROSS_CAP=4.00`
 - `MIN_EQUITY=50` (pilot allows slightly below 100 USDC after transfer fees)
 - dry-run/pre-entry `MIN_AVAILABLE_BALANCE=50`; live overlay uses `MIN_AVAILABLE_BALANCE=0` after positions exist because margin usage can legitimately reduce available balance
 - `MAX_EQUITY=200`
@@ -41,7 +41,7 @@ DRY_RUN=false \
 STRATEGY_PROFILE=v16a-mainnet-pilot \
 ALLOW_MAINNET_PILOT_LIVE=true \
 TARGET_SCALE=5.0 \
-TARGET_GROSS_CAP=1.00 \
+TARGET_GROSS_CAP=4.00 \
 MIN_EQUITY=50 \
 MIN_AVAILABLE_BALANCE=0 \
 MAX_EQUITY=200 \
