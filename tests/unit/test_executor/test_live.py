@@ -13,6 +13,16 @@ from executor.targeting import PortfolioTarget, StrategyProfile
 from exchange.adapter import AccountState, MarketSnapshot, OrderResult, Position
 
 
+class CaptureNotifier:
+    """Collect notifications emitted by the live engine."""
+
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    async def send(self, message: str) -> None:
+        self.messages.append(message)
+
+
 class FakeExchange:
     """Minimal fake exchange for testing preflight logic."""
 
@@ -361,16 +371,22 @@ async def test_target_tick_splits_sign_flip_reduce_first(tmp_path) -> None:
         profile=StrategyProfile("test-target", "Test target", timeframe_hours=1),
         weights={"BTCUSDT": -0.2},
     )
+    notifier = CaptureNotifier()
     engine = LiveEngine(
         exchange,
         symbols=["BTC"],
         dry_run=False,
         journal_dir=str(tmp_path / "journal"),
         target_strategy=strategy,
+        notify=notifier,
     )
 
     await engine._tick()
 
+    assert notifier.messages[-1] == (
+        "⏰ Tick #1 | $10000 | DD 0.0% | "
+        "2 actions: SELL BTC $5000 reduce, SELL BTC $2000 | pos: BTC S"
+    )
     assert exchange.orders == [
         ("BTC", False, Decimal("0.1"), True),
         ("BTC", False, Decimal("0.04"), False),

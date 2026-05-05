@@ -54,6 +54,40 @@ V10G_PROFILE_SLUG = "v10g-engine-6h"
 V16A_PROFILE_SLUG = "v16a-badscore-overlay"
 
 
+def _format_usd(value: float) -> str:
+    """Format a USD notional compactly for chat notifications."""
+    amount = abs(float(value))
+    if amount >= 10:
+        return f"${amount:.0f}"
+    return f"${amount:.1f}"
+
+
+def _summarize_target_orders(orders: list[TargetOrder], *, limit: int = 4) -> str:
+    """Return a compact target-order summary for tick notifications."""
+    if not orders:
+        return "0 actions"
+    parts = []
+    for order in orders[:limit]:
+        reduce = " reduce" if order.reduce_only else ""
+        parts.append(
+            f"{order.side.upper()} {order.symbol} "
+            f"{_format_usd(order.delta_notional)}{reduce}"
+        )
+    if len(orders) > limit:
+        parts.append(f"+{len(orders) - limit} more")
+    return f"{len(orders)} actions: " + ", ".join(parts)
+
+
+def _summarize_trade_actions(actions: list[TradeAction], *, limit: int = 4) -> str:
+    """Return a compact v10g action summary for tick notifications."""
+    if not actions:
+        return "0 actions"
+    parts = [f"{action.kind.value} {action.symbol}" for action in actions[:limit]]
+    if len(actions) > limit:
+        parts.append(f"+{len(actions) - limit} more")
+    return f"{len(actions)} actions: " + ", ".join(parts)
+
+
 # ── v10g strategy defaults ───────────────────────────────────────
 
 # Note: TIMEFRAME_HOURS is now dynamic via self._decision.params.timeframe_hours
@@ -540,10 +574,10 @@ class LiveEngine:
             self._state.recent_returns.append(ret)
 
         snapshots: dict[str, BarSnapshot] = {}
-        action_count = 0
+        action_summary = "0 actions"
         if self._target_strategy is not None:
             orders = await self._execute_target_portfolio(account, equity)
-            action_count = len(orders)
+            action_summary = _summarize_target_orders(orders)
             self._state.bar_count += 1
         else:
             # 3. Build snapshots for decision engine
@@ -566,7 +600,7 @@ class LiveEngine:
 
             # 5. Get decisions from the unified engine
             actions = self._decision.tick(self._state, equity, snapshots)
-            action_count = len(actions)
+            action_summary = _summarize_trade_actions(actions)
 
             # 6. Execute actions (pass pre-tick snapshot for close/partial settlement)
             for action in actions:
@@ -608,7 +642,7 @@ class LiveEngine:
         )
         await self._notify.send(
             f"⏰ Tick #{self._state.bar_count} | ${equity:.0f} | "
-            f"DD {drawdown_pct:.1f}% | {action_count} actions | pos: {pos_summary}"
+            f"DD {drawdown_pct:.1f}% | {action_summary} | pos: {pos_summary}"
         )
 
     # ── Target portfolio execution ───────────────────────────────
