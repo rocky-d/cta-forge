@@ -17,7 +17,7 @@ services:
       MAX_EQUITY: "200"
       MAX_ORDER_NOTIONAL: "25"
       HL_LEVERAGE: "5"
-      LIVE_SYMBOLS: BTC,ETH,SOL,BNB,DOGE,AVAX,ADA,SUI
+      LIVE_SYMBOLS: BTC,ETH,SOL,BNB,XRP,DOGE,AVAX,LINK,ADA,DOT,ATOM,NEAR,APT,ARB,OP,SUI,INJ,TIA,SEI
       STATE_FILE: /app/state/engine-state-mainnet-pilot.json
       JOURNAL_DIR: /app/journal/mainnet-pilot
     volumes:

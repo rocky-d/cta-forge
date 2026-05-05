@@ -9,5 +9,6 @@ services:
       ALLOW_MAINNET_PILOT_LIVE: "true"
       TARGET_SCALE: "5.0"
       TARGET_GROSS_CAP: "1.00"
+      MIN_AVAILABLE_BALANCE: "0"
       MAX_ORDER_NOTIONAL: "50"
       HL_LEVERAGE: "5"
