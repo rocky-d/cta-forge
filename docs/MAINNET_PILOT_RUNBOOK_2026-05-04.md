@@ -15,8 +15,8 @@ Mainnet v16a is not enabled by the existing testnet profile. It uses a distinct 
 
 - `STRATEGY_PROFILE=v16a-mainnet-pilot`
 - `HL_NETWORK=mainnet`
-- `DRY_RUN=true` initially
-- live orders require `ALLOW_MAINNET_PILOT_LIVE=true`
+- dry-run phase: `DRY_RUN=true`, `ALLOW_MAINNET_PILOT_LIVE=false`
+- live phase: `DRY_RUN=false`, `ALLOW_MAINNET_PILOT_LIVE=true`
 - state path: `/app/state/engine-state-mainnet-pilot.json`
 - journal path: `/app/journal/mainnet-pilot`
 

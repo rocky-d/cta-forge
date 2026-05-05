@@ -1,4 +1,5 @@
-# Mainnet pilot compose overlay. Use only after read-only preflight + dry-run review.
+# Mainnet pilot dry-run compose overlay. Use for mainnet wiring checks only.
+# For live orders, layer docker-compose.mainnet-pilot-live.yml after this file.
 # Usage:
 #   docker compose -f docker-compose.prod.yml -f docker-compose.mainnet-pilot.yml up -d
 

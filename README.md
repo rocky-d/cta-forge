@@ -64,7 +64,7 @@ uv run pytest -q
 
 Deployment is manual via GitHub Actions `workflow_dispatch`; do not use deploys for strategy experiments.
 
-v16a is shadow-safe by default: use `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay` for observation. Non-dry-run v16a requires `HL_NETWORK=testnet` plus explicit `ALLOW_V16A_TESTNET_LIVE=true`; mainnet v16a remains blocked. The production compose currently promotes v16a only for Hyperliquid testnet-live readiness, so rollout work should focus on observation and execution-quality checks before any mainnet design discussion.
+v16a is shadow-safe by default: use `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay` for observation. Non-dry-run v16a requires either `HL_NETWORK=testnet` plus explicit `ALLOW_V16A_TESTNET_LIVE=true`, or the separate guarded `v16a-mainnet-pilot` profile plus `ALLOW_MAINNET_PILOT_LIVE=true`. Current mainnet rollout is the small-account live pilot via GitHub Actions target `mainnet-pilot-live`; see `docs/MAINNET_PILOT_RUNBOOK_2026-05-04.md` for the active caps and checks.
 
 ## Tech Stack
 
