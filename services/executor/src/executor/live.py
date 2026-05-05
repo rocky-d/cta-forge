@@ -62,30 +62,32 @@ def _format_usd(value: float) -> str:
     return f"${amount:.1f}"
 
 
-def _summarize_target_orders(orders: list[TargetOrder], *, limit: int = 4) -> str:
-    """Return a compact target-order summary for tick notifications."""
+def _summarize_target_orders(orders: list[TargetOrder], *, limit: int = 5) -> str:
+    """Return a readable target-order block for tick notifications."""
     if not orders:
-        return "0 actions"
-    parts = []
+        return "Actions: none"
+    lines = [f"Actions ({len(orders)}):"]
     for order in orders[:limit]:
         reduce = " reduce" if order.reduce_only else ""
-        parts.append(
-            f"{order.side.upper()} {order.symbol} "
+        lines.append(
+            f"- {order.side.upper()} {order.symbol} "
             f"{_format_usd(order.delta_notional)}{reduce}"
         )
     if len(orders) > limit:
-        parts.append(f"+{len(orders) - limit} more")
-    return f"{len(orders)} actions: " + ", ".join(parts)
+        lines.append(f"- +{len(orders) - limit} more")
+    return "\n".join(lines)
 
 
-def _summarize_trade_actions(actions: list[TradeAction], *, limit: int = 4) -> str:
-    """Return a compact v10g action summary for tick notifications."""
+def _summarize_trade_actions(actions: list[TradeAction], *, limit: int = 5) -> str:
+    """Return a readable v10g action block for tick notifications."""
     if not actions:
-        return "0 actions"
-    parts = [f"{action.kind.value} {action.symbol}" for action in actions[:limit]]
+        return "Actions: none"
+    lines = [f"Actions ({len(actions)}):"]
+    for action in actions[:limit]:
+        lines.append(f"- {action.kind.value} {action.symbol}")
     if len(actions) > limit:
-        parts.append(f"+{len(actions) - limit} more")
-    return f"{len(actions)} actions: " + ", ".join(parts)
+        lines.append(f"- +{len(actions) - limit} more")
+    return "\n".join(lines)
 
 
 # ── v10g strategy defaults ───────────────────────────────────────
@@ -642,7 +644,9 @@ class LiveEngine:
         )
         await self._notify.send(
             f"⏰ Tick #{self._state.bar_count} | ${equity:.0f} | "
-            f"DD {drawdown_pct:.1f}% | {action_summary} | pos: {pos_summary}"
+            f"DD {drawdown_pct:.1f}%\n"
+            f"{action_summary}\n"
+            f"Positions: {pos_summary}"
         )
 
     # ── Target portfolio execution ───────────────────────────────
