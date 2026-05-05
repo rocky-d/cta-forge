@@ -51,6 +51,7 @@ async def _build_report() -> dict[str, Any]:
     symbols = _parse_symbols(os.environ.get("LIVE_SYMBOLS")) or list(V10G_SYMBOLS)
     min_order_notional = float(os.environ.get("MIN_ORDER_NOTIONAL", "10"))
     target_gross_cap = float(os.environ.get("TARGET_GROSS_CAP", "0.2"))
+    target_scale = float(os.environ.get("TARGET_SCALE", "1"))
     v16a_max_staleness_hours = float(os.environ.get("V16A_MAX_STALENESS_HOURS", "8"))
 
     adapter = HyperliquidAdapter(pk, addr, testnet=False)
@@ -98,6 +99,7 @@ async def _build_report() -> dict[str, Any]:
             strategy = V16aOnlineTargetStrategy(
                 data_dir,
                 max_staleness=timedelta(hours=v16a_max_staleness_hours),
+                target_scale=target_scale,
                 gross_cap=target_gross_cap,
                 profile=V16A_MAINNET_PILOT_PROFILE,
             )

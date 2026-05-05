@@ -218,6 +218,50 @@ def test_v16a_online_strategy_returns_latest_non_stale_target(
     assert calls == [(str(tmp_path), False)]
 
 
+def test_v16a_online_strategy_applies_target_scale_before_gross_cap(
+    monkeypatch, tmp_path
+) -> None:
+    timeline = [datetime(2024, 1, 1, hour=0, tzinfo=UTC)]
+    target_set = _target_set(timeline, np.array([[0.06, -0.02]]))
+    monkeypatch.setattr(
+        v16a_module,
+        "build_v16a_target_set",
+        lambda data_dir, *, backfill=True: target_set,
+    )
+
+    strategy = V16aOnlineTargetStrategy(
+        tmp_path,
+        target_scale=5.0,
+        gross_cap=1.0,
+    )
+    target = strategy.target(datetime(2024, 1, 1, hour=0, minute=30, tzinfo=UTC))
+
+    assert target.gross == pytest.approx(0.4)
+    assert target.weights["BTCUSDT"] == pytest.approx(0.3)
+    assert target.weights["ETHUSDT"] == pytest.approx(-0.1)
+
+
+def test_v16a_online_strategy_caps_scaled_target(monkeypatch, tmp_path) -> None:
+    timeline = [datetime(2024, 1, 1, hour=0, tzinfo=UTC)]
+    target_set = _target_set(timeline, np.array([[0.2, -0.1]]))
+    monkeypatch.setattr(
+        v16a_module,
+        "build_v16a_target_set",
+        lambda data_dir, *, backfill=True: target_set,
+    )
+
+    strategy = V16aOnlineTargetStrategy(
+        tmp_path,
+        target_scale=5.0,
+        gross_cap=1.0,
+    )
+    target = strategy.target(datetime(2024, 1, 1, hour=0, minute=30, tzinfo=UTC))
+
+    assert target.gross == pytest.approx(1.0)
+    assert target.weights["BTCUSDT"] == pytest.approx(2 / 3)
+    assert target.weights["ETHUSDT"] == pytest.approx(-1 / 3)
+
+
 def test_v16a_online_strategy_rejects_stale_target(monkeypatch, tmp_path) -> None:
     timeline = [datetime(2024, 1, 1, hour=0, tzinfo=UTC)]
     target_set = _target_set(timeline, np.array([[0.1, 0.0]]))

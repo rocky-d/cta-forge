@@ -1,0 +1,13 @@
+# Mainnet pilot live overlay. Must be layered after docker-compose.mainnet-pilot.yml.
+# Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.mainnet-pilot.yml -f docker-compose.mainnet-pilot-live.yml up -d
+
+services:
+  executor-live:
+    environment:
+      DRY_RUN: "false"
+      ALLOW_MAINNET_PILOT_LIVE: "true"
+      TARGET_SCALE: "5.0"
+      TARGET_GROSS_CAP: "1.00"
+      MAX_ORDER_NOTIONAL: "50"
+      HL_LEVERAGE: "5"

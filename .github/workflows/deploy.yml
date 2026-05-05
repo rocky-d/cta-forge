@@ -15,6 +15,7 @@ on:
         options:
           - testnet-live
           - mainnet-pilot-dry-run
+          - mainnet-pilot-live
 
 env:
   REGISTRY: ghcr.io
@@ -103,7 +104,10 @@ jobs:
       - name: Resolve compose files
         id: compose
         run: |
-          if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ]; then
+          if [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
+            echo "source=docker-compose.prod.yml,docker-compose.mainnet-pilot.yml,docker-compose.mainnet-pilot-live.yml" >> "$GITHUB_OUTPUT"
+            echo "files=-f docker-compose.prod.yml -f docker-compose.mainnet-pilot.yml -f docker-compose.mainnet-pilot-live.yml" >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ]; then
             echo "source=docker-compose.prod.yml,docker-compose.mainnet-pilot.yml" >> "$GITHUB_OUTPUT"
             echo "files=-f docker-compose.prod.yml -f docker-compose.mainnet-pilot.yml" >> "$GITHUB_OUTPUT"
           else
@@ -157,11 +161,17 @@ jobs:
               exit 1
             fi
             echo "Expected deploy target: ${{ inputs.target }}"
-            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(HL_NETWORK|DRY_RUN|STRATEGY_PROFILE|ALLOW_MAINNET_PILOT_LIVE|STATE_FILE|JOURNAL_DIR|TG_CHAT_ID)=' | sort
-            if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ]; then
+            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(HL_NETWORK|DRY_RUN|STRATEGY_PROFILE|ALLOW_MAINNET_PILOT_LIVE|TARGET_SCALE|TARGET_GROSS_CAP|MAX_ORDER_NOTIONAL|HL_LEVERAGE|STATE_FILE|JOURNAL_DIR|TG_CHAT_ID)=' | sort
+            if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ] || [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
               docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^HL_NETWORK=mainnet$'
-              docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^DRY_RUN=true$'
               docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
+            fi
+            if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ]; then
+              docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^DRY_RUN=true$'
+            fi
+            if [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
+              docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^DRY_RUN=false$'
+              docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^ALLOW_MAINNET_PILOT_LIVE=true$'
             fi
             # Check for LiveEngine startup in logs
             if docker logs cta-forge-executor 2>&1 | grep -q "Preflight PASSED"; then

@@ -9,6 +9,7 @@ services:
       DRY_RUN: "true"
       STRATEGY_PROFILE: v16a-mainnet-pilot
       ALLOW_MAINNET_PILOT_LIVE: "false"
+      TARGET_SCALE: "1.0"
       TARGET_GROSS_CAP: "0.20"
       MIN_EQUITY: "50"
       MIN_AVAILABLE_BALANCE: "50"

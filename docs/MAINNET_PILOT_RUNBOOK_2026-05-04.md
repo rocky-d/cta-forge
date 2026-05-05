@@ -20,14 +20,15 @@ Mainnet v16a is not enabled by the existing testnet profile. It uses a distinct 
 - state path: `/app/state/engine-state-mainnet-pilot.json`
 - journal path: `/app/journal/mainnet-pilot`
 
-Initial risk defaults:
+Current live-pilot risk defaults for the 99.7 USDC wallet:
 
-- `TARGET_GROSS_CAP=0.20`
+- `TARGET_SCALE=5.0` (scales v16a target weights so small-account orders clear Hyperliquid minimum notional)
+- `TARGET_GROSS_CAP=1.00`
 - `MIN_EQUITY=50` (pilot allows slightly below 100 USDC after transfer fees)
 - `MIN_AVAILABLE_BALANCE=50` (requires Hyperliquid account funds to be available for trading; unified spot USDC can count before the first perp trade)
 - `MAX_EQUITY=200`
-- `MAX_ORDER_NOTIONAL=25`
-- `HL_LEVERAGE=5` with low real gross exposure
+- `MAX_ORDER_NOTIONAL=50`
+- `HL_LEVERAGE=5`
 - `LIVE_SYMBOLS=BTC,ETH,SOL,BNB,DOGE,AVAX,ADA,SUI`
 
 ## Read-only preflight
@@ -36,13 +37,15 @@ Run only after mainnet secrets are available in environment:
 
 ```bash
 HL_NETWORK=mainnet \
-DRY_RUN=true \
+DRY_RUN=false \
 STRATEGY_PROFILE=v16a-mainnet-pilot \
-TARGET_GROSS_CAP=0.20 \
+ALLOW_MAINNET_PILOT_LIVE=true \
+TARGET_SCALE=5.0 \
+TARGET_GROSS_CAP=1.00 \
 MIN_EQUITY=50 \
 MIN_AVAILABLE_BALANCE=50 \
 MAX_EQUITY=200 \
-MAX_ORDER_NOTIONAL=25 \
+MAX_ORDER_NOTIONAL=50 \
 LIVE_SYMBOLS=BTC,ETH,SOL,BNB,DOGE,AVAX,ADA,SUI \
 uv run python -m executor.run_mainnet_preflight
 ```
@@ -53,18 +56,19 @@ The command performs no exchange writes. It checks mainnet account state, open o
 
 Prefer GitHub Actions CI/CD. Avoid ad hoc EC2 mutation except read-only checks and emergency stop/diagnostics.
 
-For dry-run pilot deployment, prefer the Deploy workflow with `target=mainnet-pilot-dry-run`. It builds the executor image, syncs `docker-compose.prod.yml` plus `docker-compose.mainnet-pilot.yml`, and verifies the resulting container env includes `HL_NETWORK=mainnet`, `DRY_RUN=true`, and `STRATEGY_PROFILE=v16a-mainnet-pilot`.
+For live pilot deployment, prefer the Deploy workflow with `target=mainnet-pilot-live`. It builds the executor image, syncs `docker-compose.prod.yml` plus `docker-compose.mainnet-pilot.yml`, and verifies the resulting container env includes `HL_NETWORK=mainnet`, `DRY_RUN=false`, `ALLOW_MAINNET_PILOT_LIVE=true`, and `STRATEGY_PROFILE=v16a-mainnet-pilot`.
 
 Equivalent manual compose command, for emergency/operator use only:
 
 ```bash
-docker compose -f docker-compose.prod.yml -f docker-compose.mainnet-pilot.yml up -d
+docker compose \
+  -f docker-compose.prod.yml \
+  -f docker-compose.mainnet-pilot.yml \
+  -f docker-compose.mainnet-pilot-live.yml \
+  up -d
 ```
 
-Before live orders, explicitly change only:
-
-- `DRY_RUN=false`
-- `ALLOW_MAINNET_PILOT_LIVE=true`
+The prior dry-run phase uses `target=mainnet-pilot-dry-run` with only `docker-compose.mainnet-pilot.yml`, `DRY_RUN=true`, and `ALLOW_MAINNET_PILOT_LIVE=false`. Do not use that target when validating real order execution.
 
 ## Stop / rollback
 

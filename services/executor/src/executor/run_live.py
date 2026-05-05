@@ -129,6 +129,7 @@ def main() -> None:
     )
     max_equity = _parse_optional_float(os.environ.get("MAX_EQUITY"))
     target_gross_cap = float(os.environ.get("TARGET_GROSS_CAP", "1"))
+    target_scale = float(os.environ.get("TARGET_SCALE", "1"))
     leverage = int(os.environ.get("HL_LEVERAGE", str(LiveEngine.DEFAULT_LEVERAGE)))
     symbols = _parse_symbols(os.environ.get("LIVE_SYMBOLS"))
     v16a_max_staleness_hours = float(os.environ.get("V16A_MAX_STALENESS_HOURS", "8"))
@@ -151,6 +152,7 @@ def main() -> None:
         target_strategy = V16aOnlineTargetStrategy(
             data_dir,
             max_staleness=timedelta(hours=v16a_max_staleness_hours),
+            target_scale=target_scale,
             gross_cap=target_gross_cap,
             profile=V16A_MAINNET_PILOT_PROFILE
             if strategy_profile == V16A_MAINNET_PILOT_PROFILE.slug
