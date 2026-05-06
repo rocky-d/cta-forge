@@ -88,6 +88,7 @@ Preflight checks (must all pass before trading):
 5. Market data spot check
 
 Risk controls:
+- Drawdown is represented project-wide as a positive magnitude from peak (for example 5% below peak -> `0.05`, journal `dd_pct=5.0`). Only chart rendering may negate it visually for underwater plots.
 - 15% max drawdown -> hard stop (flatten all)
 - 8% drawdown -> DD breaker (50% position size reduction)
 - ATR trailing stops (5.0x, tightens to 3.0x after 2.0x ATR profit)

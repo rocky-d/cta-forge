@@ -39,7 +39,10 @@ class TradeJournal:
         peak_equity: float,
         positions: dict[str, dict],
     ) -> None:
-        """Record an equity snapshot for the current tick."""
+        """Record an equity snapshot for the current tick.
+
+        ``dd_pct`` is stored as a positive percentage below the running peak.
+        """
         peak = max(float(peak_equity), float(equity))
         dd_pct = (peak - equity) / peak * 100 if peak > 0 else 0.0
         record = {

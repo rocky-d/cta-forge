@@ -67,7 +67,7 @@ def calculate_metrics(
     )
     sortino = excess_return / downside_std if downside_std > 1e-10 else 0.0
 
-    # Max drawdown
+    # Max drawdown (positive magnitude from peak, not negative underwater value)
     running_max = np.maximum.accumulate(equities)
     drawdowns = (running_max - equities) / running_max
     max_dd = float(drawdowns.max()) if len(drawdowns) > 0 else 0.0

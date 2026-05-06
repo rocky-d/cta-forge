@@ -71,9 +71,7 @@ def plot_result(
     downside_vol = np.std(downside) * np.sqrt(365 * 24) if len(downside) else 0.0
     sortino = metrics["ann_return"] / downside_vol if downside_vol > 1e-12 else 0.0
     calmar = (
-        metrics["ann_return"] / abs(metrics["max_dd"])
-        if abs(metrics["max_dd"]) > 1e-12
-        else 0.0
+        metrics["ann_return"] / metrics["max_dd"] if metrics["max_dd"] > 1e-12 else 0.0
     )
 
     img = plot_backtest(

@@ -193,6 +193,8 @@ def plot_backtest(
         )
 
     # === Middle: Drawdown ===
+    # Project-wide drawdown convention is a positive magnitude from peak.
+    # We negate it only for the chart so the underwater area points downward.
     eq_arr = np.array(eq_b)
     rm = np.maximum.accumulate(eq_arr)
     dd_pct = (rm - eq_arr) / rm * 100

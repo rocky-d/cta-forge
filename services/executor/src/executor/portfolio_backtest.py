@@ -197,18 +197,24 @@ def run_execution_backtest(
 def calculate_hourly_metrics(
     returns: np.ndarray, *, initial_equity: float = 10_000.0
 ) -> dict[str, float | np.ndarray]:
-    """Calculate simple hourly annualized metrics for a target backtest."""
+    """Calculate simple hourly annualized metrics for a target backtest.
+
+    Drawdown values in the returned payload use the project-wide reporting
+    convention: positive magnitudes from the running equity peak, not negative
+    underwater values.
+    """
     equity = initial_equity * np.cumprod(1.0 + returns)
     total = float(equity[-1] / equity[0] - 1.0)
     ann_return = float((1.0 + total) ** ((365 * 24) / max(len(equity), 1)) - 1.0)
     volatility = float(np.std(returns) * np.sqrt(365 * 24))
-    drawdown = equity / np.maximum.accumulate(equity) - 1.0
+    running_max = np.maximum.accumulate(equity)
+    drawdown = (running_max - equity) / running_max
     return {
         "return": total,
         "ann_return": ann_return,
         "volatility": volatility,
         "sharpe": ann_return / volatility if volatility > EPS else 0.0,
-        "max_dd": float(drawdown.min()),
+        "max_dd": float(drawdown.max()),
         "ulcer": float(np.sqrt(np.mean(drawdown * drawdown))),
         "equity": equity,
         "drawdown": drawdown,
