@@ -43,8 +43,12 @@ uv run python scripts/backtest/joint_badscore_research.py
 # Requires HL_PRIVATE_KEY/HL_ACCOUNT_ADDRESS in the environment or sourced .env.
 DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick
 
+# Add read-only phase-2 comparison diagnostics from the same live cache/account.
+DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay V16A_COMPARE_CORE_PHASE_HOURS=2 uv run python -m executor.run_shadow_tick
+
 # Inspect target-mode diagnostics after a shadow/live run
 cat journal/shadow-v16a/targets.jsonl
+cat journal/phase-shadow/phase_comparisons.jsonl
 cat journal/targets.jsonl
 
 # Full stack

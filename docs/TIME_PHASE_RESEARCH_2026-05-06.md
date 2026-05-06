@@ -266,6 +266,9 @@ A minimal code-level phase hook now exists for later live-shadow or promotion:
   the 1h overlay path and target/order reconciliation stay unchanged.
 - The setting is surfaced in executor config/preflight/shadow paths so operational
   diagnostics can confirm which phase produced a target.
+- `executor.run_shadow_tick` can also set `V16A_COMPARE_CORE_PHASE_HOURS=2` to
+  record read-only side-by-side phase diagnostics from the same refreshed cache
+  and account state.
 
 This should remain a foundation, not a production switch. Phase `2` should first
 be used for read-only/live-shadow diagnostics on actual refreshed cache.

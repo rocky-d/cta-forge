@@ -8,7 +8,12 @@ from datetime import timedelta
 import pytest
 from executor.journal import TradeJournal
 from executor.live import V16A_PROFILE_SLUG
-from executor.run_shadow_tick import load_shadow_tick_config, summarize_latest_target
+from executor.run_shadow_tick import (
+    load_phase_comparisons,
+    load_shadow_tick_config,
+    phase_diff_metrics,
+    summarize_latest_target,
+)
 
 
 def _base_env() -> dict[str, str]:
@@ -28,8 +33,14 @@ def test_load_shadow_tick_config_defaults_to_safe_shadow_paths() -> None:
     assert config.journal_dir == "journal/shadow-v16a"
     assert config.state_file == "engine-state-shadow.json"
     assert config.min_order_notional == 10.0
+    assert config.max_order_notional is None
     assert config.max_staleness == timedelta(hours=8)
+    assert config.target_scale == 1.0
+    assert config.gross_cap == 1.0
     assert config.core_phase_hours == 0
+    assert config.compare_core_phase_hours is None
+    assert config.phase_comparison_journal_dir == "journal/phase-shadow"
+    assert config.symbols is None
 
 
 def test_load_shadow_tick_config_rejects_non_dry_run() -> None:
@@ -52,8 +63,14 @@ def test_load_shadow_tick_config_accepts_shadow_overrides() -> None:
         "JOURNAL_DIR": "custom-journal",
         "STATE_FILE": "custom-state.json",
         "MIN_ORDER_NOTIONAL": "25",
+        "MAX_ORDER_NOTIONAL": "50",
+        "TARGET_SCALE": "5",
+        "TARGET_GROSS_CAP": "4",
         "V16A_MAX_STALENESS_HOURS": "2.5",
         "V16A_CORE_PHASE_HOURS": "2",
+        "V16A_COMPARE_CORE_PHASE_HOURS": "0",
+        "PHASE_COMPARISON_JOURNAL_DIR": "phase-journal",
+        "LIVE_SYMBOLS": "BTC,ETH",
     }
 
     config = load_shadow_tick_config(env)
@@ -62,8 +79,14 @@ def test_load_shadow_tick_config_accepts_shadow_overrides() -> None:
     assert config.journal_dir == "custom-journal"
     assert config.state_file == "custom-state.json"
     assert config.min_order_notional == 25.0
+    assert config.max_order_notional == 50.0
+    assert config.target_scale == 5.0
+    assert config.gross_cap == 4.0
     assert config.max_staleness == timedelta(hours=2.5)
     assert config.core_phase_hours == 2
+    assert config.compare_core_phase_hours == 0
+    assert config.phase_comparison_journal_dir == "phase-journal"
+    assert config.symbols == ["BTC", "ETH"]
 
 
 def test_load_shadow_tick_config_rejects_other_profiles() -> None:
@@ -78,6 +101,27 @@ def test_load_shadow_tick_config_requires_exchange_identity() -> None:
 
     with pytest.raises(ValueError, match="HL_PRIVATE_KEY"):
         load_shadow_tick_config(env)
+
+
+def test_phase_diff_metrics_reports_l1_cosine_and_flips() -> None:
+    metrics = phase_diff_metrics({"BTC": 0.1, "ETH": -0.2}, {"BTC": -0.1, "SOL": 0.3})
+
+    assert metrics["l1"] == 0.7
+    assert metrics["max_abs"] == 0.3
+    assert metrics["sign_flips"] == 1
+    assert float(metrics["cosine"]) < 0
+
+
+def test_load_phase_comparisons_empty() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        assert load_phase_comparisons(directory) == []
+
+
+def test_load_phase_comparisons_reads_jsonl(tmp_path) -> None:
+    path = tmp_path / "phase_comparisons.jsonl"
+    path.write_text('{"metrics":{"l1":0.1}}\n')
+
+    assert load_phase_comparisons(tmp_path) == [{"metrics": {"l1": 0.1}}]
 
 
 def test_summarize_latest_target_empty() -> None:
