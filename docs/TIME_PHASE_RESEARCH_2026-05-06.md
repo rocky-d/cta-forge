@@ -145,6 +145,58 @@ Interpretation:
 - Because hour attribution is path-dependent and the prior changes trade
   selection, do not replace the current prior with a direct top-hour selector.
 
+
+## Extended robustness audit
+
+Repo-native follow-up script:
+
+```bash
+uv run python scripts/backtest/v16a_phase_robustness_research.py
+```
+
+It writes:
+- `backtest-results/v16a_phase_robustness_research.json`
+
+Additional checks:
+- rolling 2-year train / 1-year test phase selection,
+- expanding train / forward test phase selection,
+- neighboring-phase smoothness,
+- high-volatility and high-market-cohesion regime slices,
+- simple execution threshold sensitivity with min-notional constraints.
+
+### Robustness findings
+
+Full-sample and regime slices still support phase `2`:
+- Full-sample phase `2` Sharpe is `2.287`, ahead of phase `0` by `0.088` and
+  phase `5` by `0.129`.
+- Phase `2` is not just an isolated single-point spike: it beats the mean of
+  neighboring phases `1` and `3` by `0.229` Sharpe.
+- In high-BTC-volatility hours, phase `2` ranks first with Sharpe `2.453`.
+- In high-market-cohesion hours, phase `2` ranks first with Sharpe `0.764`.
+- In low-market-cohesion hours, phase `2` also ranks first with Sharpe `2.730`.
+
+Execution threshold sensitivity is not the main concern:
+- With the simple execution simulator, phase `2` remains ahead of phase `0` and
+  phase `5` across min-notional thresholds from `$0` to `$100`.
+- Phase `2` execution-simulated Sharpe ranges from `2.207` to `2.259` across
+  those thresholds, with max drawdown staying around `0.055` to `0.056`.
+
+The main caution is out-of-sample phase selection stability:
+- Rolling 2-year train / 1-year test windows selected phases `0`, `2`, and `3`,
+  not phase `2` consistently.
+- The selected rolling phase had average test rank `4.0` across five windows.
+- Expanding windows selected phase `2` in all four tests, but the selected test
+  rank averaged only `2.75`; the best test phase was often `0`, `3`, or `5`.
+
+Interpretation:
+- Phase `2` is the strongest research candidate, especially on full-history,
+  high-volatility, and high-cohesion evidence.
+- The evidence is not yet strong enough for a production phase switch, because
+  rolling OOS selection is unstable and recent windows do not consistently
+  reward the trained phase.
+- Treat phase `2` as a parameterization to keep testing under stricter OOS and
+  live-shadow conditions, not as a live default.
+
 ## Recommended next steps
 
 1. Keep live unchanged for now.
