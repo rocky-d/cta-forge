@@ -92,5 +92,5 @@ def check_drawdown(
     """
     if peak_equity <= 0:
         return True
-    dd = (peak_equity - equity) / peak_equity
+    dd = max(0.0, (peak_equity - equity) / peak_equity)
     return dd < max_drawdown

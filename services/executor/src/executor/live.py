@@ -215,6 +215,7 @@ class LiveEngine:
         self._running = False
         self._clean_start = clean_start
         self._state = EngineState()
+        self._last_tick_equity: float | None = None
         self._bars_cache: dict[str, pl.DataFrame] = {}
         self._state_file = state_file
         self._store = ParquetStore(data_dir)
@@ -554,6 +555,15 @@ class LiveEngine:
             )
             await asyncio.sleep(wait_seconds)
 
+    def _record_tick_return(self, equity: float) -> None:
+        """Append the realized tick-to-tick equity return for vol scaling."""
+        if self._last_tick_equity is not None and self._last_tick_equity > 0:
+            ret = (equity - self._last_tick_equity) / self._last_tick_equity
+            self._state.recent_returns.append(ret)
+            if len(self._state.recent_returns) > 120:
+                self._state.recent_returns.pop(0)
+        self._last_tick_equity = equity
+
     async def _tick(self) -> None:
         """One iteration of the trading loop."""
         logger.info("=== Tick #%d ===", self._state.bar_count + 1)
@@ -570,10 +580,9 @@ class LiveEngine:
         account = await self._exchange.get_account_state()
         equity = float(account.equity)
 
-        # Track returns for vol scaling
-        if self._state.peak_equity > 0:
-            ret = (equity - self._state.peak_equity) / self._state.peak_equity
-            self._state.recent_returns.append(ret)
+        # Track realized tick-to-tick returns for vol scaling. Drawdown/peak
+        # updates happen below; returns must not be measured against peak equity.
+        self._record_tick_return(equity)
 
         snapshots: dict[str, BarSnapshot] = {}
         action_summary = "0 actions"
@@ -608,6 +617,10 @@ class LiveEngine:
             for action in actions:
                 await self._execute_action(action, equity, positions_before)
 
+        # Target-weight strategies do not enter V10GDecisionEngine.tick(), so
+        # keep live equity invariants here for both execution modes.
+        self._state.peak_equity = max(self._state.peak_equity, equity)
+
         # 6. Journal: record tick equity + signals
         pos_snapshot = {
             sym: {
@@ -631,9 +644,9 @@ class LiveEngine:
 
         # 7. Summary
         drawdown_pct = (
-            (1 - equity / self._state.peak_equity) * 100
+            max(0.0, (1 - equity / self._state.peak_equity) * 100)
             if self._state.peak_equity > 0
-            else 0
+            else 0.0
         )
         pos_summary = (
             ", ".join(

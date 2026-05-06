@@ -48,6 +48,15 @@ class TestJournalLoad:
             assert targets[0]["ignored_gross_ratio"] == 0.166667
             assert targets[0]["execution_coverage"] == 0.666667
 
+    def test_record_tick_clamps_stale_peak_to_current_equity(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            j = TradeJournal(d)
+            j.record_tick(1, 101.0, 100.0, {})
+
+            record = j.load_equity()[0]
+            assert record["peak"] == 101.0
+            assert record["dd_pct"] == 0.0
+
 
 class TestJournalToReportFormat:
     def test_empty_journal(self) -> None:

@@ -40,12 +40,13 @@ class TradeJournal:
         positions: dict[str, dict],
     ) -> None:
         """Record an equity snapshot for the current tick."""
-        dd_pct = (peak_equity - equity) / peak_equity * 100 if peak_equity > 0 else 0.0
+        peak = max(float(peak_equity), float(equity))
+        dd_pct = (peak - equity) / peak * 100 if peak > 0 else 0.0
         record = {
             "ts": datetime.now(tz=UTC).isoformat(),
             "bar": bar,
             "equity": round(equity, 2),
-            "peak": round(peak_equity, 2),
+            "peak": round(peak, 2),
             "dd_pct": round(dd_pct, 2),
             "n_positions": len(positions),
             "positions": positions,

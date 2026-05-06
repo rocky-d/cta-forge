@@ -236,6 +236,36 @@ class WarmupTargetStrategy(StaticTargetStrategy):
 
 
 @pytest.mark.asyncio
+async def test_target_tick_updates_peak_and_never_reports_negative_dd(tmp_path) -> None:
+    """Target mode maintains peak/DD invariants outside decision.tick()."""
+
+    exchange = FakeExchange(equity=Decimal("101"))
+    strategy = StaticTargetStrategy(
+        profile=StrategyProfile("test-target", "Test target", timeframe_hours=1),
+        weights={},
+    )
+    notify = CaptureNotifier()
+    engine = LiveEngine(
+        exchange,
+        dry_run=True,
+        target_strategy=strategy,
+        notify=notify,
+        journal_dir=str(tmp_path),
+    )
+    engine._state.peak_equity = 100.0
+    engine._last_tick_equity = 99.0
+
+    await engine._tick()
+
+    assert engine._state.peak_equity == pytest.approx(101.0)
+    assert engine._state.recent_returns == [pytest.approx((101.0 - 99.0) / 99.0)]
+    assert "DD 0.0%" in notify.messages[-1]
+    equity_records = engine._journal.load_equity()
+    assert equity_records[-1]["peak"] == pytest.approx(101.0)
+    assert equity_records[-1]["dd_pct"] == pytest.approx(0.0)
+
+
+@pytest.mark.asyncio
 async def test_target_strategy_can_request_warmup_cache_sizes(monkeypatch) -> None:
     """Target strategies can ask live fetch to backfill beyond one API page."""
 

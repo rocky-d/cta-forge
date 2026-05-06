@@ -127,6 +127,11 @@ class TestRisk:
     def test_drawdown_within_limits(self):
         assert check_drawdown(equity=9500, peak_equity=10000, max_drawdown=0.15) is True
 
+    def test_drawdown_clamps_new_high_to_zero(self):
+        assert (
+            check_drawdown(equity=10100, peak_equity=10000, max_drawdown=0.15) is True
+        )
+
     def test_drawdown_exceeded(self):
         assert (
             check_drawdown(equity=8000, peak_equity=10000, max_drawdown=0.15) is False
@@ -175,6 +180,20 @@ class TestRoutes:
         data = resp.json()
         assert data["within_limits"] is True
         assert abs(data["current_drawdown"] - 0.1) < 0.001
+
+    def test_drawdown_endpoint_clamps_new_high_to_zero(self):
+        resp = self.client.post(
+            "/risk/drawdown",
+            json={
+                "equity": 10100,
+                "peak_equity": 10000,
+                "max_drawdown": 0.15,
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["within_limits"] is True
+        assert data["current_drawdown"] == 0.0
 
     def test_config_endpoint(self):
         resp = self.client.get("/config")

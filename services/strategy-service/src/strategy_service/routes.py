@@ -103,7 +103,9 @@ async def check_risk(req: RiskCheckRequest) -> dict:
 async def drawdown_check(req: DrawdownCheckRequest) -> dict:
     ok = check_drawdown(req.equity, req.peak_equity, req.max_drawdown)
     dd = (
-        (req.peak_equity - req.equity) / req.peak_equity if req.peak_equity > 0 else 0.0
+        max(0.0, (req.peak_equity - req.equity) / req.peak_equity)
+        if req.peak_equity > 0
+        else 0.0
     )
     return {"within_limits": ok, "current_drawdown": dd}
 
