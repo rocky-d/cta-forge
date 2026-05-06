@@ -106,6 +106,13 @@ def _is_truthy(value: str | None) -> bool:
     return (value or "").lower() in {"1", "true", "yes", "y"}
 
 
+def _optional_float_from_env(name: str) -> float | None:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
 @router.get("/status")
 async def get_status() -> dict:
     return {"status": "ready"}
@@ -136,9 +143,13 @@ async def get_config() -> dict[str, Any]:
             os.environ.get("V16A_MAX_STALENESS_HOURS", "8")
         ),
         "min_order_notional": float(os.environ.get("MIN_ORDER_NOTIONAL", "10")),
-        "max_order_notional": os.environ.get("MAX_ORDER_NOTIONAL"),
+        "max_order_notional": _optional_float_from_env("MAX_ORDER_NOTIONAL"),
+        "min_equity": _optional_float_from_env("MIN_EQUITY"),
+        "min_available_balance": _optional_float_from_env("MIN_AVAILABLE_BALANCE"),
+        "max_equity": _optional_float_from_env("MAX_EQUITY"),
         "target_scale": float(os.environ.get("TARGET_SCALE", "1")),
         "target_gross_cap": float(os.environ.get("TARGET_GROSS_CAP", "1")),
+        "hl_leverage": int(os.environ.get("HL_LEVERAGE", "5")),
         "live_symbols": [
             symbol.strip().upper()
             for symbol in os.environ.get("LIVE_SYMBOLS", "").split(",")

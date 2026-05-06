@@ -16,7 +16,7 @@ from executor.backtest import (
     precompute,
     run_backtest,
 )
-from executor.signal_pipeline import align_reference_indicators
+from executor.signal_pipeline import align_reference_indicators, compute_signals
 from executor.decision import V10GStrategyParams
 
 
@@ -106,6 +106,31 @@ def test_align_reference_indicators_uses_timestamp_indices_for_missing_bars():
     )
 
     assert aligned["close"].tolist() == [10.0, 11.0, 13.0, 14.0]
+
+
+def test_compute_signals_writes_sparse_symbol_to_real_timestamps(monkeypatch):
+    btc = _make_bars(200)
+    alt = btc.filter(pl.col("open_time") != btc["open_time"][2])
+    bars = {"BTCUSDT": btc, "ALTUSDT": alt}
+    data = precompute(bars, V10GStrategyParams())
+    timeline, ts_to_idx = build_timeline(bars)
+    align_data(bars, data, ts_to_idx)
+
+    def fake_compute_signal_array(self, indicators, btc_indicators=None):
+        return np.arange(len(indicators["close"]), dtype=float)
+
+    monkeypatch.setattr(
+        "executor.signal_pipeline.V10GCompositeFactor.compute_signal_array",
+        fake_compute_signal_array,
+    )
+
+    sigs = compute_signals(data, timeline, V10GStrategyParams(), btc_filter=True)
+
+    assert sigs["ALTUSDT"][0] == 0.0
+    assert sigs["ALTUSDT"][1] == 1.0
+    assert sigs["ALTUSDT"][2] == 0.0
+    assert sigs["ALTUSDT"][3] == 2.0
+    assert sigs["ALTUSDT"][4] == 3.0
 
 
 class TestRunBacktest:

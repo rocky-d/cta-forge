@@ -125,6 +125,22 @@ class TestAlphaService:
         assert len(data["signals"]) == 1
 
     @pytest.mark.asyncio
+    async def test_v10g_compute_can_use_btc_reference_bars(self, client: AsyncClient):
+        btc_bars = _make_bars(150, seed=7)
+        resp = await client.post(
+            "/compute",
+            json={
+                "symbol": "ETHUSDT",
+                "bars": BARS_150,
+                "btc_bars": btc_bars,
+                "factors": ["v10g_composite"],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "v10g_composite" in data["signals"]
+
+    @pytest.mark.asyncio
     async def test_compute_batch(self, client: AsyncClient):
         resp = await client.post(
             "/compute/batch",
@@ -139,6 +155,7 @@ class TestAlphaService:
         data = resp.json()
         assert "BTCUSDT" in data["signals"]
         assert "ETHUSDT" in data["signals"]
+        assert "v10g_composite" in data["signals"]["ETHUSDT"]
 
     @pytest.mark.asyncio
     async def test_compute_unknown_factor(self, client: AsyncClient):
