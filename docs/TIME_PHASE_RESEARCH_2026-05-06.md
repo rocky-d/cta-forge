@@ -276,13 +276,19 @@ be used for read-only/live-shadow diagnostics on actual refreshed cache.
 ## Recommended next steps
 
 1. Keep live unchanged for now.
-2. Extend the study with stricter robustness checks:
-   - rolling OOS windows,
-   - neighboring-phase smoothness checks,
-   - turnover / order-count / notional-threshold sensitivity,
-   - per-phase performance under high-vol / high-correlation regimes.
-3. Use `V16A_CORE_PHASE_HOURS=2` only for read-only/live-shadow diagnostics until
+2. Use `V16A_CORE_PHASE_HOURS=2` only for read-only/live-shadow diagnostics until
    the recent-window and tracking-quality concerns are resolved.
-4. Re-test the hour prior with rolling OOS and symbol-level attribution before
+3. Collect forward side-by-side evidence from the same live cache/account state:
+   - target L1/cosine/sign-flip deltas,
+   - simulated order counts/notionals under pilot caps,
+   - ignored gross from min-notional and symbol-universe constraints,
+   - realized phase-0 vs phase-2 paper-target returns over complete forward windows.
+4. Promote phase `2` only if forward evidence is stable across multiple windows
+   and does not materially worsen pilot tracking quality or risk controls.
+5. Re-test the hour prior with rolling OOS and symbol-level attribution before
    changing `favorable_hours` / `avoid_hours`.
-5. Do not optimize minute-level offsets until sub-hour data exists.
+6. Later bounded research spike: minute-level candle offsets. Do not start with
+   an unconstrained grid. First use sub-hour data to test one shared minute offset
+   for both the 1h overlay and 6h core, coarse grid `0/15/30/45` minutes, and only
+   6h hour phases `0` and `2`. Avoid independent 1h/6h minute offsets unless this
+   coarse test shows robust OOS signal.
