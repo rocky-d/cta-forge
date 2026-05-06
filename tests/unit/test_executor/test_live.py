@@ -240,7 +240,7 @@ class StaticTargetStrategy:
 
 @dataclass(frozen=True)
 class WarmupTargetStrategy(StaticTargetStrategy):
-    required_timeframes = (("1h", 1, 5000), ("6h", 6, 500))
+    required_timeframes = (("1h", 1, 60_000), ("6h", 6, 10_000))
 
 
 class RefreshingTargetStrategy:
@@ -352,8 +352,8 @@ async def test_target_strategy_can_request_warmup_cache_sizes(monkeypatch) -> No
     await engine._fetch_target_data()
 
     assert calls == [
-        {"interval": "1h", "timeframe_hours": 1, "min_bars": 5000},
-        {"interval": "6h", "timeframe_hours": 6, "min_bars": 500},
+        {"interval": "1h", "timeframe_hours": 1, "min_bars": 60_000},
+        {"interval": "6h", "timeframe_hours": 6, "min_bars": 10_000},
     ]
 
 
@@ -403,7 +403,7 @@ async def test_initial_large_warmup_fetch_uses_paginated_backfill(
     monkeypatch.setattr("executor.live_data.fetch_all_klines", fake_fetch_all_klines)
     monkeypatch.setattr("executor.live_data.fetch_klines", fail_single_page_fetch)
 
-    await engine._fetch_bars(interval="1h", timeframe_hours=1, min_bars=5000)
+    await engine._fetch_bars(interval="1h", timeframe_hours=1, min_bars=60_000)
 
     assert paginated_calls
     assert paginated_calls[0]["symbol"] == "BTCUSDT"
@@ -440,7 +440,7 @@ async def test_underfilled_large_warmup_cache_uses_paginated_backfill(
     monkeypatch.setattr("executor.live_data.fetch_all_klines", fake_fetch_all_klines)
     monkeypatch.setattr("executor.live_data.fetch_klines", fail_single_page_fetch)
 
-    await engine._fetch_bars(interval="1h", timeframe_hours=1, min_bars=5000)
+    await engine._fetch_bars(interval="1h", timeframe_hours=1, min_bars=60_000)
 
     assert paginated_calls
     assert len(engine._store.read("BTCUSDT", "1h")) == 5

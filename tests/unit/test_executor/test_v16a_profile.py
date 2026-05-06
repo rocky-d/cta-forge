@@ -27,10 +27,10 @@ def test_v16a_profile_metadata_is_stable() -> None:
     assert V16A_PROFILE.timeframe_hours == 1
 
 
-def test_v16a_online_strategy_declares_live_cache_warmup_needs() -> None:
+def test_v16a_online_strategy_declares_live_cache_history_needs() -> None:
     assert V16aOnlineTargetStrategy.required_timeframes == (
-        ("1h", 1, 5000),
-        ("6h", 6, 500),
+        ("1h", 1, 60_000),
+        ("6h", 6, 10_000),
     )
 
 

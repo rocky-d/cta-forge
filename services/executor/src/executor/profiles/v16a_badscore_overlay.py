@@ -113,11 +113,17 @@ class V16aOnlineTargetStrategy:
     """
 
     profile = V16A_PROFILE
-    # (interval, timeframe_hours, minimum cached bars). The 1h overlay needs
-    # enough history for its 45-day warmup plus medium-horizon features; a fresh
-    # live host must therefore backfill beyond Binance's single-call 1000-bar
-    # limit before target construction can work.
-    required_timeframes = (("1h", 1, 5_000), ("6h", 6, 500))
+    # (interval, timeframe_hours, minimum cached bars). v16a target generation
+    # is not a short-lookback-only model: the expanding badscore gate and the
+    # shared historical timeline both depend on having effectively full history,
+    # not just enough bars for warmup. If live cache is backfilled only to the
+    # recent warmup window, the online target can diverge materially from the
+    # research/full-history v16a profile even though the profile slug matches.
+    #
+    # Use oversized minima so a fresh host backfills enough history to cover the
+    # full Binance futures era for current symbols, while still using the same
+    # cache-only target-construction path afterward.
+    required_timeframes = (("1h", 1, 60_000), ("6h", 6, 10_000))
 
     def __init__(
         self,
