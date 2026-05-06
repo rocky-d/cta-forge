@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from executor.journal import TradeJournal
 from executor.live import V16A_PROFILE_SLUG
+from exchange.adapter import AccountState, Position
+
 from executor.run_shadow_tick import (
+    ShadowTickConfig,
     load_phase_comparisons,
     load_shadow_tick_config,
     phase_diff_metrics,
+    record_phase_comparison,
     summarize_latest_target,
 )
 
@@ -122,6 +129,90 @@ def test_load_phase_comparisons_reads_jsonl(tmp_path) -> None:
     path.write_text('{"metrics":{"l1":0.1}}\n')
 
     assert load_phase_comparisons(tmp_path) == [{"metrics": {"l1": 0.1}}]
+
+
+class _FakeExchange:
+    async def get_account_state(self) -> AccountState:
+        return AccountState(
+            equity=Decimal("1000"),
+            available_balance=Decimal("1000"),
+            total_margin_used=Decimal("0"),
+            positions=[
+                Position(
+                    symbol="BTC",
+                    size=Decimal("0.001"),
+                    entry_price=Decimal("100000"),
+                    unrealized_pnl=Decimal("0"),
+                    leverage=1,
+                )
+            ],
+        )
+
+
+def test_record_phase_comparison_writes_read_only_diagnostics(
+    tmp_path, monkeypatch
+) -> None:
+    fixed_ts = datetime(2026, 5, 6, 12, tzinfo=UTC)
+
+    class FakeStrategy:
+        def __init__(self, *_args, core_phase_hours: int, **_kwargs) -> None:
+            self.core_phase_hours = core_phase_hours
+
+        def target(self, _now):
+            weights = (
+                {"BTC": 0.1, "ETH": -0.05}
+                if self.core_phase_hours == 0
+                else {"BTC": -0.05, "ETH": -0.05}
+            )
+            return SimpleNamespace(
+                timestamp=fixed_ts,
+                gross=sum(abs(weight) for weight in weights.values()),
+                weights=weights,
+            )
+
+    async def fake_prices(_exchange, _symbols):
+        return {"BTC": 100000.0, "ETH": 4000.0}
+
+    import executor.run_shadow_tick as module
+
+    monkeypatch.setattr(module, "V16aOnlineTargetStrategy", FakeStrategy)
+    monkeypatch.setattr(module, "fetch_target_prices", fake_prices)
+    config = ShadowTickConfig(
+        private_key="redacted-key",
+        account_address="redacted-address",
+        testnet=True,
+        data_dir="unused-data",
+        journal_dir="unused-journal",
+        state_file="unused-state.json",
+        min_order_notional=10.0,
+        max_order_notional=None,
+        max_staleness=timedelta(hours=8),
+        target_scale=1.0,
+        gross_cap=1.0,
+        core_phase_hours=0,
+        compare_core_phase_hours=2,
+        phase_comparison_journal_dir=str(tmp_path),
+        symbols=None,
+    )
+
+    record = asyncio.run(
+        record_phase_comparison(
+            config=config,
+            exchange=_FakeExchange(),
+            allowed_symbols={"BTC", "ETH"},
+        )
+    )
+
+    assert record is not None
+    assert record["metrics"] == {
+        "l1": 0.15,
+        "max_abs": 0.15,
+        "cosine": -0.31622777,
+        "sign_flips": 1,
+    }
+    assert record["phases"]["0"]["n_orders"] >= 1
+    assert record["phases"]["2"]["n_orders"] >= 1
+    assert load_phase_comparisons(tmp_path) == [record]
 
 
 def test_summarize_latest_target_empty() -> None:
