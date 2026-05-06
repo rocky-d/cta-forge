@@ -298,7 +298,7 @@ async def test_target_tick_updates_peak_and_never_reports_negative_dd(tmp_path) 
 
     assert engine._state.peak_equity == pytest.approx(101.0)
     assert engine._state.recent_returns == [pytest.approx((101.0 - 99.0) / 99.0)]
-    assert "DD 0.0%" in notify.messages[-1]
+    assert "DD 0.00%" in notify.messages[-1]
     equity_records = engine._journal.load_equity()
     assert equity_records[-1]["peak"] == pytest.approx(101.0)
     assert equity_records[-1]["dd_pct"] == pytest.approx(0.0)
@@ -481,7 +481,7 @@ async def test_target_tick_splits_sign_flip_reduce_first(tmp_path) -> None:
     await engine._tick()
 
     assert notifier.messages[-1] == (
-        "⏰ Tick #1 | $10000 | DD 0.0%\n"
+        "⏰ Tick #1 | $10000.0 | DD 0.00%\n"
         "Actions (2):\n"
         "- SELL BTC $5000 reduce\n"
         "- SELL BTC $2000\n"

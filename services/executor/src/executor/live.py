@@ -710,8 +710,8 @@ class LiveEngine:
             or "flat"
         )
         await self._notify.send(
-            f"⏰ Tick #{self._state.bar_count} | ${equity:.0f} | "
-            f"DD {drawdown_pct:.1f}%\n"
+            f"⏰ Tick #{self._state.bar_count} | ${equity:.1f} | "
+            f"DD {drawdown_pct:.2f}%\n"
             f"{action_summary}\n"
             f"Positions: {pos_summary}"
         )
