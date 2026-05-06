@@ -256,6 +256,107 @@ Interpretation:
   diagnostic that records phase `0` and phase `2` targets side by side on actual
   refreshed live cache.
 
+## Live-like pilot constraint ablation
+
+Repo-native follow-up script:
+
+```bash
+uv run python scripts/backtest/v16a_live_constraints_ablation.py
+```
+
+It writes:
+- `backtest-results/v16a_live_constraints_ablation.json`
+
+Purpose:
+- Explain why the current pilot-style execution result differs from the ideal
+  target-weight backtest.
+- Keep v16a targets fixed while ablating practical execution constraints:
+  initial equity, min order notional, max increase order notional, target scale,
+  gross cap, fee, and a simple slippage assumption.
+- Preserve the current production/live defaults; this is research-only.
+
+Assumptions for the live-like case:
+- initial equity: `$100`, matching the current practical pilot capital base;
+- `TARGET_SCALE=5`;
+- `TARGET_GROSS_CAP=4`;
+- min order notional: `$10`;
+- max increase order notional: `$50`;
+- fee: `0.0004`;
+- simple slippage: `0.0001`.
+
+Important modeling limits:
+- The execution simulation applies min-order and max-increase constraints in
+  target-weight space.
+- It does not model funding, exchange liquidation mechanics, margin utilization,
+  partial fills, order-book depth, or a live `MAX_EQUITY` preflight stop after
+  profits exceed the pilot cap.
+- Reduce-only exposure reductions remain uncapped, matching the risk-reducing
+  intent of the live `weights_to_orders()` reconciliation.
+
+### Constraint-ablation findings
+
+The main target-weight-to-live-like gap is caused by the fixed `$50` max increase
+order cap, not by `$10` min order or the simple slippage assumption.
+
+Phase `0` full-history comparison:
+- Theory, fee-only: return `72.62`, annualized return `93.25%`, max drawdown
+  `29.58%`, Sharpe `2.70`.
+- Add `0.01%` simple slippage: return `68.61`, annualized return `91.60%`, max
+  drawdown `29.80%`, Sharpe `2.66`.
+- `$10` min order only: return `66.07`, annualized return `90.50%`, max drawdown
+  `29.70%`, Sharpe `2.59`.
+- `$50` max increase only: return `47.91`, annualized return `81.50%`, max
+  drawdown `27.60%`, Sharpe `2.49`.
+- Live-like `$10` min + `$50` max increase: return `45.87`, annualized return
+  `80.33%`, max drawdown `27.63%`, Sharpe `2.41`.
+
+Phase `2` full-history comparison:
+- Theory, fee-only: return `81.93`, annualized return `96.81%`, max drawdown
+  `25.24%`, Sharpe `2.84`.
+- Add `0.01%` simple slippage: return `77.51`, annualized return `95.20%`, max
+  drawdown `25.50%`, Sharpe `2.80`.
+- `$10` min order only: return `73.46`, annualized return `93.60%`, max drawdown
+  `25.00%`, Sharpe `2.72`.
+- `$50` max increase only: return `51.44`, annualized return `83.50%`, max
+  drawdown `26.20%`, Sharpe `2.59`.
+- Live-like `$10` min + `$50` max increase: return `48.14`, annualized return
+  `81.64%`, max drawdown `26.55%`, Sharpe `2.50`.
+
+Interpretation:
+- With fixed `$50` max increase, simply increasing account equity can make target
+  tracking worse because `$50` becomes a smaller percentage of equity.
+- In the live-like scan, raising equity from `$100` to `$200`, `$500`, or `$1000`
+  while keeping max increase fixed at `$50` reduced full-history return and
+  increased residual tracking error.
+- Gross cap values above about `2` were not materially binding in this live-like
+  setup; increasing `TARGET_GROSS_CAP` above the current `4` has no practical
+  benefit here.
+- `TARGET_SCALE` has return upside in the historical simulation, but changing it
+  directly increases exposure, drawdown, margin/liquidation sensitivity, and
+  unmodeled execution risk. It is a poor first optimization lever for live.
+
+Max-increase sensitivity with `$100` equity and `$10` min order:
+- Phase `0`: max `$50` return `45.87`; max `$75` return `49.30`; max `$100`
+  return `51.25`; max `$150` return `54.68`; max `$200` return `56.10`; no max
+  return `66.07`.
+- Phase `2`: max `$50` return `48.14`; max `$75` return `52.74`; max `$100`
+  return `55.25`; max `$150` return `59.36`; max `$200` return `62.34`; no max
+  return `73.46`.
+
+Research recommendation:
+- Do not change live defaults immediately.
+- Keep `TARGET_SCALE`, `TARGET_GROSS_CAP`, and `V16A_CORE_PHASE_HOURS` unchanged.
+- If further research supports a live adjustment, the most plausible first lever
+  is a small `MAX_ORDER_NOTIONAL` increase from `$50` to `$75`, not a scale or
+  gross-cap change.
+- Treat `$75` as a shadow candidate first. It should be promoted only after
+  forward live-cache diagnostics show better target tracking without worse order
+  quality, rejects, margin pressure, or realized drawdown behavior.
+
+A live config change should be evaluated as an execution-risk change, not as a
+strategy-alpha improvement. Raising the cap lets the strategy reach intended
+targets faster, but it also establishes new risk faster.
+
 ## Implementation readiness
 
 A minimal code-level phase hook now exists for later live-shadow or promotion:
