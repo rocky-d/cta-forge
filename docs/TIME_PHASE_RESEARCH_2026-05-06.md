@@ -197,6 +197,65 @@ Interpretation:
 - Treat phase `2` as a parameterization to keep testing under stricter OOS and
   live-shadow conditions, not as a live default.
 
+
+## Phase 2 vs phase 0 shadow-impact audit
+
+Repo-native follow-up script:
+
+```bash
+uv run python scripts/backtest/v16a_phase_shadow_audit.py
+```
+
+It writes:
+- `backtest-results/v16a_phase_shadow_audit.json`
+
+Purpose:
+- Compare phase `2` against the current phase `0` baseline at the target/exposure
+  level, not just at the performance-metric level.
+- Estimate mainnet-pilot-style order impact with the same
+  `executor.targeting.weights_to_orders()` reduce-first reconciliation mechanism.
+- Fail fast on obvious data/harness drift: short history, shape mismatch,
+  non-finite targets, gross-cap breach, or aligned return inconsistency.
+
+### Shadow-impact findings
+
+Full-history target behavior:
+- Phase `2` still leads phase `0` on full-history metrics: Sharpe `2.287` vs
+  `2.198`, return `1.571` vs `1.513`, max drawdown `0.055` vs `0.065`.
+- The target difference is material but not a complete strategy rewrite:
+  - mean L1 target difference: `0.0599`,
+  - p95 L1 target difference: `0.1754`,
+  - mean sign-flip symbols per hour: `2.98`,
+  - mean cosine similarity: `0.672`.
+- The largest average target-difference contributors are `BTCUSDT`, `BNBUSDT`,
+  `ETHUSDT`, `ADAUSDT`, and `ATOMUSDT`.
+
+Recent-window impact is mixed:
+- Last 30/60/90 days: phase `2` has higher Sharpe than phase `0`, but slightly
+  lower raw return.
+- Last 180/365 days: phase `2` is worse than phase `0` on both Sharpe and return.
+- This reinforces the earlier rolling-OOS caution: phase `2` is not uniformly
+  better in recent history.
+
+Mainnet-pilot-style order impact under current pilot assumptions (`$200` equity,
+`TARGET_SCALE=5`, gross cap `4`, min order `$10`, max increase order `$50`):
+- Phase `2` does not imply high order frequency in this simplified audit:
+  recent 30-90 day mean order rate is about `0.066` to `0.069` orders/hour.
+- The max increase order respects the `$50` cap; larger max order values are
+  reduce-only exposure reductions, which `weights_to_orders()` intentionally
+  leaves uncapped to reduce risk.
+- The min-order threshold leaves meaningful residual target tracking error:
+  recent 30-90 day mean ignored L1 is about `0.074` to `0.087`; full-history mean
+  ignored L1 is about `0.106`.
+
+Interpretation:
+- Phase `2` is feasible to shadow from an order-frequency perspective.
+- The bigger live concern is not order count; it is target tracking quality under
+  small pilot equity and min-notional constraints, plus mixed recent performance.
+- Do not switch live defaults. The next safe step would be a read-only/live-shadow
+  diagnostic that records phase `0` and phase `2` targets side by side on actual
+  refreshed live cache.
+
 ## Recommended next steps
 
 1. Keep live unchanged for now.
