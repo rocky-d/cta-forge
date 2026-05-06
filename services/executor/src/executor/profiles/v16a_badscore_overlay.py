@@ -123,7 +123,8 @@ class V16aOnlineTargetStrategy:
     # Use oversized minima so a fresh host backfills enough history to cover the
     # full Binance futures era for current symbols, while still using the same
     # cache-only target-construction path afterward.
-    required_timeframes = (("1h", 1, 60_000), ("6h", 6, 10_000))
+    _HOURLY_CACHE_REQUIREMENT = ("1h", 1, 60_000)
+    _SIX_HOUR_CACHE_REQUIREMENT = ("6h", 6, 10_000)
 
     def __init__(
         self,
@@ -133,6 +134,7 @@ class V16aOnlineTargetStrategy:
         max_staleness: timedelta = timedelta(hours=8),
         target_scale: float = 1.0,
         gross_cap: float = 1.0,
+        core_phase_hours: int = 0,
         profile: StrategyProfile = V16A_PROFILE,
     ) -> None:
         self.profile = profile
@@ -141,8 +143,16 @@ class V16aOnlineTargetStrategy:
         self._max_staleness = max_staleness
         self._target_scale = target_scale
         self._gross_cap = gross_cap
+        self._core_phase_hours = validate_core_phase_hours(core_phase_hours)
         self._target_set: V16aTargetSet | None = None
         self._loaded_at = 0.0
+
+    @property
+    def required_timeframes(self) -> tuple[tuple[str, int, int], ...]:
+        """Return parquet cache intervals needed for the configured phase."""
+        if self._core_phase_hours == 0:
+            return (self._HOURLY_CACHE_REQUIREMENT, self._SIX_HOUR_CACHE_REQUIREMENT)
+        return (self._HOURLY_CACHE_REQUIREMENT,)
 
     @property
     def target_set(self) -> V16aTargetSet | None:
@@ -158,7 +168,11 @@ class V16aOnlineTargetStrategy:
             and now - self._loaded_at < self._refresh_seconds
         ):
             return self._target_set
-        self._target_set = build_v16a_target_set(self._data_dir, backfill=False)
+        self._target_set = build_v16a_target_set(
+            self._data_dir,
+            backfill=False,
+            core_phase_hours=self._core_phase_hours,
+        )
         self._loaded_at = now
         return self._target_set
 
@@ -188,6 +202,16 @@ def latest_target_index(timeline: list[datetime], timestamp: datetime) -> int:
     if idx < 0:
         raise KeyError(f"No v16a target available before timestamp: {timestamp!r}")
     return idx
+
+
+def validate_core_phase_hours(core_phase_hours: int) -> int:
+    """Validate the UTC-hour phase for the 6h v10g core sleeve."""
+    phase = int(core_phase_hours)
+    timeframe_hours = v10g_params().timeframe_hours
+    if phase < 0 or phase >= timeframe_hours:
+        msg = f"core_phase_hours must be in [0, {timeframe_hours - 1}]"
+        raise ValueError(msg)
+    return phase
 
 
 def v10g_params() -> V10GStrategyParams:
@@ -259,6 +283,45 @@ def load_bars(
         if not df.is_empty() and len(df) >= min_bars:
             bars[symbol] = df
     return bars
+
+
+def aggregate_phased_bars(
+    df: pl.DataFrame, *, phase_hours: int, timeframe_hours: int
+) -> pl.DataFrame:
+    """Aggregate 1h bars into synthetic phased timeframe bars.
+
+    A 6h phase of 2 means windows start at 02:00, 08:00, 14:00, and
+    20:00 UTC. Only complete windows are kept. Phase 0 deliberately stays
+    available for research parity, but live/default phase 0 still uses the
+    canonical cached 6h bars unless a caller explicitly asks for aggregation.
+    """
+    phase_hours = validate_core_phase_hours(phase_hours)
+    if df.is_empty():
+        return df
+    ts = df["open_time"].to_list()
+    epoch_hours = np.array([int(t.timestamp() // 3600) for t in ts], dtype=np.int64)
+    group = (epoch_hours - phase_hours) // timeframe_hours
+    phase_mod = (epoch_hours - phase_hours) % timeframe_hours
+    joined = df.with_columns(
+        pl.Series("_grp", group), pl.Series("_phase_mod", phase_mod)
+    )
+    return (
+        joined.group_by("_grp")
+        .agg(
+            pl.col("open_time").first().alias("open_time"),
+            pl.col("open").first().alias("open"),
+            pl.col("high").max().alias("high"),
+            pl.col("low").min().alias("low"),
+            pl.col("close").last().alias("close"),
+            pl.col("volume").sum().alias("volume"),
+            pl.col("quote_volume").sum().alias("quote_volume"),
+            pl.col("_phase_mod").first().alias("_phase_mod"),
+            pl.len().alias("_n"),
+        )
+        .filter((pl.col("_phase_mod") == 0) & (pl.col("_n") == timeframe_hours))
+        .drop("_phase_mod", "_n")
+        .sort("open_time")
+    )
 
 
 def rolling_mean_prev(x: np.ndarray, window: int) -> np.ndarray:
@@ -497,9 +560,22 @@ def run_engine_positions(data, sigs, timeline, warmup: int, params: V10GStrategy
     return syms, weights, curve, trades
 
 
-def build_v10g_sleeve(*, backfill: bool = True):
+def build_v10g_sleeve(*, backfill: bool = True, core_phase_hours: int = 0):
     params = v10g_params()
-    bars = load_bars("6h", backfill=backfill)
+    core_phase_hours = validate_core_phase_hours(core_phase_hours)
+    if core_phase_hours == 0:
+        bars = load_bars("6h", backfill=backfill)
+    else:
+        hourly_bars = load_bars("1h", min_bars=5_000, backfill=backfill)
+        bars = {}
+        for symbol, hourly in hourly_bars.items():
+            phased = aggregate_phased_bars(
+                hourly,
+                phase_hours=core_phase_hours,
+                timeframe_hours=params.timeframe_hours,
+            )
+            if not phased.is_empty() and len(phased) >= 500:
+                bars[symbol] = phased
     data = precompute(bars, params)
     timeline, ts_to_idx = build_timeline(bars)
     align_data(bars, data, ts_to_idx)
@@ -683,6 +759,7 @@ def build_v16a_target_set(
     v10g_allocation: float = 0.5,
     overlay_allocation: float = 0.5,
     gross_cap: float = 1.0,
+    core_phase_hours: int = 0,
     backfill: bool = True,
 ) -> V16aTargetSet:
     """Build the full historical v16a target-weight matrix from local data."""
@@ -690,7 +767,7 @@ def build_v16a_target_set(
     DATA_DIR = Path(data_dir)
 
     v_syms, v_weights, v_curve, _v_trades, v_timeline = build_v10g_sleeve(
-        backfill=backfill
+        backfill=backfill, core_phase_hours=core_phase_hours
     )
     o_syms, o_weights, o_curve, _o_trades, o_timeline = build_overlay_sleeve(
         backfill=backfill

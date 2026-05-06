@@ -16,6 +16,7 @@ services:
       HL_NETWORK: testnet
       DRY_RUN: "false"
       STRATEGY_PROFILE: v16a-badscore-overlay
+      V16A_CORE_PHASE_HOURS: "0"
       ALLOW_V16A_TESTNET_LIVE: "true"
     volumes:
       - ./data:/app/data

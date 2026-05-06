@@ -9,6 +9,7 @@ services:
       HL_NETWORK: mainnet
       DRY_RUN: "true"
       STRATEGY_PROFILE: v16a-mainnet-pilot
+      V16A_CORE_PHASE_HOURS: "0"
       ALLOW_MAINNET_PILOT_LIVE: "false"
       TARGET_SCALE: "1.0"
       TARGET_GROSS_CAP: "0.20"

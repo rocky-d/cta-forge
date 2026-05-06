@@ -22,7 +22,10 @@ from exchange.hyperliquid import HyperliquidAdapter
 from .journal import TradeJournal
 from .live import LiveEngine, V16A_PROFILE_SLUG
 from .notify import NullNotifier
-from .profiles.v16a_badscore_overlay import V16aOnlineTargetStrategy
+from .profiles.v16a_badscore_overlay import (
+    V16aOnlineTargetStrategy,
+    validate_core_phase_hours,
+)
 from .run_live import _parse_hl_network
 
 logger = logging.getLogger(__name__)
@@ -42,6 +45,7 @@ class ShadowTickConfig:
     state_file: str
     min_order_notional: float
     max_staleness: timedelta
+    core_phase_hours: int
 
 
 def _is_truthy(value: str | None) -> bool:
@@ -74,6 +78,9 @@ def load_shadow_tick_config(env: Mapping[str, str] = os.environ) -> ShadowTickCo
         state_file=env.get("STATE_FILE", "engine-state-shadow.json"),
         min_order_notional=float(env.get("MIN_ORDER_NOTIONAL", "10")),
         max_staleness=timedelta(hours=float(env.get("V16A_MAX_STALENESS_HOURS", "8"))),
+        core_phase_hours=validate_core_phase_hours(
+            int(env.get("V16A_CORE_PHASE_HOURS", "0"))
+        ),
     )
 
 
@@ -126,6 +133,7 @@ async def run_shadow_tick(config: ShadowTickConfig) -> dict[str, Any]:
     strategy = V16aOnlineTargetStrategy(
         config.data_dir,
         max_staleness=config.max_staleness,
+        core_phase_hours=config.core_phase_hours,
     )
     adapter = HyperliquidAdapter(
         config.private_key,
@@ -147,7 +155,9 @@ async def run_shadow_tick(config: ShadowTickConfig) -> dict[str, Any]:
     finally:
         await adapter.close()
 
-    return summarize_latest_target(config.journal_dir)
+    summary = summarize_latest_target(config.journal_dir)
+    summary["core_phase_hours"] = config.core_phase_hours
+    return summary
 
 
 def main() -> None:

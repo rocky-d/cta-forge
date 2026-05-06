@@ -15,9 +15,12 @@ from executor.profiles.v16a_badscore_overlay import (
     V16aHistoricalStrategy,
     V16aOnlineTargetStrategy,
     V16aTargetSet,
+    aggregate_phased_bars,
+    build_v10g_sleeve,
     latest_forward_filled_hour,
     latest_target_index,
     top_n_signals,
+    validate_core_phase_hours,
 )
 
 
@@ -27,11 +30,50 @@ def test_v16a_profile_metadata_is_stable() -> None:
     assert V16A_PROFILE.timeframe_hours == 1
 
 
-def test_v16a_online_strategy_declares_live_cache_history_needs() -> None:
-    assert V16aOnlineTargetStrategy.required_timeframes == (
+def test_v16a_online_strategy_declares_default_live_cache_history_needs(
+    tmp_path,
+) -> None:
+    strategy = V16aOnlineTargetStrategy(tmp_path)
+
+    assert strategy.required_timeframes == (
         ("1h", 1, 60_000),
         ("6h", 6, 10_000),
     )
+
+
+def test_v16a_online_strategy_phase_core_only_requires_1h_cache(tmp_path) -> None:
+    strategy = V16aOnlineTargetStrategy(tmp_path, core_phase_hours=2)
+
+    assert strategy.required_timeframes == (("1h", 1, 60_000),)
+
+
+def test_validate_core_phase_hours_accepts_utc_hour_offsets() -> None:
+    assert validate_core_phase_hours(0) == 0
+    assert validate_core_phase_hours(5) == 5
+    with pytest.raises(ValueError, match="core_phase_hours"):
+        validate_core_phase_hours(6)
+
+
+def test_aggregate_phased_bars_keeps_complete_windows_only() -> None:
+    rows = []
+    for hour in range(9):
+        rows.append(
+            {
+                "open_time": datetime(2024, 1, 1, hour=hour, tzinfo=UTC),
+                "open": float(hour),
+                "high": float(hour) + 0.8,
+                "low": float(hour) - 0.2,
+                "close": float(hour) + 0.5,
+                "volume": 1.0,
+                "quote_volume": 10.0,
+            }
+        )
+    phased = aggregate_phased_bars(pl.DataFrame(rows), phase_hours=2, timeframe_hours=6)
+
+    assert phased["open_time"].to_list() == [datetime(2024, 1, 1, hour=2, tzinfo=UTC)]
+    assert phased["open"].to_list() == [2.0]
+    assert phased["close"].to_list() == [7.5]
+    assert phased["volume"].to_list() == [6.0]
 
 
 def test_v16a_mainnet_pilot_profile_metadata_is_distinct() -> None:
@@ -94,6 +136,76 @@ def test_load_bars_can_read_local_cache_without_backfill(monkeypatch, tmp_path) 
 
     assert list(bars) == ["BTCUSDT"]
     assert len(bars["BTCUSDT"]) == 2
+
+
+def test_build_v10g_sleeve_keeps_default_6h_cache_path(monkeypatch) -> None:
+    calls: list[str] = []
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
+
+    def fake_load_bars(timeframe, *args, **kwargs):
+        calls.append(timeframe)
+        return {"BTCUSDT": pl.DataFrame({"open_time": [ts]})}
+
+    monkeypatch.setattr(v16a_module, "load_bars", fake_load_bars)
+    monkeypatch.setattr(v16a_module, "precompute", lambda bars, params: {})
+    monkeypatch.setattr(v16a_module, "build_timeline", lambda bars: ([ts], {}))
+    monkeypatch.setattr(v16a_module, "align_data", lambda bars, data, ts_to_idx: None)
+    monkeypatch.setattr(
+        v16a_module,
+        "compute_signals",
+        lambda data, timeline, params, btc_filter=True: {},
+    )
+    monkeypatch.setattr(
+        v16a_module,
+        "run_engine_positions",
+        lambda data, sigs, timeline, warmup, params: (
+            [],
+            np.zeros((1, 0)),
+            [(ts, 1.0)],
+            [],
+        ),
+    )
+
+    build_v10g_sleeve(backfill=False, core_phase_hours=0)
+
+    assert calls == ["6h"]
+
+
+def test_build_v10g_sleeve_uses_1h_cache_for_nonzero_phase(monkeypatch) -> None:
+    calls: list[str] = []
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
+    phased = pl.DataFrame({"open_time": [ts] * 500})
+
+    def fake_load_bars(timeframe, *args, **kwargs):
+        calls.append(timeframe)
+        return {"BTCUSDT": pl.DataFrame({"open_time": [ts]})}
+
+    monkeypatch.setattr(v16a_module, "load_bars", fake_load_bars)
+    monkeypatch.setattr(
+        v16a_module, "aggregate_phased_bars", lambda *args, **kwargs: phased
+    )
+    monkeypatch.setattr(v16a_module, "precompute", lambda bars, params: {})
+    monkeypatch.setattr(v16a_module, "build_timeline", lambda bars: ([ts], {}))
+    monkeypatch.setattr(v16a_module, "align_data", lambda bars, data, ts_to_idx: None)
+    monkeypatch.setattr(
+        v16a_module,
+        "compute_signals",
+        lambda data, timeline, params, btc_filter=True: {},
+    )
+    monkeypatch.setattr(
+        v16a_module,
+        "run_engine_positions",
+        lambda data, sigs, timeline, warmup, params: (
+            [],
+            np.zeros((1, 0)),
+            [(ts, 1.0)],
+            [],
+        ),
+    )
+
+    build_v10g_sleeve(backfill=False, core_phase_hours=2)
+
+    assert calls == ["1h"]
 
 
 def test_v16a_historical_strategy_returns_capped_portfolio_target() -> None:
@@ -190,10 +302,10 @@ def test_v16a_online_strategy_returns_latest_non_stale_target(
         datetime(2024, 1, 1, hour=1, tzinfo=UTC),
     ]
     target_set = _target_set(timeline, np.array([[0.1, 0.0], [0.2, -0.1]]))
-    calls: list[tuple[str, bool]] = []
+    calls: list[tuple[str, bool, int]] = []
 
-    def fake_build(data_dir, *, backfill=True):
-        calls.append((str(data_dir), backfill))
+    def fake_build(data_dir, *, backfill=True, core_phase_hours=0):
+        calls.append((str(data_dir), backfill, core_phase_hours))
         return target_set
 
     monkeypatch.setattr(v16a_module, "build_v16a_target_set", fake_build)
@@ -206,7 +318,7 @@ def test_v16a_online_strategy_returns_latest_non_stale_target(
     )
     target = strategy.target(datetime(2024, 1, 1, hour=1, minute=30, tzinfo=UTC))
 
-    assert calls == [(str(tmp_path), False)]
+    assert calls == [(str(tmp_path), False, 0)]
     assert strategy.profile == V16A_MAINNET_PILOT_PROFILE
     assert target.timestamp == timeline[1]
     assert target.gross == pytest.approx(0.2)
@@ -215,7 +327,26 @@ def test_v16a_online_strategy_returns_latest_non_stale_target(
 
     # Cached target set should be reused inside refresh_seconds.
     strategy.target(datetime(2024, 1, 1, hour=1, minute=45, tzinfo=UTC))
-    assert calls == [(str(tmp_path), False)]
+    assert calls == [(str(tmp_path), False, 0)]
+
+
+def test_v16a_online_strategy_threads_configured_core_phase(
+    monkeypatch, tmp_path
+) -> None:
+    timeline = [datetime(2024, 1, 1, hour=2, tzinfo=UTC)]
+    target_set = _target_set(timeline, np.array([[0.1, 0.0]]))
+    calls: list[int] = []
+
+    def fake_build(data_dir, *, backfill=True, core_phase_hours=0):
+        calls.append(core_phase_hours)
+        return target_set
+
+    monkeypatch.setattr(v16a_module, "build_v16a_target_set", fake_build)
+
+    strategy = V16aOnlineTargetStrategy(tmp_path, core_phase_hours=2)
+    strategy.target(datetime(2024, 1, 1, hour=2, minute=30, tzinfo=UTC))
+
+    assert calls == [2]
 
 
 def test_v16a_online_strategy_applies_target_scale_before_gross_cap(
@@ -226,7 +357,7 @@ def test_v16a_online_strategy_applies_target_scale_before_gross_cap(
     monkeypatch.setattr(
         v16a_module,
         "build_v16a_target_set",
-        lambda data_dir, *, backfill=True: target_set,
+        lambda data_dir, *, backfill=True, core_phase_hours=0: target_set,
     )
 
     strategy = V16aOnlineTargetStrategy(
@@ -247,7 +378,7 @@ def test_v16a_online_strategy_caps_scaled_target(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(
         v16a_module,
         "build_v16a_target_set",
-        lambda data_dir, *, backfill=True: target_set,
+        lambda data_dir, *, backfill=True, core_phase_hours=0: target_set,
     )
 
     strategy = V16aOnlineTargetStrategy(
@@ -268,7 +399,7 @@ def test_v16a_online_strategy_rejects_stale_target(monkeypatch, tmp_path) -> Non
     monkeypatch.setattr(
         v16a_module,
         "build_v16a_target_set",
-        lambda data_dir, *, backfill=True: target_set,
+        lambda data_dir, *, backfill=True, core_phase_hours=0: target_set,
     )
 
     strategy = V16aOnlineTargetStrategy(tmp_path, max_staleness=timedelta(hours=1))

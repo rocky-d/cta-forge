@@ -16,7 +16,10 @@ from .backtest import BacktestResult, calc_ulcer, run_full_backtest
 from .decision import V10GStrategyParams
 from .journal import TradeJournal
 from .live import V10G_PROFILE_SLUG, V16A_PROFILE_SLUG
-from .profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
+from .profiles.v16a_badscore_overlay import (
+    V16A_MAINNET_PILOT_PROFILE,
+    validate_core_phase_hours,
+)
 from .run_live import (
     MAINNET_PILOT_MAX_EQUITY,
     MAINNET_PILOT_MAX_LEVERAGE,
@@ -141,6 +144,9 @@ async def get_config() -> dict[str, Any]:
         ),
         "v16a_max_staleness_hours": float(
             os.environ.get("V16A_MAX_STALENESS_HOURS", "8")
+        ),
+        "v16a_core_phase_hours": validate_core_phase_hours(
+            int(os.environ.get("V16A_CORE_PHASE_HOURS", "0"))
         ),
         "min_order_notional": float(os.environ.get("MIN_ORDER_NOTIONAL", "10")),
         "max_order_notional": _optional_float_from_env("MAX_ORDER_NOTIONAL"),

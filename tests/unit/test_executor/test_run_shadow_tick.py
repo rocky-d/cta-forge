@@ -29,6 +29,7 @@ def test_load_shadow_tick_config_defaults_to_safe_shadow_paths() -> None:
     assert config.state_file == "engine-state-shadow.json"
     assert config.min_order_notional == 10.0
     assert config.max_staleness == timedelta(hours=8)
+    assert config.core_phase_hours == 0
 
 
 def test_load_shadow_tick_config_rejects_non_dry_run() -> None:
@@ -52,6 +53,7 @@ def test_load_shadow_tick_config_accepts_shadow_overrides() -> None:
         "STATE_FILE": "custom-state.json",
         "MIN_ORDER_NOTIONAL": "25",
         "V16A_MAX_STALENESS_HOURS": "2.5",
+        "V16A_CORE_PHASE_HOURS": "2",
     }
 
     config = load_shadow_tick_config(env)
@@ -61,6 +63,7 @@ def test_load_shadow_tick_config_accepts_shadow_overrides() -> None:
     assert config.state_file == "custom-state.json"
     assert config.min_order_notional == 25.0
     assert config.max_staleness == timedelta(hours=2.5)
+    assert config.core_phase_hours == 2
 
 
 def test_load_shadow_tick_config_rejects_other_profiles() -> None:

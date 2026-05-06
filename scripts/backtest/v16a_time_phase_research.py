@@ -33,6 +33,7 @@ from executor.portfolio_backtest import (
 from executor.profiles.v16a_badscore_overlay import (
     DEFAULT_SYMBOLS,
     INITIAL_EQUITY,
+    aggregate_phased_bars,
     align_weights,
     build_overlay_sleeve,
     expanding_badscore_gate,
@@ -113,44 +114,10 @@ def _metric_snapshot(metrics: dict[str, float | np.ndarray]) -> MetricSnapshot:
     )
 
 
-def aggregate_phased_bars(
-    df: pl.DataFrame, *, phase_hours: int, timeframe_hours: int
-) -> pl.DataFrame:
-    """Aggregate 1h bars into a synthetic phased timeframe.
-
-    A 6h phase of 1 means bars start at 01:00, 07:00, 13:00, 19:00 UTC, etc.
-    Only full windows are kept.
-    """
-    if df.is_empty():
-        return df
-    ts = df["open_time"].to_list()
-    epoch_hours = np.array([int(t.timestamp() // 3600) for t in ts], dtype=np.int64)
-    grp = (epoch_hours - phase_hours) // timeframe_hours
-    phase_mod = (epoch_hours - phase_hours) % timeframe_hours
-    joined = df.with_columns(pl.Series("_grp", grp), pl.Series("_phase_mod", phase_mod))
-    return (
-        joined.group_by("_grp")
-        .agg(
-            pl.col("open_time").first().alias("open_time"),
-            pl.col("open").first().alias("open"),
-            pl.col("high").max().alias("high"),
-            pl.col("low").min().alias("low"),
-            pl.col("close").last().alias("close"),
-            pl.col("volume").sum().alias("volume"),
-            pl.col("quote_volume").sum().alias("quote_volume"),
-            pl.col("_phase_mod").first().alias("_phase_mod"),
-            pl.len().alias("_n"),
-        )
-        .filter((pl.col("_phase_mod") == 0) & (pl.col("_n") == timeframe_hours))
-        .drop("_phase_mod", "_n")
-        .sort("open_time")
-    )
-
-
 def build_v10g_sleeve_with_phase(
     *, phase_hours: int
 ) -> tuple[list[str], np.ndarray, list[tuple], list]:
-    """Build the shifted v10g core sleeve using a synthetic 6h phase."""
+    """Build the shifted v10g core sleeve using phased 1h aggregation."""
     store = ParquetStore(DATA_DIR)
     params = v10g_params()
     bars: dict[str, pl.DataFrame] = {}
@@ -172,7 +139,7 @@ def build_v10g_sleeve_with_phase(
         symbol: np.concatenate([[0.0], np.asarray(signal[:-1], dtype=float)])
         for symbol, signal in signals.items()
     }
-    syms, weights, curve, trades = run_engine_positions(
+    syms, weights, curve, _trades = run_engine_positions(
         data, shifted, timeline, 200, params
     )
     return syms, weights, curve, timeline

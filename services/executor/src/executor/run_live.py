@@ -14,6 +14,7 @@ from .live import LiveEngine, V10G_PROFILE_SLUG, V16A_PROFILE_SLUG
 from .profiles.v16a_badscore_overlay import (
     V16A_MAINNET_PILOT_PROFILE,
     V16aOnlineTargetStrategy,
+    validate_core_phase_hours,
 )
 from .notify import (
     LarkNotifier,
@@ -213,6 +214,9 @@ def main() -> None:
     leverage = int(os.environ.get("HL_LEVERAGE", str(LiveEngine.DEFAULT_LEVERAGE)))
     symbols = _parse_symbols(os.environ.get("LIVE_SYMBOLS"))
     v16a_max_staleness_hours = float(os.environ.get("V16A_MAX_STALENESS_HOURS", "8"))
+    v16a_core_phase_hours = validate_core_phase_hours(
+        int(os.environ.get("V16A_CORE_PHASE_HOURS", "0"))
+    )
     allow_v16a_testnet_live = _is_truthy(os.environ.get("ALLOW_V16A_TESTNET_LIVE"))
     allow_mainnet_pilot_live = _is_truthy(os.environ.get("ALLOW_MAINNET_PILOT_LIVE"))
 
@@ -247,6 +251,7 @@ def main() -> None:
             max_staleness=timedelta(hours=v16a_max_staleness_hours),
             target_scale=target_scale,
             gross_cap=target_gross_cap,
+            core_phase_hours=v16a_core_phase_hours,
             profile=V16A_MAINNET_PILOT_PROFILE
             if strategy_profile == V16A_MAINNET_PILOT_PROFILE.slug
             else V16aOnlineTargetStrategy.profile,

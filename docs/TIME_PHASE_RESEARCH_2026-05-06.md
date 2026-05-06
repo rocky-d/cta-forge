@@ -256,6 +256,20 @@ Interpretation:
   diagnostic that records phase `0` and phase `2` targets side by side on actual
   refreshed live cache.
 
+## Implementation readiness
+
+A minimal code-level phase hook now exists for later live-shadow or promotion:
+
+- `V16A_CORE_PHASE_HOURS` defaults to `0`, so existing live behavior is unchanged.
+- Valid values are integer UTC-hour offsets `0..5` for the 6h v10g core sleeve.
+- Non-zero values derive phased 6h core bars from the refreshed 1h parquet cache;
+  the 1h overlay path and target/order reconciliation stay unchanged.
+- The setting is surfaced in executor config/preflight/shadow paths so operational
+  diagnostics can confirm which phase produced a target.
+
+This should remain a foundation, not a production switch. Phase `2` should first
+be used for read-only/live-shadow diagnostics on actual refreshed cache.
+
 ## Recommended next steps
 
 1. Keep live unchanged for now.
@@ -264,9 +278,8 @@ Interpretation:
    - neighboring-phase smoothness checks,
    - turnover / order-count / notional-threshold sensitivity,
    - per-phase performance under high-vol / high-correlation regimes.
-3. If phase `2` keeps showing a materially better stress trade-off, implement a
-   research-only parameterized `core_phase_hours` path before any production
-   move.
+3. Use `V16A_CORE_PHASE_HOURS=2` only for read-only/live-shadow diagnostics until
+   the recent-window and tracking-quality concerns are resolved.
 4. Re-test the hour prior with rolling OOS and symbol-level attribution before
    changing `favorable_hours` / `avoid_hours`.
 5. Do not optimize minute-level offsets until sub-hour data exists.

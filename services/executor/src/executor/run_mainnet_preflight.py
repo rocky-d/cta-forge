@@ -25,6 +25,7 @@ from .live_target import normalize_target_weights
 from .profiles.v16a_badscore_overlay import (
     V16A_MAINNET_PILOT_PROFILE,
     V16aOnlineTargetStrategy,
+    validate_core_phase_hours,
 )
 from .run_live import (
     _parse_optional_float,
@@ -60,6 +61,9 @@ async def _build_report() -> dict[str, Any]:
     target_gross_cap = float(os.environ.get("TARGET_GROSS_CAP", "0.2"))
     target_scale = float(os.environ.get("TARGET_SCALE", "1"))
     v16a_max_staleness_hours = float(os.environ.get("V16A_MAX_STALENESS_HOURS", "8"))
+    v16a_core_phase_hours = validate_core_phase_hours(
+        int(os.environ.get("V16A_CORE_PHASE_HOURS", "0"))
+    )
     max_equity = _parse_optional_float(os.environ.get("MAX_EQUITY"))
     max_order_notional = _parse_optional_float(os.environ.get("MAX_ORDER_NOTIONAL"))
     leverage = int(os.environ.get("HL_LEVERAGE", "5"))
@@ -119,6 +123,7 @@ async def _build_report() -> dict[str, Any]:
                 max_staleness=timedelta(hours=v16a_max_staleness_hours),
                 target_scale=target_scale,
                 gross_cap=target_gross_cap,
+                core_phase_hours=v16a_core_phase_hours,
                 profile=V16A_MAINNET_PILOT_PROFILE,
             )
             target = strategy.target(datetime.now(tz=UTC))
@@ -158,6 +163,7 @@ async def _build_report() -> dict[str, Any]:
                 "max_equity": max_equity,
                 "max_order_notional": max_order_notional,
                 "target_gross_cap": target_gross_cap,
+                "v16a_core_phase_hours": v16a_core_phase_hours,
                 "leverage": leverage,
             },
             "account": {
