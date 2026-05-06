@@ -20,6 +20,8 @@ from dataclasses import asdict, dataclass
 from datetime import timedelta
 from pathlib import Path
 
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
@@ -45,6 +47,8 @@ from executor.signal_pipeline import (
     compute_signals,
     precompute,
 )
+
+matplotlib.use("Agg")
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
@@ -85,6 +89,17 @@ class OverlayHourResult:
     hit_rate: float
     total_return: float
     max_dd: float
+
+
+@dataclass(frozen=True)
+class WalkForwardResult:
+    train_label: str
+    test_label: str
+    selected_phase: int
+    train_sharpe: float
+    test_sharpe: float
+    test_return: float
+    test_max_dd: float
 
 
 def _metric_snapshot(metrics: dict[str, float | np.ndarray]) -> MetricSnapshot:
@@ -204,11 +219,20 @@ def build_v16a_joint_with_core_phase(*, phase_hours: int) -> tuple[list, np.ndar
     return timeline, backtest.returns
 
 
-def run_phase_sweep() -> list[PhaseResult]:
+def build_phase_return_map() -> dict[int, tuple[list, np.ndarray]]:
+    """Build per-phase timeline/return streams once for downstream analysis."""
+    return {
+        phase: build_v16a_joint_with_core_phase(phase_hours=phase) for phase in range(6)
+    }
+
+
+def run_phase_sweep(
+    phase_returns: dict[int, tuple[list, np.ndarray]],
+) -> list[PhaseResult]:
     """Evaluate UTC-hour phase choices for the 6h core sleeve."""
     results: list[PhaseResult] = []
     for phase in range(6):
-        timeline, returns = build_v16a_joint_with_core_phase(phase_hours=phase)
+        timeline, returns = phase_returns[phase]
         total = _metric_snapshot(
             calculate_hourly_metrics(returns, initial_equity=INITIAL_EQUITY)
         )
@@ -230,6 +254,74 @@ def run_phase_sweep() -> list[PhaseResult]:
             )
         )
     return results
+
+
+def run_walkforward_selection(
+    phase_returns: dict[int, tuple[list, np.ndarray]],
+) -> list[WalkForwardResult]:
+    """Run a small walk-forward phase-selection audit.
+
+    This is not a production tuner. It is a sanity check for whether a phase
+    preference learned on one regime meaningfully generalizes to the next.
+    """
+
+    windows = [
+        (
+            "2020_2021",
+            "2020-01-01",
+            "2021-12-31",
+            "2022_2023",
+            "2022-01-01",
+            "2023-12-31",
+        ),
+        (
+            "2020_2023",
+            "2020-01-01",
+            "2023-12-31",
+            "2024_2026",
+            "2024-01-01",
+            "2026-12-31",
+        ),
+    ]
+    out: list[WalkForwardResult] = []
+
+    for train_label, train_lo, train_hi, test_label, test_lo, test_hi in windows:
+        ranked: list[tuple[int, MetricSnapshot]] = []
+        test_by_phase: dict[int, MetricSnapshot] = {}
+
+        for phase, (timeline, returns) in phase_returns.items():
+            days = np.array([ts.date().isoformat() for ts in timeline])
+            train_mask = (days >= train_lo) & (days <= train_hi)
+            test_mask = (days >= test_lo) & (days <= test_hi)
+            train_metrics = _metric_snapshot(
+                calculate_hourly_metrics(
+                    returns[train_mask], initial_equity=INITIAL_EQUITY
+                )
+            )
+            test_metrics = _metric_snapshot(
+                calculate_hourly_metrics(
+                    returns[test_mask], initial_equity=INITIAL_EQUITY
+                )
+            )
+            ranked.append((phase, train_metrics))
+            test_by_phase[phase] = test_metrics
+
+        ranked.sort(key=lambda item: item[1].sharpe, reverse=True)
+        selected_phase, train_metrics = ranked[0]
+        test_metrics = test_by_phase[selected_phase]
+        out.append(
+            WalkForwardResult(
+                train_label=train_label,
+                test_label=test_label,
+                selected_phase=selected_phase,
+                train_sharpe=train_metrics.sharpe,
+                test_sharpe=test_metrics.sharpe,
+                test_return=test_metrics.ret,
+                test_max_dd=test_metrics.max_dd,
+            )
+        )
+
+    return out
 
 
 def analyze_overlay_hour_profile() -> list[OverlayHourResult]:
@@ -262,10 +354,86 @@ def analyze_overlay_hour_profile() -> list[OverlayHourResult]:
     return sorted(results, key=lambda row: row.avg_ret_bp, reverse=True)
 
 
+def render_phase_chart(
+    phase_returns: dict[int, tuple[list, np.ndarray]],
+    phase_results: list[PhaseResult],
+    *,
+    out_path: Path,
+) -> None:
+    """Render a compact comparison chart for the 6h phase sweep."""
+    fig, axes = plt.subplots(
+        3,
+        1,
+        figsize=(15, 10),
+        gridspec_kw={"height_ratios": [2.2, 1.3, 1.2], "hspace": 0.28},
+    )
+
+    colors = {
+        0: "#2ecc71",
+        1: "#3498db",
+        2: "#9b59b6",
+        3: "#f39c12",
+        4: "#e74c3c",
+        5: "#7f8c8d",
+    }
+
+    for phase, (timeline, returns) in phase_returns.items():
+        equity = INITIAL_EQUITY * np.cumprod(1.0 + returns)
+        norm = equity / equity[0]
+        dd = (np.maximum.accumulate(equity) - equity) / np.maximum.accumulate(equity)
+        axes[0].plot(
+            timeline,
+            norm,
+            label=f"phase {phase}",
+            linewidth=1.7 if phase in {0, 1, 2} else 1.0,
+            alpha=1.0 if phase in {0, 1, 2} else 0.65,
+            color=colors[phase],
+        )
+        if phase in {0, 1, 2}:
+            axes[1].plot(
+                timeline,
+                -dd * 100,
+                linewidth=1.4,
+                alpha=0.95,
+                color=colors[phase],
+                label=f"phase {phase}",
+            )
+
+    axes[0].set_title("v16a 6h core UTC phase sweep — normalized equity")
+    axes[0].set_ylabel("Equity Index")
+    axes[0].grid(True, alpha=0.18)
+    axes[0].legend(ncol=3, fontsize=9, framealpha=0.85)
+
+    axes[1].set_title("Top candidates drawdown (underwater plot)")
+    axes[1].set_ylabel("DD %")
+    axes[1].grid(True, alpha=0.18)
+    axes[1].legend(fontsize=9, framealpha=0.85)
+
+    ranking = sorted(phase_results, key=lambda row: row.total.sharpe, reverse=True)
+    labels = [f"p{row.phase}" for row in ranking]
+    sharpes = [row.total.sharpe for row in ranking]
+    max_dds = [row.total.max_dd * 100 for row in ranking]
+    x = np.arange(len(labels))
+    axes[2].bar(x - 0.18, sharpes, width=0.36, color="#34495e", label="Sharpe")
+    axes[2].bar(x + 0.18, max_dds, width=0.36, color="#c0392b", label="MaxDD %")
+    axes[2].set_xticks(x)
+    axes[2].set_xticklabels(labels)
+    axes[2].set_title("Full-sample ranking summary")
+    axes[2].grid(True, alpha=0.18, axis="y")
+    axes[2].legend(fontsize=9, framealpha=0.85)
+
+    fig.savefig(out_path, dpi=170, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    phase_results = run_phase_sweep()
+    phase_returns = build_phase_return_map()
+    phase_results = run_phase_sweep(phase_returns)
+    walkforward = run_walkforward_selection(phase_returns)
     overlay_hours = analyze_overlay_hour_profile()
+    chart_path = OUT_DIR / "v16a_time_phase_research.png"
+    render_phase_chart(phase_returns, phase_results, out_path=chart_path)
 
     payload = {
         "notes": {
@@ -287,6 +455,7 @@ def main() -> None:
             }
             for row in phase_results
         ],
+        "walkforward": [asdict(row) for row in walkforward],
         "overlay_hour_profile": [asdict(row) for row in overlay_hours],
     }
     out_path = OUT_DIR / "v16a_time_phase_research.json"
@@ -306,7 +475,18 @@ def main() -> None:
             f"hit={row.hit_rate:.3f} maxdd={row.max_dd:.3f}"
         )
 
+    print("\n== walk-forward phase selection ==")
+    for row in walkforward:
+        print(
+            f"train {row.train_label} -> test {row.test_label}: "
+            f"selected phase {row.selected_phase}, "
+            f"test sharpe={row.test_sharpe:.3f}, "
+            f"test return={row.test_return:.3f}, "
+            f"test maxdd={row.test_max_dd:.3f}"
+        )
+
     print(f"\nWrote {out_path}")
+    print(f"Wrote {chart_path}")
 
 
 if __name__ == "__main__":
