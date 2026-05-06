@@ -171,6 +171,7 @@ def _journal_to_report_format(
     positions = latest.get("positions", {})
 
     return {
+        "equity_records": equity_records,
         "equity_curve": equity_curve,
         "trades": closed_trades,
         "positions": positions,
@@ -192,6 +193,7 @@ async def get_live_report() -> dict[str, Any]:
     m = calculate_metrics(
         [(ts, eq) for ts, eq in curve],
         data["trades"],
+        periods_per_year=365 * 24,
     )
 
     first_eq = curve[0][1]
@@ -228,18 +230,18 @@ async def get_live_report_plot() -> Any:
     if data.get("status") == "error":
         return JSONResponse(content=data, status_code=404)
 
-    curve = data["equity_curve"]
-    first_eq = curve[0][1]
-
     payload = {
-        "equity_curve": curve,
-        "initial_equity": first_eq,
-        "title_extra": "Live",
+        "equity_records": data["equity_records"],
+        "trades": data["trades"],
+        "title_extra": "mainnet-pilot live | drawdown recomputed from equity records",
         "dpi": 150,
     }
 
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{REPORT_SERVICE_URL}/plot/backtest", json=payload)
+        resp = await client.post(
+            f"{REPORT_SERVICE_URL}/plot/live-journal",
+            json=payload,
+        )
         resp.raise_for_status()
 
     return Response(content=resp.content, media_type="image/png")

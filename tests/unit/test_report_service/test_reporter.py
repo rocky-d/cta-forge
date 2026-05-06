@@ -8,6 +8,7 @@ import numpy as np
 from fastapi.testclient import TestClient
 from report_service.app import app
 from report_service.metrics import calculate_metrics
+from report_service.plot import plot_live_journal
 
 
 def _make_curve(n: int = 100, trend: float = 0.001) -> list[tuple[datetime, float]]:
@@ -97,3 +98,47 @@ class TestRoutes:
         data = resp.json()
         assert "image" in data
         assert data["media_type"] == "image/png"
+
+    def test_live_journal_plot_ignores_stale_recorded_drawdown(self):
+        rows = [
+            {
+                "ts": "2026-05-05T14:00:00+00:00",
+                "bar": 1,
+                "equity": 100.0,
+                "peak": 100.0,
+                "dd_pct": 0.0,
+            },
+            {
+                "ts": "2026-05-05T15:00:00+00:00",
+                "bar": 2,
+                "equity": 101.0,
+                "peak": 100.0,
+                "dd_pct": -1.0,
+            },
+        ]
+        img_bytes = plot_live_journal(rows)
+        assert img_bytes.startswith(b"\x89PNG")
+
+    def test_live_journal_plot_endpoint(self):
+        rows = [
+            {
+                "ts": "2026-05-05T14:00:00+00:00",
+                "bar": 1,
+                "equity": 100.0,
+                "peak": 100.0,
+                "dd_pct": 0.0,
+            },
+            {
+                "ts": "2026-05-05T15:00:00+00:00",
+                "bar": 2,
+                "equity": 99.0,
+                "peak": 100.0,
+                "dd_pct": 1.0,
+            },
+        ]
+        resp = self.client.post(
+            "/plot/live-journal",
+            json={"equity_records": rows, "trades": []},
+        )
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/png"

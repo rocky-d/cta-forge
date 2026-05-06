@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import io
-from typing import TYPE_CHECKING, Any, cast
+from datetime import datetime
+from typing import Any, cast
 
 import matplotlib
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 
-if TYPE_CHECKING:
-    from datetime import datetime
+from core.metrics import calculate_metrics
 
 matplotlib.use("Agg")
 
@@ -26,6 +26,7 @@ def plot_backtest(
     initial_equity: float = 10_000.0,
     dpi: int = 200,
     strategy_label: str = "CTA-Forge v10g",
+    title: str | None = None,
 ) -> bytes:
     """Generate three-panel backtest chart as PNG bytes.
 
@@ -140,7 +141,7 @@ def plot_backtest(
     ax.set_zorder(ax2.get_zorder() + 1)
     ax.patch.set_visible(False)
 
-    title = "CTA-Forge v10g — Backtest (V10GDecisionEngine)"
+    title = title or "CTA-Forge v10g — Backtest (V10GDecisionEngine)"
     if title_extra:
         title += f"\n{title_extra}"
     ax.set_title(title, fontsize=13, fontweight="bold", pad=12)
@@ -252,6 +253,48 @@ def plot_backtest(
     plt.close(fig)
     buf.seek(0)
     return buf.read()
+
+
+def plot_live_journal(
+    equity_records: list[dict[str, Any]],
+    trades: list[dict[str, Any]] | None = None,
+    *,
+    title_extra: str = "",
+    dpi: int = 180,
+) -> bytes:
+    """Generate a live-journal chart from executor TradeJournal records.
+
+    Live equity records include stored ``peak`` and ``dd_pct`` fields, but old
+    journals may contain stale/negative drawdown values from earlier engine
+    bugs. This adapter intentionally feeds only timestamp/equity into the
+    existing plotting path, so drawdown is recomputed from the equity curve.
+    """
+    curve = [
+        (datetime.fromisoformat(str(row["ts"])), float(row["equity"]))
+        for row in sorted(equity_records, key=lambda r: (str(r["ts"]), int(r["bar"])))
+    ]
+    metrics = calculate_metrics(curve, trades or [], periods_per_year=365 * 24)
+    metrics_dict = {
+        "total_return": metrics.total_return,
+        "annualized_return": metrics.annualized_return,
+        "sharpe_ratio": metrics.sharpe_ratio,
+        "sortino_ratio": metrics.sortino_ratio,
+        "max_drawdown": metrics.max_drawdown,
+        "calmar_ratio": metrics.calmar_ratio,
+        "profit_factor": metrics.profit_factor,
+        "win_rate": metrics.win_rate,
+        "num_trades": metrics.num_trades,
+    }
+    initial_equity = curve[0][1] if curve else 100.0
+    return plot_backtest(
+        equity_curve=curve,
+        metrics=metrics_dict,
+        title_extra=title_extra or "drawdown recomputed from live equity records",
+        initial_equity=initial_equity,
+        dpi=dpi,
+        strategy_label="cta-forge live",
+        title="cta-forge — Live Journal",
+    )
 
 
 # ── Legacy simple charts (kept for backward compatibility) ───────

@@ -14,6 +14,7 @@ from .plot import (
     plot_backtest,
     plot_drawdown,
     plot_equity_curve,
+    plot_live_journal,
     plot_returns_distribution,
 )
 
@@ -43,7 +44,18 @@ class BacktestPlotRequest(BaseModel):
     yearly: dict[str, float] | None = None
     initial_equity: float = 10_000.0
     title_extra: str = ""
+    strategy_label: str = "CTA-Forge v10g"
+    title: str | None = None
     dpi: int = 200
+
+
+class LiveJournalPlotRequest(BaseModel):
+    """Request for plotting executor TradeJournal live records."""
+
+    equity_records: list[dict]
+    trades: list[dict] = []
+    title_extra: str = ""
+    dpi: int = 180
 
 
 def _parse_curve(curve: list[tuple[str, float]]) -> list[tuple[datetime, float]]:
@@ -138,6 +150,8 @@ async def generate_backtest_plot(req: BacktestPlotRequest) -> Response:
         title_extra=req.title_extra,
         initial_equity=req.initial_equity,
         dpi=req.dpi,
+        strategy_label=req.strategy_label,
+        title=req.title,
     )
     return Response(content=img_bytes, media_type="image/png")
 
@@ -158,6 +172,20 @@ async def generate_backtest_plot_base64(req: BacktestPlotRequest) -> dict:
         title_extra=req.title_extra,
         initial_equity=req.initial_equity,
         dpi=req.dpi,
+        strategy_label=req.strategy_label,
+        title=req.title,
     )
     encoded = base64.b64encode(img_bytes).decode("utf-8")
     return {"image": encoded, "media_type": "image/png"}
+
+
+@router.post("/plot/live-journal")
+async def generate_live_journal_plot(req: LiveJournalPlotRequest) -> Response:
+    """Generate a live journal chart as PNG image."""
+    img_bytes = plot_live_journal(
+        req.equity_records,
+        req.trades,
+        title_extra=req.title_extra,
+        dpi=req.dpi,
+    )
+    return Response(content=img_bytes, media_type="image/png")

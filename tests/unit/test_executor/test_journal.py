@@ -99,6 +99,7 @@ class TestJournalToReportFormat:
             )
 
             result = _journal_to_report_format(j)
+            assert len(result["equity_records"]) == 2
             assert len(result["equity_curve"]) == 2
             assert len(result["trades"]) == 1  # only closed trade has pnl
             assert result["bars"] == 2
