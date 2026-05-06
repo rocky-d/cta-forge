@@ -374,21 +374,83 @@ A minimal code-level phase hook now exists for later live-shadow or promotion:
 This should remain a foundation, not a production switch. Phase `2` should first
 be used for read-only/live-shadow diagnostics on actual refreshed cache.
 
+## First EC2 cache-only forward shadow snapshot
+
+After deploying CI-green code at commit `47fdea0` to the mainnet-pilot-live EC2
+container on 2026-05-06, the live defaults were verified unchanged:
+
+- `HL_NETWORK=mainnet`
+- `DRY_RUN=false`
+- `ALLOW_MAINNET_PILOT_LIVE=true`
+- `STRATEGY_PROFILE=v16a-mainnet-pilot`
+- `V16A_CORE_PHASE_HOURS=0`
+- `MAX_ORDER_NOTIONAL=50`
+- `TARGET_SCALE=5.0`
+- `TARGET_GROSS_CAP=4.00`
+- `HL_LEVERAGE=5`
+
+The container restarted cleanly, passed preflight, restored the existing 7-position
+state, and waited for the next 16:00 UTC candle. No live trading parameter was
+promoted.
+
+Two cache-only snapshots were then recorded with `DRY_RUN=true` only for the
+one-off snapshot process:
+
+- cap `$50`: `/app/journal/mainnet-pilot-phase-shadow-cap50/phase_comparisons.jsonl`
+- cap `$75`: `/app/journal/mainnet-pilot-phase-shadow-cap75/phase_comparisons.jsonl`
+
+Snapshot target timestamp for both phases was `2026-05-06T14:00:00+00:00`.
+Equity was about `$102.6`. Both snapshots produced the same phase target-diff
+metrics because the max-order cap affects hypothetical orders, not target weights:
+
+- L1 target difference: `0.39148245`
+- cosine similarity: `0.90401641`
+- max absolute symbol difference: `0.12779754`
+- sign flips: `0`
+
+At this snapshot:
+
+- phase `0` target gross was `0.818771` and produced `0` hypothetical orders,
+  matching the current live baseline closely enough to require no immediate action.
+- phase `2` target gross was `0.638173` and produced `2` hypothetical reduce-only
+  orders, selling `SEI` and `XRP` to zero target weight.
+- The `$50` vs `$75` cap did not change this snapshot's hypothetical orders,
+  because the phase-2 differences were reduce-only reductions and reduce-only
+  orders are intentionally uncapped.
+- Ignored gross was `0` for both phases in this snapshot.
+
+Interpretation:
+
+- This first forward point does not support changing the max-order cap yet; the
+  cap was not binding in this specific 2x2 observation.
+- Phase `2` is meaningfully different from the live phase `0`, but the difference
+  is risk-reducing at this timestamp because it would reduce existing `SEI` and
+  `XRP` exposure rather than add new capped exposure.
+- More complete forward windows are needed before promoting either phase `2` or a
+  `$75` max-order cap. In particular, the `$75` candidate only matters when new
+  or increased exposure is capped.
+
 ## Recommended next steps
 
 1. Keep live unchanged for now.
-2. Use `V16A_CORE_PHASE_HOURS=2` only for read-only/live-shadow diagnostics until
-   the recent-window and tracking-quality concerns are resolved.
+2. Continue the 2x2 read-only shadow framing:
+   - phase `0`, cap `$50`: current baseline;
+   - phase `2`, cap `$50`: phase candidate only;
+   - phase `0`, cap `$75`: execution-cap candidate only;
+   - phase `2`, cap `$75`: combined candidate, research-only.
 3. Collect forward side-by-side evidence from the same live cache/account state:
    - target L1/cosine/sign-flip deltas,
    - simulated order counts/notionals under pilot caps,
    - ignored gross from min-notional and symbol-universe constraints,
    - realized phase-0 vs phase-2 paper-target returns over complete forward windows.
-4. Promote phase `2` only if forward evidence is stable across multiple windows
+4. Promote only one live variable at a time. If forward evidence supports an
+   execution change, consider `$75` max-order cap before changing phase, because
+   it does not alter the alpha target construction.
+5. Promote phase `2` only if forward evidence is stable across multiple windows
    and does not materially worsen pilot tracking quality or risk controls.
-5. Re-test the hour prior with rolling OOS and symbol-level attribution before
+6. Re-test the hour prior with rolling OOS and symbol-level attribution before
    changing `favorable_hours` / `avoid_hours`.
-6. Later bounded research spike: minute-level candle offsets. Do not start with
+7. Later bounded research spike: minute-level candle offsets. Do not start with
    an unconstrained grid. First use sub-hour data to test one shared minute offset
    for both the 1h overlay and 6h core, coarse grid `0/15/30/45` minutes, and only
    6h hour phases `0` and `2`. Avoid independent 1h/6h minute offsets unless this
