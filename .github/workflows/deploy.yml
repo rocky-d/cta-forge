@@ -173,6 +173,16 @@ jobs:
               docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^DRY_RUN=false$'
               docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^ALLOW_MAINNET_PILOT_LIVE=true$'
             fi
+            if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ] || [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
+              echo "Running strict mainnet pilot preflight..."
+              if ! docker exec cta-forge-executor uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
+                echo "✗ Mainnet pilot preflight failed"
+                cat /tmp/mainnet-preflight.json
+                exit 1
+              fi
+              cat /tmp/mainnet-preflight.json
+              echo "✓ Mainnet pilot preflight passed"
+            fi
             # Check for LiveEngine startup in logs
             if docker logs cta-forge-executor 2>&1 | grep -q "Preflight PASSED"; then
               echo "✓ LiveEngine started successfully"

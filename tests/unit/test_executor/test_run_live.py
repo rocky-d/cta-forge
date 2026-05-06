@@ -7,6 +7,7 @@ import logging
 import pytest
 
 from executor.profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
+from executor.run_mainnet_preflight import _check_runtime_paths, _report_has_errors
 from executor.run_live import (
     _is_truthy,
     _parse_hl_network,
@@ -108,3 +109,29 @@ def test_suppress_secret_bearing_http_logs() -> None:
 
     assert logging.getLogger("httpx").level == logging.WARNING
     assert logging.getLogger("httpcore").level == logging.WARNING
+
+
+def test_mainnet_preflight_report_fails_on_target_or_path_errors(tmp_path) -> None:
+    good = {
+        "paths": {"status": "ok"},
+        "target": {"status": "ok"},
+        "symbols": [{"symbol": "BTC", "exists": True}],
+    }
+    assert _report_has_errors(good) is False
+
+    target_error = good | {"target": {"status": "error", "error": "stale cache"}}
+    assert _report_has_errors(target_error) is True
+
+    path_error = good | {"paths": {"status": "error", "error": "readonly"}}
+    assert _report_has_errors(path_error) is True
+
+    missing_symbol = good | {"symbols": [{"symbol": "BTC", "exists": False}]}
+    assert _report_has_errors(missing_symbol) is True
+
+    path_report = _check_runtime_paths(
+        tmp_path / "state" / "engine-state.json",
+        tmp_path / "journal" / "mainnet-pilot",
+    )
+    assert path_report["status"] == "ok"
+    assert (tmp_path / "state").exists()
+    assert (tmp_path / "journal" / "mainnet-pilot").exists()

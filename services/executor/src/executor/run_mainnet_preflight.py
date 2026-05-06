@@ -13,6 +13,7 @@ import logging
 import math
 import os
 import sys
+from pathlib import Path
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -48,6 +49,8 @@ async def _build_report() -> dict[str, Any]:
         raise ValueError("run_mainnet_preflight requires HL_NETWORK=mainnet")
 
     data_dir = os.environ.get("DATA_DIR", "data")
+    state_file = Path(os.environ.get("STATE_FILE", "engine-state.json"))
+    journal_dir = Path(os.environ.get("JOURNAL_DIR", "journal"))
     symbols = _parse_symbols(os.environ.get("LIVE_SYMBOLS")) or list(V10G_SYMBOLS)
     min_order_notional = float(os.environ.get("MIN_ORDER_NOTIONAL", "10"))
     target_gross_cap = float(os.environ.get("TARGET_GROSS_CAP", "0.2"))
@@ -93,6 +96,8 @@ async def _build_report() -> dict[str, Any]:
             except Exception as exc:  # pragma: no cover - live diagnostic path
                 row["error"] = str(exc)
             symbol_rows.append(row)
+
+        path_report = _check_runtime_paths(state_file, journal_dir)
 
         target_report: dict[str, Any] = {"status": "not_computed"}
         try:
@@ -149,11 +154,48 @@ async def _build_report() -> dict[str, Any]:
                 "open_orders_count": len(open_orders),
             },
             "open_orders": open_orders,
+            "paths": path_report,
             "symbols": symbol_rows,
             "target": target_report,
         }
     finally:
         await adapter.close()
+
+
+def _check_runtime_paths(state_file: Path, journal_dir: Path) -> dict[str, Any]:
+    """Verify runtime persistence paths are writable without changing state."""
+    checks: dict[str, Any] = {
+        "state_file": str(state_file),
+        "journal_dir": str(journal_dir),
+        "status": "ok",
+    }
+    try:
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        journal_dir.mkdir(parents=True, exist_ok=True)
+        state_probe = state_file.parent / ".preflight-write-test"
+        journal_probe = journal_dir / ".preflight-write-test"
+        state_probe.write_text("ok")
+        journal_probe.write_text("ok")
+        state_probe.unlink(missing_ok=True)
+        journal_probe.unlink(missing_ok=True)
+    except Exception as exc:  # pragma: no cover - deployment environment dependent
+        checks["status"] = "error"
+        checks["error"] = str(exc)
+    return checks
+
+
+def _report_has_errors(report: dict[str, Any]) -> bool:
+    """Return whether a read-only mainnet preflight report should fail deploy."""
+    if report.get("status") == "error":
+        return True
+    if report.get("paths", {}).get("status") != "ok":
+        return True
+    if report.get("target", {}).get("status") != "ok":
+        return True
+    for symbol in report.get("symbols", []):
+        if not symbol.get("exists", False) or symbol.get("error"):
+            return True
+    return False
 
 
 def main() -> None:
@@ -164,6 +206,8 @@ def main() -> None:
         print(json.dumps({"status": "error", "error": str(exc)}, indent=2))
         sys.exit(1)
     print(json.dumps(report, indent=2, sort_keys=True))
+    if _report_has_errors(report):
+        sys.exit(1)
 
 
 if __name__ == "__main__":
