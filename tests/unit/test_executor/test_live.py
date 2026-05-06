@@ -235,6 +235,21 @@ class WarmupTargetStrategy(StaticTargetStrategy):
     required_timeframes = (("1h", 1, 5000), ("6h", 6, 500))
 
 
+def test_restore_equity_state_uses_journal_high_water_mark(tmp_path) -> None:
+    """Restart recovery uses journal equity to repair stale persisted peaks."""
+
+    exchange = FakeExchange(equity=Decimal("99"))
+    engine = LiveEngine(exchange, dry_run=True, journal_dir=str(tmp_path))
+    engine._state.peak_equity = 100.0
+    engine._journal.record_tick(1, 101.0, 100.0, {})
+    engine._journal.record_tick(2, 98.0, 101.0, {})
+
+    engine._restore_equity_state_from_journal(99.0)
+
+    assert engine._state.peak_equity == pytest.approx(101.0)
+    assert engine._last_tick_equity == pytest.approx(98.0)
+
+
 @pytest.mark.asyncio
 async def test_target_tick_updates_peak_and_never_reports_negative_dd(tmp_path) -> None:
     """Target mode maintains peak/DD invariants outside decision.tick()."""

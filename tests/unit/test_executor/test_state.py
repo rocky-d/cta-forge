@@ -16,7 +16,13 @@ if TYPE_CHECKING:
 def test_save_and_load_empty_state(tmp_path: Path) -> None:
     """Save and load state with no positions."""
     path = tmp_path / "state.json"
-    state = LiveState(bar_count=5, initial_equity=10000.0, peak_equity=10500.0)
+    state = LiveState(
+        bar_count=5,
+        initial_equity=10000.0,
+        peak_equity=10500.0,
+        recent_returns=[0.01, -0.02],
+        last_tick_equity=10400.0,
+    )
 
     save_state(state, path)
     assert path.exists()
@@ -26,6 +32,8 @@ def test_save_and_load_empty_state(tmp_path: Path) -> None:
     assert loaded.bar_count == 5
     assert loaded.initial_equity == 10000.0
     assert loaded.peak_equity == 10500.0
+    assert loaded.recent_returns == [0.01, -0.02]
+    assert loaded.last_tick_equity == 10400.0
     assert len(loaded.positions) == 0
 
 
@@ -67,6 +75,8 @@ def test_save_and_load_with_positions(tmp_path: Path) -> None:
     assert loaded.bar_count == 10
     assert loaded.dd_breaker_active is True
     assert loaded.last_signals == {"BTC": 0.55, "ETH": 0.42}
+    assert loaded.recent_returns == []
+    assert loaded.last_tick_equity is None
     assert len(loaded.positions) == 2
 
     btc = loaded.positions["BTC"]

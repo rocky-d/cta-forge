@@ -129,14 +129,22 @@ class LiveState:
     peak_equity: float = 0.0
     dd_breaker_active: bool = False
     last_signals: dict[str, float] = field(default_factory=dict)
+    recent_returns: list[float] = field(default_factory=list)
+    last_tick_equity: float | None = None
 
 
-def _engine_to_live_state(engine_state: EngineState) -> LiveState:
+def _engine_to_live_state(
+    engine_state: EngineState,
+    *,
+    last_tick_equity: float | None = None,
+) -> LiveState:
     """Convert internal EngineState to LiveState for persistence."""
     live_state = LiveState(
         bar_count=engine_state.bar_count,
         initial_equity=engine_state.initial_equity,
         peak_equity=engine_state.peak_equity,
+        recent_returns=list(engine_state.recent_returns[-120:]),
+        last_tick_equity=last_tick_equity,
     )
     for sym, pos in engine_state.positions.items():
         side = "long" if pos.qty > 0 else "short"
@@ -158,6 +166,7 @@ def _live_to_engine_state(live_state: LiveState) -> EngineState:
         bar_count=live_state.bar_count,
         initial_equity=live_state.initial_equity,
         peak_equity=live_state.peak_equity,
+        recent_returns=list(live_state.recent_returns[-120:]),
     )
     for sym, pos in live_state.positions.items():
         qty = float(pos.size) if pos.side == "long" else -float(pos.size)
@@ -280,9 +289,8 @@ class LiveEngine:
 
         if restored and not self._clean_start:
             self._state = _live_to_engine_state(restored)
-            self._state.peak_equity = max(
-                self._state.peak_equity, float(account.equity)
-            )
+            self._last_tick_equity = restored.last_tick_equity
+            self._restore_equity_state_from_journal(float(account.equity))
 
             # Reconcile state positions with exchange
             state_syms = set(self._state.positions.keys())
@@ -331,6 +339,7 @@ class LiveEngine:
             )
             self._state.initial_equity = float(account.equity)
             self._state.peak_equity = float(account.equity)
+            self._restore_equity_state_from_journal(float(account.equity))
             for sym, pos in exchange_positions.items():
                 self._state.positions[sym] = PositionState(
                     symbol=sym,
@@ -343,6 +352,8 @@ class LiveEngine:
                 f"🔄 Engine restarted — adopted {len(exchange_positions)} orphan position(s)"
             )
         else:
+            if not self._clean_start:
+                self._restore_equity_state_from_journal(float(account.equity))
             await self._notify.send(
                 "🚀 Engine started — no prior state, starting fresh"
             )
@@ -354,16 +365,25 @@ class LiveEngine:
                 await self._wait_for_candle_close()
                 await self._tick()
                 # Persist state after each tick
-                live_state = _engine_to_live_state(self._state)
+                live_state = _engine_to_live_state(
+                    self._state,
+                    last_tick_equity=self._last_tick_equity,
+                )
                 save_state(live_state, self._state_file)
             except asyncio.CancelledError:
                 logger.info("LiveEngine cancelled")
-                live_state = _engine_to_live_state(self._state)
+                live_state = _engine_to_live_state(
+                    self._state,
+                    last_tick_equity=self._last_tick_equity,
+                )
                 save_state(live_state, self._state_file)
                 break
             except Exception:
                 logger.exception("LiveEngine tick error")
-                live_state = _engine_to_live_state(self._state)
+                live_state = _engine_to_live_state(
+                    self._state,
+                    last_tick_equity=self._last_tick_equity,
+                )
                 save_state(live_state, self._state_file)
                 await asyncio.sleep(60)
 
@@ -522,7 +542,10 @@ class LiveEngine:
     @property
     def state(self) -> LiveState:
         """Return state in legacy format for external consumers."""
-        return _engine_to_live_state(self._state)
+        return _engine_to_live_state(
+            self._state,
+            last_tick_equity=self._last_tick_equity,
+        )
 
     # ── Core loop ────────────────────────────────────────────────
 
@@ -563,6 +586,26 @@ class LiveEngine:
             if len(self._state.recent_returns) > 120:
                 self._state.recent_returns.pop(0)
         self._last_tick_equity = equity
+
+    def _restore_equity_state_from_journal(self, account_equity: float) -> None:
+        """Recover persisted equity-derived state from the append-only journal.
+
+        The state file is the primary checkpoint, but older target-mode builds
+        could persist a stale peak. The journal records every observed equity,
+        so use it as a defensive high-water-mark source across deploy restarts.
+        """
+        records = self._journal.load_equity()
+        observed_equities = [float(account_equity)]
+        for record in records:
+            for key in ("equity", "peak"):
+                value = record.get(key)
+                if value is not None:
+                    observed_equities.append(float(value))
+        self._state.peak_equity = max(self._state.peak_equity, *observed_equities)
+        if self._last_tick_equity is None and records:
+            last_equity = records[-1].get("equity")
+            if last_equity is not None:
+                self._last_tick_equity = float(last_equity)
 
     async def _tick(self) -> None:
         """One iteration of the trading loop."""

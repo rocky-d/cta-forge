@@ -43,6 +43,8 @@ def save_state(state: LiveState, path: str | Path = DEFAULT_STATE_FILE) -> None:
         "peak_equity": state.peak_equity,
         "dd_breaker_active": state.dd_breaker_active,
         "last_signals": state.last_signals,
+        "recent_returns": [float(x) for x in state.recent_returns[-120:]],
+        "last_tick_equity": state.last_tick_equity,
         "positions": {
             sym: {
                 "symbol": pos.symbol,
@@ -88,6 +90,12 @@ def load_state(path: str | Path = DEFAULT_STATE_FILE) -> LiveState | None:
             peak_equity=data["peak_equity"],
             dd_breaker_active=data.get("dd_breaker_active", False),
             last_signals=data.get("last_signals", {}),
+            recent_returns=[float(x) for x in data.get("recent_returns", [])[-120:]],
+            last_tick_equity=(
+                float(data["last_tick_equity"])
+                if data.get("last_tick_equity") is not None
+                else None
+            ),
         )
 
         for sym, pos_data in data.get("positions", {}).items():
