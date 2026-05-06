@@ -53,10 +53,14 @@ def normalize_target_weights(
     return normalized, ignored
 
 
-def sync_target_state_from_account(state: EngineState, account: "AccountState") -> None:
-    """Use exchange account positions as source of truth before target orders."""
+def sync_target_state_from_account(
+    state: EngineState, account: "AccountState", symbols: set[str] | None = None
+) -> None:
+    """Use managed exchange positions as source of truth before target orders."""
     next_positions: dict[str, PositionState] = {}
     for pos in account.positions:
+        if symbols is not None and pos.symbol not in symbols:
+            continue
         size = float(pos.size)
         if abs(size) <= 1e-12:
             continue
@@ -137,7 +141,7 @@ async def execute_target_order(
     dry_run: bool,
     order: TargetOrder,
     price: float,
-) -> None:
+) -> bool:
     """Execute one target reconciliation order and update local state."""
     is_buy = order.side == "buy"
     size = Decimal(str(order.qty))
@@ -171,10 +175,10 @@ async def execute_target_order(
         )
         if not result.success:
             logger.error("Failed target order %s: %s", order.symbol, result.message)
-            return
+            return False
         if result.filled_size <= 0:
             logger.error("Target order %s reported no fill: %s", order.symbol, result)
-            return
+            return False
         fill_qty = min(float(result.filled_size), order.qty)
         if result.avg_price > 0:
             fill_price = result.avg_price
@@ -199,6 +203,7 @@ async def execute_target_order(
         reason=f"target:{profile}",
         side="long" if is_buy else "short",
     )
+    return True
 
 
 def apply_target_fill(state: EngineState, order: TargetOrder, price: float) -> None:
@@ -259,13 +264,26 @@ async def execute_target_portfolio(
     if target_strategy is None:
         return []
 
-    sync_target_state_from_account(state, account)
+    managed = set(symbols)
+    sync_target_state_from_account(state, account, managed)
     now = datetime.now(tz=UTC)
     target = target_strategy.target(now).capped()
     target_weights, ignored_weights = normalize_target_weights(
         dict(target.weights), set(symbols)
     )
-    positions = {pos.symbol: float(pos.size) for pos in account.positions}
+    unmanaged_positions = [
+        pos.symbol for pos in account.positions if pos.symbol not in managed
+    ]
+    if unmanaged_positions:
+        logger.warning(
+            "Ignoring unmanaged account position(s) outside LIVE_SYMBOLS: %s",
+            ",".join(sorted(unmanaged_positions)),
+        )
+    positions = {
+        pos.symbol: float(pos.size)
+        for pos in account.positions
+        if pos.symbol in managed
+    }
     order_symbols = set(positions) | set(target_weights)
     prices = await fetch_target_prices(exchange, order_symbols)
     orders = weights_to_orders(
@@ -291,7 +309,7 @@ async def execute_target_portfolio(
         price = prices.get(order.symbol)
         if price is None:
             continue
-        await execute_target_order(
+        ok = await execute_target_order(
             exchange=exchange,
             journal=journal,
             state=state,
@@ -300,6 +318,9 @@ async def execute_target_portfolio(
             order=order,
             price=price,
         )
+        if not ok:
+            logger.error("Stopping target order batch after failed %s", order.symbol)
+            break
 
     logger.info(
         "Target profile %s produced %d order(s), gross=%.3f",

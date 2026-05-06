@@ -137,6 +137,17 @@ jobs:
             echo "Deploy target: ${{ inputs.target }}"
             echo "Compose files: $COMPOSE_FILES"
             docker compose $COMPOSE_FILES pull
+            if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ] || [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
+              echo "Running pre-start strict mainnet pilot preflight..."
+              if ! docker compose $COMPOSE_FILES run --rm --no-deps \
+                executor-live uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
+                echo "✗ Pre-start mainnet pilot preflight failed"
+                cat /tmp/mainnet-preflight.json
+                exit 1
+              fi
+              cat /tmp/mainnet-preflight.json
+              echo "✓ Pre-start mainnet pilot preflight passed"
+            fi
             # Graceful shutdown: give live engine time to finish any in-flight tick
             docker compose $COMPOSE_FILES stop -t 30
             docker compose $COMPOSE_FILES down --remove-orphans

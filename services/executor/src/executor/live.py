@@ -729,7 +729,7 @@ class LiveEngine:
             self._decision.p.max_drawdown * 100,
         )
         self._state.dd_breaker_active = True
-        sync_target_state_from_account(self._state, account)
+        sync_target_state_from_account(self._state, account, set(self._symbols))
         if self._state.positions:
             positions_before = {
                 sym: PositionState(
@@ -742,7 +742,13 @@ class LiveEngine:
                 )
                 for sym, pos in self._state.positions.items()
             }
-            await self._flatten_all(positions_before)
+            ok = await self._flatten_all(positions_before)
+            if not ok:
+                await self._notify.send(
+                    f"🚨 TARGET MAX DD {cur_dd * 100:.1f}% — flatten failed; "
+                    "new exposure suppressed"
+                )
+                return True
         elif not self._dry_run:
             await self._exchange.cancel_all_orders()
         await self._notify.send(

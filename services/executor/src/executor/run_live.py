@@ -29,6 +29,43 @@ def _is_truthy(value: str | None) -> bool:
     return (value or "").lower() in {"1", "true", "yes", "y"}
 
 
+MAINNET_PILOT_MAX_EQUITY = 200.0
+MAINNET_PILOT_MAX_ORDER_NOTIONAL = 50.0
+MAINNET_PILOT_MAX_TARGET_GROSS_CAP = 4.0
+MAINNET_PILOT_MAX_LEVERAGE = 5
+
+
+def _validate_mainnet_pilot_caps(
+    *,
+    max_equity: float | None,
+    max_order_notional: float | None,
+    target_gross_cap: float,
+    leverage: int,
+) -> None:
+    """Require explicit bounded risk caps for mainnet pilot live mode."""
+    if max_equity is None or max_equity > MAINNET_PILOT_MAX_EQUITY:
+        msg = f"mainnet pilot live requires MAX_EQUITY <= {MAINNET_PILOT_MAX_EQUITY:g}"
+        raise ValueError(msg)
+    if (
+        max_order_notional is None
+        or max_order_notional > MAINNET_PILOT_MAX_ORDER_NOTIONAL
+    ):
+        msg = (
+            "mainnet pilot live requires "
+            f"MAX_ORDER_NOTIONAL <= {MAINNET_PILOT_MAX_ORDER_NOTIONAL:g}"
+        )
+        raise ValueError(msg)
+    if target_gross_cap > MAINNET_PILOT_MAX_TARGET_GROSS_CAP:
+        msg = (
+            "mainnet pilot live requires "
+            f"TARGET_GROSS_CAP <= {MAINNET_PILOT_MAX_TARGET_GROSS_CAP:g}"
+        )
+        raise ValueError(msg)
+    if leverage > MAINNET_PILOT_MAX_LEVERAGE:
+        msg = f"mainnet pilot live requires HL_LEVERAGE <= {MAINNET_PILOT_MAX_LEVERAGE}"
+        raise ValueError(msg)
+
+
 def _validate_v16a_live_mode(
     *,
     dry_run: bool,
@@ -36,6 +73,11 @@ def _validate_v16a_live_mode(
     strategy_profile: str = V16A_PROFILE_SLUG,
     allow_testnet_live: bool = False,
     allow_mainnet_pilot_live: bool = False,
+    enforce_pilot_caps: bool = False,
+    max_equity: float | None = None,
+    max_order_notional: float | None = None,
+    target_gross_cap: float = 1.0,
+    leverage: int = LiveEngine.DEFAULT_LEVERAGE,
 ) -> None:
     """Validate v16a live-mode guardrails before constructing the engine."""
     if dry_run:
@@ -47,12 +89,35 @@ def _validate_v16a_live_mode(
         if not allow_mainnet_pilot_live:
             msg = f"{V16A_MAINNET_PILOT_PROFILE.slug} requires ALLOW_MAINNET_PILOT_LIVE=true"
             raise ValueError(msg)
+        if enforce_pilot_caps:
+            _validate_mainnet_pilot_caps(
+                max_equity=max_equity,
+                max_order_notional=max_order_notional,
+                target_gross_cap=target_gross_cap,
+                leverage=leverage,
+            )
         return
     if not testnet:
         msg = f"{V16A_PROFILE_SLUG} non-dry-run is only allowed on HL_NETWORK=testnet"
         raise ValueError(msg)
     if not allow_testnet_live:
         msg = f"{V16A_PROFILE_SLUG} testnet live requires ALLOW_V16A_TESTNET_LIVE=true"
+        raise ValueError(msg)
+
+
+def _validate_mainnet_non_dry_run_profile(
+    *, dry_run: bool, testnet: bool, strategy_profile: str
+) -> None:
+    """Allow real mainnet orders only through the explicit pilot profile."""
+    if (
+        not dry_run
+        and not testnet
+        and strategy_profile != V16A_MAINNET_PILOT_PROFILE.slug
+    ):
+        msg = (
+            "mainnet non-dry-run requires "
+            f"STRATEGY_PROFILE={V16A_MAINNET_PILOT_PROFILE.slug}"
+        )
         raise ValueError(msg)
 
 
@@ -151,6 +216,14 @@ def main() -> None:
     allow_v16a_testnet_live = _is_truthy(os.environ.get("ALLOW_V16A_TESTNET_LIVE"))
     allow_mainnet_pilot_live = _is_truthy(os.environ.get("ALLOW_MAINNET_PILOT_LIVE"))
 
+    try:
+        _validate_mainnet_non_dry_run_profile(
+            dry_run=dry_run, testnet=testnet, strategy_profile=strategy_profile
+        )
+    except ValueError as exc:
+        logging.error("%s", exc)
+        sys.exit(1)
+
     target_strategy = None
     if strategy_profile in {V16A_PROFILE_SLUG, V16A_MAINNET_PILOT_PROFILE.slug}:
         try:
@@ -160,6 +233,11 @@ def main() -> None:
                 strategy_profile=strategy_profile,
                 allow_testnet_live=allow_v16a_testnet_live,
                 allow_mainnet_pilot_live=allow_mainnet_pilot_live,
+                enforce_pilot_caps=True,
+                max_equity=max_equity,
+                max_order_notional=max_order_notional,
+                target_gross_cap=target_gross_cap,
+                leverage=leverage,
             )
         except ValueError as exc:
             logging.error("%s", exc)
@@ -173,7 +251,9 @@ def main() -> None:
             if strategy_profile == V16A_MAINNET_PILOT_PROFILE.slug
             else V16aOnlineTargetStrategy.profile,
         )
-    elif strategy_profile != V10G_PROFILE_SLUG:
+    elif strategy_profile == V10G_PROFILE_SLUG:
+        pass
+    else:
         logging.error("Unknown STRATEGY_PROFILE=%s", strategy_profile)
         sys.exit(1)
 

@@ -13,6 +13,7 @@ from executor.run_live import (
     _parse_hl_network,
     _parse_symbols,
     _suppress_secret_bearing_http_logs,
+    _validate_mainnet_non_dry_run_profile,
     _validate_v16a_live_mode,
 )
 
@@ -87,6 +88,88 @@ def test_validate_mainnet_pilot_allows_explicit_live_flag() -> None:
         strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
         allow_mainnet_pilot_live=True,
     )
+
+
+def test_validate_mainnet_pilot_enforced_caps() -> None:
+    _validate_v16a_live_mode(
+        dry_run=False,
+        testnet=False,
+        strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+        allow_mainnet_pilot_live=True,
+        enforce_pilot_caps=True,
+        max_equity=200,
+        max_order_notional=50,
+        target_gross_cap=4.0,
+        leverage=5,
+    )
+
+    with pytest.raises(ValueError, match="MAX_EQUITY"):
+        _validate_v16a_live_mode(
+            dry_run=False,
+            testnet=False,
+            strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+            allow_mainnet_pilot_live=True,
+            enforce_pilot_caps=True,
+            max_equity=None,
+            max_order_notional=50,
+            target_gross_cap=4.0,
+            leverage=5,
+        )
+    with pytest.raises(ValueError, match="MAX_ORDER_NOTIONAL"):
+        _validate_v16a_live_mode(
+            dry_run=False,
+            testnet=False,
+            strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+            allow_mainnet_pilot_live=True,
+            enforce_pilot_caps=True,
+            max_equity=200,
+            max_order_notional=51,
+            target_gross_cap=4.0,
+            leverage=5,
+        )
+    with pytest.raises(ValueError, match="TARGET_GROSS_CAP"):
+        _validate_v16a_live_mode(
+            dry_run=False,
+            testnet=False,
+            strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+            allow_mainnet_pilot_live=True,
+            enforce_pilot_caps=True,
+            max_equity=200,
+            max_order_notional=50,
+            target_gross_cap=4.01,
+            leverage=5,
+        )
+    with pytest.raises(ValueError, match="HL_LEVERAGE"):
+        _validate_v16a_live_mode(
+            dry_run=False,
+            testnet=False,
+            strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+            allow_mainnet_pilot_live=True,
+            enforce_pilot_caps=True,
+            max_equity=200,
+            max_order_notional=50,
+            target_gross_cap=4.0,
+            leverage=6,
+        )
+
+
+def test_validate_mainnet_non_dry_run_rejects_non_pilot_profiles() -> None:
+    _validate_mainnet_non_dry_run_profile(
+        dry_run=False,
+        testnet=False,
+        strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+    )
+    _validate_mainnet_non_dry_run_profile(
+        dry_run=True,
+        testnet=False,
+        strategy_profile="v10g-engine-6h",
+    )
+    with pytest.raises(ValueError, match="STRATEGY_PROFILE=v16a-mainnet-pilot"):
+        _validate_mainnet_non_dry_run_profile(
+            dry_run=False,
+            testnet=False,
+            strategy_profile="v10g-engine-6h",
+        )
 
 
 def test_parse_symbols_normalizes_comma_separated_list() -> None:

@@ -30,6 +30,7 @@ engine-state.json
 engine-state-shadow.json
 engine.log
 journal/
+state/
 live-report/
 
 # Data & backtest output

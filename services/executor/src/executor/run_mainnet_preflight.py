@@ -26,7 +26,11 @@ from .profiles.v16a_badscore_overlay import (
     V16A_MAINNET_PILOT_PROFILE,
     V16aOnlineTargetStrategy,
 )
-from .run_live import _parse_symbols
+from .run_live import (
+    _parse_optional_float,
+    _parse_symbols,
+    _validate_mainnet_pilot_caps,
+)
 from .targeting import weights_to_orders
 
 
@@ -56,6 +60,15 @@ async def _build_report() -> dict[str, Any]:
     target_gross_cap = float(os.environ.get("TARGET_GROSS_CAP", "0.2"))
     target_scale = float(os.environ.get("TARGET_SCALE", "1"))
     v16a_max_staleness_hours = float(os.environ.get("V16A_MAX_STALENESS_HOURS", "8"))
+    max_equity = _parse_optional_float(os.environ.get("MAX_EQUITY"))
+    max_order_notional = _parse_optional_float(os.environ.get("MAX_ORDER_NOTIONAL"))
+    leverage = int(os.environ.get("HL_LEVERAGE", "5"))
+    _validate_mainnet_pilot_caps(
+        max_equity=max_equity,
+        max_order_notional=max_order_notional,
+        target_gross_cap=target_gross_cap,
+        leverage=leverage,
+    )
 
     adapter = HyperliquidAdapter(pk, addr, testnet=False)
     try:
@@ -112,14 +125,18 @@ async def _build_report() -> dict[str, Any]:
             normalized, ignored = normalize_target_weights(
                 dict(target.weights), set(symbols)
             )
-            positions = {pos.symbol: float(pos.size) for pos in account.positions}
+            positions = {
+                pos.symbol: float(pos.size)
+                for pos in account.positions
+                if pos.symbol in set(symbols)
+            }
             orders = weights_to_orders(
                 positions,
                 prices,
                 float(account.equity),
                 normalized,
                 min_notional=min_order_notional,
-                max_notional=float(os.environ.get("MAX_ORDER_NOTIONAL", "0")) or None,
+                max_notional=max_order_notional,
             )
             target_report = {
                 "status": "ok",
@@ -137,6 +154,12 @@ async def _build_report() -> dict[str, Any]:
             "ts": datetime.now(tz=UTC).isoformat(),
             "network": "mainnet",
             "address_prefix": addr[:10],
+            "caps": {
+                "max_equity": max_equity,
+                "max_order_notional": max_order_notional,
+                "target_gross_cap": target_gross_cap,
+                "leverage": leverage,
+            },
             "account": {
                 "equity": _decimal_to_float(account.equity),
                 "available_balance": _decimal_to_float(account.available_balance),
