@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import numpy as np
 import pytest
@@ -106,8 +107,10 @@ def test_calculate_hourly_metrics_reports_positive_drawdown_magnitude() -> None:
         np.array([0.0, 0.10, -0.05]), initial_equity=100.0
     )
 
+    drawdown = cast(np.ndarray, metrics["drawdown"])
+
     assert metrics["return"] == pytest.approx(0.045)
     assert metrics["max_dd"] == pytest.approx(0.05)
-    assert np.all(metrics["drawdown"] >= 0)
-    assert metrics["drawdown"][-1] == pytest.approx(0.05)
+    assert np.all(drawdown >= 0)
+    assert drawdown[-1] == pytest.approx(0.05)
     assert metrics["sharpe"] > 0
