@@ -303,6 +303,8 @@ class TestExecutorService:
         data = resp.json()
         assert data["default_strategy_profile"] == "v10g-engine-6h"
         assert data["v16a_profile"] == "v16a-badscore-overlay"
+        assert data["v16a_mainnet_pilot_profile"] == "v16a-mainnet-pilot"
+        assert data["mainnet_pilot_caps"]["max_equity"] == 200.0
         assert "private" not in data
         assert "token" not in data
 

@@ -16,6 +16,13 @@ from .backtest import BacktestResult, calc_ulcer, run_full_backtest
 from .decision import V10GStrategyParams
 from .journal import TradeJournal
 from .live import V10G_PROFILE_SLUG, V16A_PROFILE_SLUG
+from .profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
+from .run_live import (
+    MAINNET_PILOT_MAX_EQUITY,
+    MAINNET_PILOT_MAX_LEVERAGE,
+    MAINNET_PILOT_MAX_ORDER_NOTIONAL,
+    MAINNET_PILOT_MAX_TARGET_GROSS_CAP,
+)
 
 router = APIRouter()
 
@@ -111,19 +118,38 @@ async def get_config() -> dict[str, Any]:
     return {
         "data_dir": os.environ.get("DATA_DIR", DATA_DIR),
         "journal_dir": os.environ.get("JOURNAL_DIR", JOURNAL_DIR),
+        "state_file": os.environ.get("STATE_FILE", "engine-state.json"),
         "report_service_url": os.environ.get("REPORT_SERVICE_URL", REPORT_SERVICE_URL),
         "hl_network": os.environ.get("HL_NETWORK", "testnet"),
         "dry_run": _is_truthy(os.environ.get("DRY_RUN", "false")),
         "strategy_profile": strategy_profile,
         "default_strategy_profile": V10G_PROFILE_SLUG,
         "v16a_profile": V16A_PROFILE_SLUG,
+        "v16a_mainnet_pilot_profile": V16A_MAINNET_PILOT_PROFILE.slug,
         "allow_v16a_testnet_live": _is_truthy(
             os.environ.get("ALLOW_V16A_TESTNET_LIVE")
+        ),
+        "allow_mainnet_pilot_live": _is_truthy(
+            os.environ.get("ALLOW_MAINNET_PILOT_LIVE")
         ),
         "v16a_max_staleness_hours": float(
             os.environ.get("V16A_MAX_STALENESS_HOURS", "8")
         ),
         "min_order_notional": float(os.environ.get("MIN_ORDER_NOTIONAL", "10")),
+        "max_order_notional": os.environ.get("MAX_ORDER_NOTIONAL"),
+        "target_scale": float(os.environ.get("TARGET_SCALE", "1")),
+        "target_gross_cap": float(os.environ.get("TARGET_GROSS_CAP", "1")),
+        "live_symbols": [
+            symbol.strip().upper()
+            for symbol in os.environ.get("LIVE_SYMBOLS", "").split(",")
+            if symbol.strip()
+        ],
+        "mainnet_pilot_caps": {
+            "max_equity": MAINNET_PILOT_MAX_EQUITY,
+            "max_order_notional": MAINNET_PILOT_MAX_ORDER_NOTIONAL,
+            "target_gross_cap": MAINNET_PILOT_MAX_TARGET_GROSS_CAP,
+            "leverage": MAINNET_PILOT_MAX_LEVERAGE,
+        },
     }
 
 

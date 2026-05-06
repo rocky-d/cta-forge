@@ -51,8 +51,8 @@ class SelectRequest(BaseModel):
 class AllocateRequest(BaseModel):
     signals: dict[str, float]  # {symbol: composite_signal}
     equity: float
-    long_ratio: float = 0.7
-    short_ratio: float = 0.3
+    long_ratio: float = DEFAULT_LONG_RATIO
+    short_ratio: float = DEFAULT_SHORT_RATIO
     max_position_pct: float = 0.1
 
 
@@ -80,13 +80,13 @@ class RiskCheckRequest(BaseModel):
     positions: dict[str, float]
     bars: dict[str, list[dict]]
     entry_prices: dict[str, float]
-    atr_mult: float = 2.0
+    atr_mult: float = DEFAULT_TRAILING_STOP_ATR_MULT
 
 
 class DrawdownCheckRequest(BaseModel):
     equity: float
     peak_equity: float
-    max_drawdown: float = 0.15
+    max_drawdown: float = DEFAULT_MAX_DRAWDOWN
 
 
 @risk_router.post("/check")

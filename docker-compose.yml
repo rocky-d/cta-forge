@@ -38,6 +38,7 @@ services:
     depends_on:
       - data-service
       - strategy-service
+      - report-service
     environment:
       DATA_SERVICE_URL: http://data-service:8001
       STRATEGY_SERVICE_URL: http://strategy-service:8003

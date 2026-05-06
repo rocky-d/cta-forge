@@ -273,7 +273,8 @@ def plot_live_journal(
         (datetime.fromisoformat(str(row["ts"])), float(row["equity"]))
         for row in sorted(equity_records, key=lambda r: (str(r["ts"]), int(r["bar"])))
     ]
-    metrics = calculate_metrics(curve, trades or [], periods_per_year=365 * 24)
+    closed_trades = [trade for trade in trades or [] if "pnl" in trade]
+    metrics = calculate_metrics(curve, closed_trades, periods_per_year=365 * 24)
     metrics_dict = {
         "total_return": metrics.total_return,
         "annualized_return": metrics.annualized_return,

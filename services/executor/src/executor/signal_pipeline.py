@@ -146,7 +146,9 @@ def align_data(
     """Map each symbol's data to global timeline indices."""
     for symbol, df in bars_dict.items():
         timestamps = df["open_time"].to_list()
-        data[symbol]["start_idx"] = ts_to_idx[timestamps[0]]
+        global_indices = [ts_to_idx[ts] for ts in timestamps]
+        data[symbol]["start_idx"] = global_indices[0]
+        data[symbol]["global_indices"] = global_indices
 
 
 def compute_signals(
@@ -188,13 +190,17 @@ def compute_signals(
                 reference=btc_ref,
                 target_start=start,
                 target_length=n,
+                target_global_indices=symbol_data.get("global_indices"),
             )
             local_signals = factor.compute_signal_array(symbol_data, aligned_btc)
         else:
             local_signals = factor.compute_signal_array(symbol_data, btc_ref)
 
-        for local_idx in range(n):
-            global_idx = start + local_idx
+        global_indices = symbol_data.get("global_indices")
+        if global_indices is None:
+            global_indices = range(start, start + n)
+
+        for local_idx, global_idx in enumerate(global_indices):
             if global_idx < n_global:
                 signals[symbol][global_idx] = local_signals[local_idx]
 
@@ -202,20 +208,33 @@ def compute_signals(
 
 
 def align_reference_indicators(
-    *, reference: dict, target_start: int, target_length: int
+    *,
+    reference: dict,
+    target_start: int,
+    target_length: int,
+    target_global_indices: list[int] | None = None,
 ) -> dict:
     """Align a reference symbol's indicator arrays to another symbol window."""
     reference_start = reference["start_idx"]
     reference_length = reference["length"]
+    reference_indices = reference.get("global_indices")
+    if reference_indices is None:
+        reference_indices = range(reference_start, reference_start + reference_length)
+    reference_by_global_idx = {
+        global_idx: local_idx for local_idx, global_idx in enumerate(reference_indices)
+    }
+    target_indices = target_global_indices
+    if target_indices is None:
+        target_indices = range(target_start, target_start + target_length)
+
     aligned_reference: dict = {}
     for key, arr in reference.items():
-        if key in ("start_idx", "length"):
+        if key in ("start_idx", "length", "global_indices"):
             continue
         aligned = np.zeros(target_length)
-        for local_idx in range(target_length):
-            global_idx = target_start + local_idx
-            reference_local_idx = global_idx - reference_start
-            if 0 <= reference_local_idx < reference_length:
+        for local_idx, global_idx in enumerate(target_indices):
+            reference_local_idx = reference_by_global_idx.get(global_idx)
+            if reference_local_idx is not None:
                 aligned[local_idx] = arr[reference_local_idx]
         aligned_reference[key] = aligned
     return aligned_reference

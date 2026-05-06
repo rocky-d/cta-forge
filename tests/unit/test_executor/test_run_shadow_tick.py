@@ -38,6 +38,13 @@ def test_load_shadow_tick_config_rejects_non_dry_run() -> None:
         load_shadow_tick_config(env)
 
 
+def test_load_shadow_tick_config_rejects_unknown_network() -> None:
+    env = _base_env() | {"HL_NETWORK": "mainet"}
+
+    with pytest.raises(ValueError, match="HL_NETWORK"):
+        load_shadow_tick_config(env)
+
+
 def test_load_shadow_tick_config_accepts_shadow_overrides() -> None:
     env = _base_env() | {
         "DATA_DIR": "custom-data",

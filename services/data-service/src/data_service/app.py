@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from .routes import router
 from .store import ParquetStore
 
-DATA_DIR = os.environ.get("DATA_DIR", "./data/binance")
+DATA_DIR = os.environ.get("DATA_DIR", "./data")
 
 app = FastAPI(title="data-service", version="0.1.0")
 app.include_router(router)

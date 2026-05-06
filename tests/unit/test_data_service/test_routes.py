@@ -45,6 +45,12 @@ def test_status_empty(client: TestClient):
     assert data["total_symbols"] == 0
 
 
+def test_parse_utc_preserves_explicit_offsets():
+    parsed = routes._parse_utc("2024-01-01T08:00:00+08:00")
+
+    assert parsed == datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+
+
 def test_sync_refetches_latest_open_time(client: TestClient, monkeypatch):
     latest = datetime(2024, 1, 1, 6, tzinfo=UTC)
     app.state.store.write(

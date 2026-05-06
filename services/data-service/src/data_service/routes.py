@@ -23,6 +23,14 @@ def _get_store(request: Request) -> ParquetStore:
     return request.app.state.store
 
 
+def _parse_utc(value: str) -> datetime:
+    """Parse an ISO timestamp and normalize it to UTC."""
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 @router.get("/symbols")
 async def list_symbols(request: Request) -> dict[str, list[str]]:
     """List symbols that have local data, plus fetch available from Binance."""
@@ -49,8 +57,8 @@ async def get_bars(
 ) -> dict:
     """Get kline bars for a symbol from local store."""
     store = _get_store(request)
-    start_dt = datetime.fromisoformat(start) if start else None
-    end_dt = datetime.fromisoformat(end) if end else None
+    start_dt = _parse_utc(start) if start else None
+    end_dt = _parse_utc(end) if end else None
 
     df = store.read(symbol.upper(), tf, start=start_dt, end=end_dt)
 
@@ -89,9 +97,7 @@ async def sync_data(
 
     start_ms = None
     if start:
-        start_ms = int(
-            datetime.fromisoformat(start).replace(tzinfo=UTC).timestamp() * 1000
-        )
+        start_ms = int(_parse_utc(start).timestamp() * 1000)
 
     results = {}
     async with httpx.AsyncClient(timeout=30) as client:

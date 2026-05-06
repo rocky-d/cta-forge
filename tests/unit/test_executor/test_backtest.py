@@ -16,6 +16,7 @@ from executor.backtest import (
     precompute,
     run_backtest,
 )
+from executor.signal_pipeline import align_reference_indicators
 from executor.decision import V10GStrategyParams
 
 
@@ -75,6 +76,36 @@ class TestPrecompute:
         assert "start_idx" in d
         assert "length" in d
         assert d["length"] == 200
+
+
+def test_align_data_preserves_sparse_global_indices():
+    btc = _make_bars(200)
+    alt = btc.filter(pl.col("open_time") != btc["open_time"][2])
+    bars = {"BTCUSDT": btc, "ALTUSDT": alt}
+    data = precompute(bars, V10GStrategyParams())
+    _, ts_to_idx = build_timeline(bars)
+
+    align_data(bars, data, ts_to_idx)
+
+    assert data["ALTUSDT"]["global_indices"][:4] == [0, 1, 3, 4]
+
+
+def test_align_reference_indicators_uses_timestamp_indices_for_missing_bars():
+    reference = {
+        "start_idx": 0,
+        "length": 5,
+        "global_indices": [0, 1, 2, 3, 4],
+        "close": np.array([10.0, 11.0, 12.0, 13.0, 14.0]),
+    }
+
+    aligned = align_reference_indicators(
+        reference=reference,
+        target_start=0,
+        target_length=4,
+        target_global_indices=[0, 1, 3, 4],
+    )
+
+    assert aligned["close"].tolist() == [10.0, 11.0, 13.0, 14.0]
 
 
 class TestRunBacktest:

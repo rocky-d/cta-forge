@@ -23,6 +23,7 @@ from .journal import TradeJournal
 from .live import LiveEngine, V16A_PROFILE_SLUG
 from .notify import NullNotifier
 from .profiles.v16a_badscore_overlay import V16aOnlineTargetStrategy
+from .run_live import _parse_hl_network
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ def load_shadow_tick_config(env: Mapping[str, str] = os.environ) -> ShadowTickCo
     return ShadowTickConfig(
         private_key=private_key,
         account_address=account_address,
-        testnet=env.get("HL_NETWORK", "testnet") == "testnet",
+        testnet=_parse_hl_network(env.get("HL_NETWORK", "testnet")),
         data_dir=env.get("DATA_DIR", "data"),
         journal_dir=env.get("JOURNAL_DIR", "journal/shadow-v16a"),
         state_file=env.get("STATE_FILE", "engine-state-shadow.json"),

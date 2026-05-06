@@ -116,7 +116,7 @@ class TestRoutes:
                 "dd_pct": -1.0,
             },
         ]
-        img_bytes = plot_live_journal(rows)
+        img_bytes = plot_live_journal(rows, [{"kind": "target_buy"}])
         assert img_bytes.startswith(b"\x89PNG")
 
     def test_live_journal_plot_endpoint(self):

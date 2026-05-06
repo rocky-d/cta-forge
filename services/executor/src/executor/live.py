@@ -616,8 +616,12 @@ class LiveEngine:
             await self._fetch_bars()
         else:
             # Keep the parquet cache fresh for target providers that build
-            # targets from local market data.
+            # targets from local market data, then force any cached target set
+            # to observe the newly written parquet before this tick trades.
             await self._fetch_target_data()
+            refresh = getattr(self._target_strategy, "refresh", None)
+            if refresh is not None:
+                refresh(force=True)
 
         # 2. Get current equity
         account = await self._exchange.get_account_state()
