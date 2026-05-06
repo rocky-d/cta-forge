@@ -121,3 +121,13 @@ def test_save_atomic(tmp_path: Path) -> None:
 
     assert path.exists()
     assert not path.with_suffix(".tmp").exists()
+
+
+def test_save_creates_parent_directory(tmp_path: Path) -> None:
+    """Nested state paths should fail less brittle runtime deployments."""
+    path = tmp_path / "nested" / "state.json"
+    state = LiveState(bar_count=1, initial_equity=1000.0, peak_equity=1000.0)
+
+    save_state(state, path)
+
+    assert path.exists()

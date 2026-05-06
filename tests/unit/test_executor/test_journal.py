@@ -57,6 +57,20 @@ class TestJournalLoad:
             assert record["peak"] == 101.0
             assert record["dd_pct"] == 0.0
 
+    def test_load_skips_corrupt_jsonl_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            j = TradeJournal(d)
+            j.record_tick(1, 100.0, 100.0, {})
+            (j._equity_file).write_text(
+                j._equity_file.read_text()
+                + "{not valid json}\n"
+                + '{"bar": 2, "equity": 101.0}\n'
+            )
+
+            records = j.load_equity()
+
+            assert [record["bar"] for record in records] == [1, 2]
+
 
 class TestJournalToReportFormat:
     def test_empty_journal(self) -> None:

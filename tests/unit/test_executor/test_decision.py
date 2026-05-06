@@ -303,7 +303,8 @@ class TestRiskControls:
         actions = engine.tick(state, 8400.0, snapshots)
 
         flattens = [a for a in actions if a.kind == ActionKind.FLATTEN_ALL]
-        assert len(flattens) == 2  # one per position
+        assert len(flattens) == 1
+        assert flattens[0].symbol == "*"
 
     def test_dd_breaker_reduces_size(
         self, engine: V10GDecisionEngine, state: EngineState

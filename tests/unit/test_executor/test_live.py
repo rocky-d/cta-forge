@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import polars as pl
 import pytest
+from executor.decision import PositionState
 from executor.live import LiveEngine
 from executor.targeting import PortfolioTarget, StrategyProfile
 from exchange.adapter import AccountState, MarketSnapshot, OrderResult, Position
@@ -33,6 +34,8 @@ class FakeExchange:
         positions: list[Position] | None = None,
         open_orders: list[dict] | None = None,
         market_price: Decimal = Decimal("73000"),
+        filled_size: Decimal | None = None,
+        order_success: bool = True,
     ) -> None:
         self._equity = equity
         self._available_balance = (
@@ -41,6 +44,8 @@ class FakeExchange:
         self._positions = positions or []
         self._open_orders = open_orders or []
         self._market_price = market_price
+        self._filled_size = filled_size
+        self._order_success = order_success
         self.closed_positions: list[str] = []
         self.orders: list[tuple[str, bool, Decimal, bool]] = []
         self.cancelled_all: int = 0
@@ -74,16 +79,19 @@ class FakeExchange:
         self, symbol: str, is_buy: bool, size: Decimal, *, reduce_only: bool = False
     ) -> OrderResult:
         self.orders.append((symbol, is_buy, size, reduce_only))
+        if not self._order_success:
+            return OrderResult(order_id="", success=False, message="rejected")
         if reduce_only:
             self.closed_positions.append(symbol)
             # Remove position after closing
             self._positions = [p for p in self._positions if p.symbol != symbol]
+        filled_size = self._filled_size if self._filled_size is not None else size
         return OrderResult(
             order_id="fake",
             success=True,
             message="filled",
             avg_price=float(self._market_price),
-            filled_size=float(size),
+            filled_size=float(filled_size),
         )
 
     async def place_limit_order(self, symbol, is_buy, size, price, **kw) -> OrderResult:
@@ -446,6 +454,93 @@ async def test_target_tick_splits_sign_flip_reduce_first(tmp_path) -> None:
     assert targets[0]["normalized_gross"] == pytest.approx(0.2)
     assert targets[0]["ignored_weights"] == {}
     assert [order["reduce_only"] for order in targets[0]["orders"]] == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_target_mode_max_drawdown_flattens_without_new_exposure(tmp_path) -> None:
+    """Target mode shares the live max-DD hard stop instead of rebalancing."""
+
+    positions = [
+        Position(
+            symbol="BTC",
+            size=Decimal("0.1"),
+            entry_price=Decimal("50000"),
+            unrealized_pnl=Decimal("0"),
+            leverage=1,
+        ),
+    ]
+    exchange = FakeExchange(
+        equity=Decimal("8000"),
+        positions=positions,
+        market_price=Decimal("50000"),
+    )
+    strategy = StaticTargetStrategy(
+        profile=StrategyProfile("test-target", "Test target", timeframe_hours=1),
+        weights={"BTCUSDT": 0.5},
+    )
+    engine = LiveEngine(
+        exchange,
+        symbols=["BTC"],
+        dry_run=False,
+        journal_dir=str(tmp_path / "journal"),
+        target_strategy=strategy,
+    )
+    engine._state.peak_equity = 10_000.0
+
+    await engine._tick()
+
+    assert exchange.orders == [("BTC", False, Decimal("0.1"), True)]
+    assert engine._state.positions == {}
+    assert engine._state.dd_breaker_active is True
+
+
+@pytest.mark.asyncio
+async def test_close_position_uses_actual_filled_size(tmp_path) -> None:
+    """Live state and journal reflect partial IOC fills, not requested size."""
+
+    exchange = FakeExchange(
+        market_price=Decimal("51000"),
+        filled_size=Decimal("0.04"),
+    )
+    engine = LiveEngine(
+        exchange,
+        dry_run=False,
+        journal_dir=str(tmp_path / "journal"),
+    )
+    engine._state.positions["BTC"] = PositionState(
+        symbol="BTC",
+        qty=0.10,
+        entry_price=50_000.0,
+        entry_bar=0,
+        best_price=51_000.0,
+    )
+
+    await engine._close_position("BTC", "test_partial_fill")
+
+    assert engine._state.positions["BTC"].qty == pytest.approx(0.06)
+    trade = engine._journal.load_trades()[-1]
+    assert trade["qty"] == pytest.approx(0.04)
+    assert trade["price"] == pytest.approx(51_000.0)
+
+
+@pytest.mark.asyncio
+async def test_close_failure_restores_pre_tick_position(tmp_path) -> None:
+    """Failed reduce orders must not leave optimistic decision state persisted."""
+
+    exchange = FakeExchange(order_success=False)
+    engine = LiveEngine(exchange, dry_run=False, journal_dir=str(tmp_path / "journal"))
+    pos = PositionState("BTC", 0.10, 50_000.0, 0, 51_000.0)
+    engine._state.positions.pop("BTC", None)
+
+    ok = await engine._close_position(
+        "BTC",
+        "failed_reduce",
+        positions_before={"BTC": pos},
+    )
+
+    assert ok is False
+    assert engine._state.positions["BTC"].qty == pytest.approx(0.10)
+    assert engine._journal.load_trades() == []
 
 
 @pytest.mark.asyncio

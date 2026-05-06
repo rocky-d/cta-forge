@@ -44,7 +44,7 @@ from .decision import (
 )
 from .journal import TradeJournal
 from .live_data import fetch_live_bars
-from .live_target import execute_target_portfolio
+from .live_target import execute_target_portfolio, sync_target_state_from_account
 from .notify import NullNotifier, _Notifier
 from .targeting import TargetOrder, TargetWeightStrategy
 
@@ -630,8 +630,11 @@ class LiveEngine:
         snapshots: dict[str, BarSnapshot] = {}
         action_summary = "0 actions"
         if self._target_strategy is not None:
-            orders = await self._execute_target_portfolio(account, equity)
-            action_summary = _summarize_target_orders(orders)
+            if await self._handle_target_drawdown_stop(account, equity):
+                action_summary = "max drawdown flatten"
+            else:
+                orders = await self._execute_target_portfolio(account, equity)
+                action_summary = _summarize_target_orders(orders)
             self._state.bar_count += 1
         else:
             # 3. Build snapshots for decision engine
@@ -658,7 +661,11 @@ class LiveEngine:
 
             # 6. Execute actions (pass pre-tick snapshot for close/partial settlement)
             for action in actions:
-                await self._execute_action(action, equity, positions_before)
+                if not await self._execute_action(action, equity, positions_before):
+                    logger.error(
+                        "Stopping action execution after failed %s", action.kind
+                    )
+                    break
 
         # Target-weight strategies do not enter V10GDecisionEngine.tick(), so
         # keep live equity invariants here for both execution modes.
@@ -706,6 +713,42 @@ class LiveEngine:
         )
 
     # ── Target portfolio execution ───────────────────────────────
+
+    async def _handle_target_drawdown_stop(
+        self, account: "AccountState", equity: float
+    ) -> bool:
+        """Fail closed for target-mode profiles when max drawdown is breached."""
+        peak = max(self._state.peak_equity, equity)
+        cur_dd = (peak - equity) / peak if peak > 0 else 0.0
+        if cur_dd < self._decision.p.max_drawdown:
+            return False
+
+        logger.warning(
+            "TARGET MAX DRAWDOWN %.1f%% >= %.1f%% — flatten all",
+            cur_dd * 100,
+            self._decision.p.max_drawdown * 100,
+        )
+        self._state.dd_breaker_active = True
+        sync_target_state_from_account(self._state, account)
+        if self._state.positions:
+            positions_before = {
+                sym: PositionState(
+                    symbol=pos.symbol,
+                    qty=pos.qty,
+                    entry_price=pos.entry_price,
+                    entry_bar=pos.entry_bar,
+                    best_price=pos.best_price,
+                    partial_taken=pos.partial_taken,
+                )
+                for sym, pos in self._state.positions.items()
+            }
+            await self._flatten_all(positions_before)
+        elif not self._dry_run:
+            await self._exchange.cancel_all_orders()
+        await self._notify.send(
+            f"🛑 TARGET MAX DD {cur_dd * 100:.1f}% — new exposure suppressed"
+        )
+        return True
 
     async def _execute_target_portfolio(
         self, account: "AccountState", equity: float
@@ -802,8 +845,8 @@ class LiveEngine:
         action: TradeAction,
         equity: float,
         positions_before: dict[str, PositionState],
-    ) -> None:
-        """Execute a single trade action."""
+    ) -> bool:
+        """Execute a single trade action; return whether execution succeeded."""
         logger.info(
             "Executing: %s %s qty=%.4f (%s)",
             action.kind,
@@ -813,29 +856,30 @@ class LiveEngine:
         )
 
         if action.kind == ActionKind.FLATTEN_ALL:
-            await self._flatten_all(positions_before)
+            ok = await self._flatten_all(positions_before)
             self._running = False
-            return
+            return ok
 
         if action.kind == ActionKind.CLOSE:
-            await self._close_position(action.symbol, action.reason, positions_before)
-            return
+            return await self._close_position(
+                action.symbol, action.reason, positions_before
+            )
 
         if action.kind == ActionKind.PARTIAL_CLOSE:
-            await self._partial_close(
+            return await self._partial_close(
                 action.symbol, action.qty, action.reason, positions_before
             )
-            return
 
         if action.kind in (ActionKind.OPEN_LONG, ActionKind.OPEN_SHORT):
-            await self._open_position(action, equity)
-            return
+            return await self._open_position(action, equity)
 
-    async def _open_position(self, action: TradeAction, equity: float) -> None:
+        return True
+
+    async def _open_position(self, action: TradeAction, equity: float) -> bool:
         """Open a new position."""
         bars = self._bars_cache.get(action.symbol)
         if bars is None:
-            return
+            return False
 
         current_price = float(bars["close"][-1])
         is_buy = action.kind == ActionKind.OPEN_LONG
@@ -868,9 +912,17 @@ class LiveEngine:
                 logger.error(
                     "Failed to open %s %s: %s", side, action.symbol, result.message
                 )
-                return
+                return False
+            if result.filled_size <= 0:
+                logger.error(
+                    "Open %s %s reported no fill: %s", side, action.symbol, result
+                )
+                return False
+            action.qty = min(float(result.filled_size), action.qty)
+            size_usd = action.qty * current_price
             if result.avg_price > 0:
                 current_price = result.avg_price
+                size_usd = action.qty * current_price
 
         # Update internal state
         qty = action.qty if is_buy else -action.qty
@@ -895,13 +947,25 @@ class LiveEngine:
             reason=action.reason,
             side=side,
         )
+        return True
+
+    def _restore_position(self, pos: PositionState) -> None:
+        """Restore a pre-execution position snapshot after failed reduce orders."""
+        self._state.positions[pos.symbol] = PositionState(
+            symbol=pos.symbol,
+            qty=pos.qty,
+            entry_price=pos.entry_price,
+            entry_bar=pos.entry_bar,
+            best_price=pos.best_price,
+            partial_taken=pos.partial_taken,
+        )
 
     async def _close_position(
         self,
         symbol: str,
         reason: str,
         positions_before: dict[str, PositionState] | None = None,
-    ) -> None:
+    ) -> bool:
         """Close an existing position.
 
         Args:
@@ -915,7 +979,7 @@ class LiveEngine:
             else self._state.positions.get(symbol)
         )
         if pos is None:
-            return
+            return True
 
         is_buy = bool(pos.qty < 0)  # reverse to close
         size = Decimal(str(abs(pos.qty)))
@@ -929,29 +993,48 @@ class LiveEngine:
             reason,
         )
 
+        fill_qty = abs(pos.qty)
+        exit_price = (
+            float(self._bars_cache.get(symbol, pl.DataFrame())["close"][-1])
+            if symbol in self._bars_cache
+            else pos.entry_price
+        )
         if not self._dry_run:
             result = await self._exchange.place_market_order(
                 symbol, is_buy, size, reduce_only=True
             )
             if not result.success:
                 logger.error("Failed to close %s: %s", symbol, result.message)
-                return
+                self._restore_position(pos)
+                return False
+            if result.filled_size <= 0:
+                logger.error("Close %s reported no fill: %s", symbol, result)
+                self._restore_position(pos)
+                return False
+            fill_qty = min(float(result.filled_size), abs(pos.qty))
+            if result.avg_price > 0:
+                exit_price = result.avg_price
 
-        # Remove from state if tick() didn't already
-        self._state.positions.pop(symbol, None)
+        remaining_qty = abs(pos.qty) - fill_qty
+        if remaining_qty <= 1e-12:
+            self._state.positions.pop(symbol, None)
+        else:
+            self._state.positions[symbol] = PositionState(
+                symbol=symbol,
+                qty=remaining_qty if pos.qty > 0 else -remaining_qty,
+                entry_price=pos.entry_price,
+                entry_bar=pos.entry_bar,
+                best_price=pos.best_price,
+                partial_taken=pos.partial_taken,
+            )
         held = self._state.bar_count - pos.entry_bar
 
         # Compute PnL
-        exit_price = (
-            float(self._bars_cache.get(symbol, pl.DataFrame())["close"][-1])
-            if symbol in self._bars_cache
-            else pos.entry_price
-        )
         if pos.qty > 0:
-            pnl = (exit_price - pos.entry_price) * abs(pos.qty)
+            pnl = (exit_price - pos.entry_price) * fill_qty
             pnl_pct = (exit_price - pos.entry_price) / pos.entry_price * 100
         else:
-            pnl = (pos.entry_price - exit_price) * abs(pos.qty)
+            pnl = (pos.entry_price - exit_price) * fill_qty
             pnl_pct = (pos.entry_price - exit_price) / pos.entry_price * 100
 
         await self._notify.send(
@@ -962,7 +1045,7 @@ class LiveEngine:
             bar=self._state.bar_count,
             kind="close",
             symbol=symbol,
-            qty=abs(pos.qty),
+            qty=fill_qty,
             price=exit_price,
             reason=reason,
             side=side,
@@ -971,6 +1054,7 @@ class LiveEngine:
             pnl_pct=pnl_pct,
             held_bars=held,
         )
+        return True
 
     async def _partial_close(
         self,
@@ -978,7 +1062,7 @@ class LiveEngine:
         qty: float,
         reason: str,
         positions_before: dict[str, PositionState] | None = None,
-    ) -> None:
+    ) -> bool:
         """Partial close a position.
 
         tick() already adjusted pos.qty in state, so we use positions_before
@@ -990,7 +1074,7 @@ class LiveEngine:
             else self._state.positions.get(symbol)
         )
         if pos_before is None:
-            return
+            return True
 
         is_buy = bool(pos_before.qty < 0)
         size = Decimal(str(qty))
@@ -1004,48 +1088,62 @@ class LiveEngine:
             reason,
         )
 
+        fill_qty = qty
+        exit_price = (
+            float(self._bars_cache.get(symbol, pl.DataFrame())["close"][-1])
+            if symbol in self._bars_cache
+            else pos_before.entry_price
+        )
         if not self._dry_run:
             result = await self._exchange.place_market_order(
                 symbol, is_buy, size, reduce_only=True
             )
             if not result.success:
                 logger.error("Failed to partial close %s: %s", symbol, result.message)
-                return
+                self._restore_position(pos_before)
+                return False
+            if result.filled_size <= 0:
+                logger.error("Partial close %s reported no fill: %s", symbol, result)
+                self._restore_position(pos_before)
+                return False
+            fill_qty = min(float(result.filled_size), qty)
+            if result.avg_price > 0:
+                exit_price = result.avg_price
 
-        # tick() already adjusted pos.qty and set partial_taken in state;
-        # no need to update here.
+        # tick() already adjusted pos.qty optimistically; correct it if the
+        # reduce-only IOC filled less than requested.
+        current = self._state.positions.get(symbol)
+        if current is not None and fill_qty < qty:
+            shortfall = qty - fill_qty
+            current.qty += shortfall if pos_before.qty > 0 else -shortfall
 
         await self._notify.send(
-            f"📊 PARTIAL {side.upper()} {symbol} | closed {qty:.6f} | {reason}"
-        )
-        exit_price = (
-            float(self._bars_cache.get(symbol, pl.DataFrame())["close"][-1])
-            if symbol in self._bars_cache
-            else pos_before.entry_price
+            f"📊 PARTIAL {side.upper()} {symbol} | closed {fill_qty:.6f} | {reason}"
         )
         if pos_before.qty > 0:
-            pnl = (exit_price - pos_before.entry_price) * qty
+            pnl = (exit_price - pos_before.entry_price) * fill_qty
         else:
-            pnl = (pos_before.entry_price - exit_price) * qty
+            pnl = (pos_before.entry_price - exit_price) * fill_qty
         self._journal.record_trade(
             bar=self._state.bar_count,
             kind="partial_close",
             symbol=symbol,
-            qty=qty,
+            qty=fill_qty,
             price=exit_price,
             reason=reason,
             side=side,
             entry_price=pos_before.entry_price,
             pnl=pnl,
-            pnl_pct=(pnl / (pos_before.entry_price * qty) * 100)
+            pnl_pct=(pnl / (pos_before.entry_price * fill_qty) * 100)
             if pos_before.entry_price > 0
             else 0,
             held_bars=self._state.bar_count - pos_before.entry_bar,
         )
+        return True
 
     async def _flatten_all(
         self, positions_before: dict[str, PositionState] | None = None
-    ) -> None:
+    ) -> bool:
         """Emergency: close all positions."""
         logger.warning("FLATTENING ALL POSITIONS")
         await self._notify.send("🚨 MAX DRAWDOWN — FLATTENING ALL POSITIONS")
@@ -1054,7 +1152,12 @@ class LiveEngine:
             positions_before if positions_before is not None else self._state.positions
         )
         symbols = list(source.keys())
+        ok = True
         for symbol in symbols:
-            await self._close_position(symbol, "flatten_all", positions_before)
+            ok = (
+                await self._close_position(symbol, "flatten_all", positions_before)
+                and ok
+            )
         if not self._dry_run:
             await self._exchange.cancel_all_orders()
+        return ok

@@ -72,6 +72,17 @@ def _parse_optional_float(value: str | None) -> float | None:
     return parsed if parsed > 0 else None
 
 
+def _parse_hl_network(value: str | None) -> bool:
+    """Parse HL_NETWORK and return whether to use testnet."""
+    network = (value or "testnet").strip().lower()
+    if network == "testnet":
+        return True
+    if network == "mainnet":
+        return False
+    msg = "HL_NETWORK must be one of: testnet, mainnet"
+    raise ValueError(msg)
+
+
 def _suppress_secret_bearing_http_logs() -> None:
     """Avoid logging notification URLs that can contain webhook or bot secrets."""
     for logger_name in ("httpx", "httpcore"):
@@ -114,7 +125,11 @@ def main() -> None:
         logging.error("Set HL_PRIVATE_KEY and HL_ACCOUNT_ADDRESS env vars")
         sys.exit(1)
 
-    testnet = os.environ.get("HL_NETWORK", "testnet") == "testnet"
+    try:
+        testnet = _parse_hl_network(os.environ.get("HL_NETWORK", "testnet"))
+    except ValueError as exc:
+        logging.error("%s", exc)
+        sys.exit(1)
     dry_run = _is_truthy(os.environ.get("DRY_RUN", "false"))
     state_file = os.environ.get("STATE_FILE", "engine-state.json")
     journal_dir = os.environ.get("JOURNAL_DIR", "journal")

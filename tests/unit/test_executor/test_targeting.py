@@ -141,7 +141,7 @@ def test_weights_to_orders_caps_single_order_notional() -> None:
     assert orders[0].qty == pytest.approx(0.002)
 
 
-def test_weights_to_orders_does_not_open_flip_before_capped_reduce_completes() -> None:
+def test_weights_to_orders_does_not_cap_reduce_only_de_risking() -> None:
     orders = weights_to_orders(
         positions={"BTC": 0.1},
         prices={"BTC": 50_000.0},
@@ -151,7 +151,10 @@ def test_weights_to_orders_does_not_open_flip_before_capped_reduce_completes() -
         max_notional=100.0,
     )
 
-    assert len(orders) == 1
+    assert len(orders) == 2
     assert orders[0].reduce_only is True
     assert orders[0].side == "sell"
-    assert orders[0].delta_notional == pytest.approx(-100.0)
+    assert orders[0].delta_notional == pytest.approx(-5_000.0)
+    assert orders[1].reduce_only is False
+    assert orders[1].side == "sell"
+    assert orders[1].delta_notional == pytest.approx(-100.0)

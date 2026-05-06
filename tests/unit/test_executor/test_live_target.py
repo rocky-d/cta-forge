@@ -7,13 +7,15 @@ from typing import Literal
 
 import pytest
 from executor.decision import EngineState, PositionState
+from executor.journal import TradeJournal
 from executor.live_target import (
     apply_target_fill,
+    execute_target_order,
     normalize_target_weights,
     sync_target_state_from_account,
 )
 from executor.targeting import TargetOrder
-from exchange.adapter import AccountState, Position
+from exchange.adapter import AccountState, OrderResult, Position
 
 
 def _order(
@@ -142,3 +144,36 @@ def test_apply_target_fill_non_reduce_flip_resets_entry_metadata() -> None:
     assert pos.entry_bar == 8
     assert pos.best_price == pytest.approx(52_000.0)
     assert pos.partial_taken is False
+
+
+class PartialFillExchange:
+    async def place_market_order(self, symbol, is_buy, size, *, reduce_only=False):
+        return OrderResult(
+            order_id="partial",
+            success=True,
+            message="filled",
+            avg_price=51_000.0,
+            filled_size=0.04,
+        )
+
+
+@pytest.mark.asyncio
+async def test_execute_target_order_uses_actual_filled_size(tmp_path) -> None:
+    state = EngineState(bar_count=3)
+    state.positions["BTC"] = PositionState("BTC", 0.10, 50_000.0, 1, 51_000.0)
+    journal = TradeJournal(tmp_path)
+
+    await execute_target_order(
+        exchange=PartialFillExchange(),
+        journal=journal,
+        state=state,
+        profile="test-profile",
+        dry_run=False,
+        order=_order(side="sell", qty=0.10, reduce_only=True),
+        price=50_500.0,
+    )
+
+    assert state.positions["BTC"].qty == pytest.approx(0.06)
+    trade = journal.load_trades()[-1]
+    assert trade["qty"] == pytest.approx(0.04)
+    assert trade["price"] == pytest.approx(51_000.0)

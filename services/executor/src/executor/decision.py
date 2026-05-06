@@ -171,11 +171,11 @@ class V10GDecisionEngine:
                 cur_dd * 100,
                 self.p.max_drawdown * 100,
             )
-            for sym in list(state.positions):
+            if state.positions:
                 actions.append(
                     TradeAction(
                         kind=ActionKind.FLATTEN_ALL,
-                        symbol=sym,
+                        symbol="*",
                         reason=f"max_drawdown_{cur_dd:.2%}",
                     )
                 )

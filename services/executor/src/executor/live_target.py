@@ -152,6 +152,7 @@ async def execute_target_order(
     )
 
     fill_price = price
+    fill_qty = order.qty
     if dry_run:
         logger.info(
             "[DRY RUN] Would target-order %s %s %.6f @ ~%.2f reduce_only=%s",
@@ -171,15 +172,29 @@ async def execute_target_order(
         if not result.success:
             logger.error("Failed target order %s: %s", order.symbol, result.message)
             return
+        if result.filled_size <= 0:
+            logger.error("Target order %s reported no fill: %s", order.symbol, result)
+            return
+        fill_qty = min(float(result.filled_size), order.qty)
         if result.avg_price > 0:
             fill_price = result.avg_price
 
-    apply_target_fill(state, order, fill_price)
+    filled_order = TargetOrder(
+        symbol=order.symbol,
+        side=order.side,
+        qty=fill_qty,
+        current_weight=order.current_weight,
+        target_weight=order.target_weight,
+        delta_weight=order.delta_weight,
+        delta_notional=(fill_qty * fill_price) * (1 if is_buy else -1),
+        reduce_only=order.reduce_only,
+    )
+    apply_target_fill(state, filled_order, fill_price)
     journal.record_trade(
         bar=state.bar_count,
         kind="target_buy" if is_buy else "target_sell",
         symbol=order.symbol,
-        qty=order.qty,
+        qty=fill_qty,
         price=fill_price,
         reason=f"target:{profile}",
         side="long" if is_buy else "short",

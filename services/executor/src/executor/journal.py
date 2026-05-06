@@ -165,10 +165,14 @@ class TradeJournal:
             return []
         records = []
         with path.open() as f:
-            for line in f:
+            for line_no, line in enumerate(f, start=1):
                 line = line.strip()
-                if line:
+                if not line:
+                    continue
+                try:
                     records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    logger.warning("Skipping corrupt journal line %s:%d", path, line_no)
         return records
 
     def _append(self, path: Path, record: dict) -> None:

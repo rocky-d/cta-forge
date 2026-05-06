@@ -35,6 +35,7 @@ class _DecimalEncoder(json.JSONEncoder):
 def save_state(state: LiveState, path: str | Path = DEFAULT_STATE_FILE) -> None:
     """Persist engine state to disk."""
     path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "version": 1,
         "saved_at": datetime.now(tz=UTC).isoformat(),

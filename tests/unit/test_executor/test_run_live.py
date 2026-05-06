@@ -9,6 +9,7 @@ import pytest
 from executor.profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
 from executor.run_live import (
     _is_truthy,
+    _parse_hl_network,
     _parse_symbols,
     _suppress_secret_bearing_http_logs,
     _validate_v16a_live_mode,
@@ -90,6 +91,13 @@ def test_validate_mainnet_pilot_allows_explicit_live_flag() -> None:
 def test_parse_symbols_normalizes_comma_separated_list() -> None:
     assert _parse_symbols("btc, ETH,, sol ") == ["BTC", "ETH", "SOL"]
     assert _parse_symbols("") is None
+
+
+def test_parse_hl_network_rejects_unknown_values() -> None:
+    assert _parse_hl_network("testnet") is True
+    assert _parse_hl_network(" mainnet ") is False
+    with pytest.raises(ValueError, match="HL_NETWORK"):
+        _parse_hl_network("prod")
 
 
 def test_suppress_secret_bearing_http_logs() -> None:
