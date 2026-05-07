@@ -43,6 +43,7 @@ class AccountState:
     available_balance: Decimal
     total_margin_used: Decimal
     positions: list[Position]
+    unrealized_pnl: Decimal | None = None
 
 
 @dataclass(frozen=True)

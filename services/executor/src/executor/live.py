@@ -709,9 +709,12 @@ class LiveEngine:
             )
             or "flat"
         )
+        cash_summary = f" | Avail ${float(account.available_balance):.1f}"
+        if account.unrealized_pnl is not None:
+            cash_summary += f" | uPnL ${float(account.unrealized_pnl):+.1f}"
         await self._notify.send(
-            f"⏰ Tick #{self._state.bar_count} | ${equity:.1f} | "
-            f"DD {drawdown_pct:.2f}%\n"
+            f"⏰ Tick #{self._state.bar_count} | Eq ${equity:.1f}"
+            f"{cash_summary} | DD {drawdown_pct:.2f}%\n"
             f"{action_summary}\n"
             f"Positions: {pos_summary}"
         )

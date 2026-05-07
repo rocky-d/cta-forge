@@ -45,6 +45,25 @@ Do not raise these values from the EC2 host or compose files as an ad hoc tweak.
 Any increase is a new live-risk decision and should go through research, code
 review, CI, deploy, and post-deploy health checks.
 
+## Hyperliquid unified-account balance accounting
+
+Current mainnet pilot wallets are unified accounts. For these accounts,
+Hyperliquid's account-level web value/portfolio account value matches the USDC
+`total` from `spot_user_state`, while per-dex `marginSummary.accountValue`
+corresponds only to the perp-dex slice and must not be mixed with spot
+available balance as account equity.
+
+Use these pilot accounting meanings:
+
+- account equity / web USDC value: spot USDC `total`
+- available balance: spot USDC `total - hold`
+- margin used: spot USDC `hold`
+- per-position unrealized PnL: explanatory only; do not add it again to spot
+  USDC `total`
+
+The tick notification should therefore label `Eq`, `Avail`, and `uPnL`
+separately instead of publishing one ambiguous dollar value.
+
 ## Read-only preflight
 
 Run only after mainnet secrets are available in environment:

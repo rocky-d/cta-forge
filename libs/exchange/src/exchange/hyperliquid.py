@@ -158,53 +158,75 @@ class HyperliquidAdapter:
         state = await self._run_sync(self._info.user_state, self._address)
         margin = state.get("marginSummary", {})
 
-        # Unified account: perp marginSummary.accountValue only reflects
-        # perp-side margin. Spot USDC also serves as collateral, so we
-        # must sum both to get the true equity.
+        # Non-unified perp account equity. In unified accounts, Hyperliquid
+        # docs/API behavior make individual perp-dex user states unsuitable as
+        # the account-level source of truth; spot clearinghouse balances/holds
+        # carry the USDC wallet/collateral view instead.
         perp_equity = Decimal(str(margin.get("accountValue", "0")))
+        raw_usd = Decimal(str(margin.get("totalRawUsd", "0")))
+        total_margin_used = Decimal(str(margin.get("totalMarginUsed", "0")))
 
-        # Always check spot balance for unified accounts
-        spot_usdc = Decimal("0")
+        is_unified_account = False
+        try:
+            mode = await self._run_sync(
+                self._info.query_user_abstraction_state, self._address
+            )
+            is_unified_account = mode == "unifiedAccount"
+        except Exception as e:
+            logger.warning("Failed to fetch Hyperliquid account mode: %s", e)
+
+        # Always check spot USDC: for unified accounts this is the web UI
+        # Balance/Available source; for non-unified accounts it is informative
+        # but not counted as perp collateral unless Hyperliquid says the
+        # account is unified.
+        spot_total = Decimal("0")
+        spot_hold = Decimal("0")
         try:
             spot = await self._run_sync(self._info.spot_user_state, self._address)
             for bal in spot.get("balances", []):
                 if bal.get("coin") == "USDC":
-                    total = Decimal(str(bal.get("total", "0")))
-                    hold = Decimal(str(bal.get("hold", "0")))
-                    # Only add the available spot balance, as the held margin
-                    # is already accounted for in perp marginSummary.accountValue.
-                    spot_usdc = total - hold
+                    spot_total = Decimal(str(bal.get("total", "0")))
+                    spot_hold = Decimal(str(bal.get("hold", "0")))
                     break
         except Exception as e:
             logger.warning("Failed to fetch spot balance: %s", e)
 
-        equity = perp_equity + spot_usdc
-
         positions = []
+        unrealized_pnl = Decimal("0")
         for p in state.get("assetPositions", []):
             pos = p.get("position", {})
             szi = Decimal(str(pos.get("szi", "0")))
             if szi == 0:
                 continue
+            position_unrealized = Decimal(str(pos.get("unrealizedPnl", "0")))
+            unrealized_pnl += position_unrealized
             positions.append(
                 Position(
                     symbol=pos.get("coin", ""),
                     size=szi,
                     entry_price=Decimal(str(pos.get("entryPx", "0"))),
-                    unrealized_pnl=Decimal(str(pos.get("unrealizedPnl", "0"))),
+                    unrealized_pnl=position_unrealized,
                     leverage=int(pos.get("leverage", {}).get("value", 1)),
                 )
             )
 
-        raw_usd = Decimal(str(margin.get("totalRawUsd", "0")))
+        if is_unified_account:
+            # Unified account spot USDC total matches Hyperliquid's portfolio
+            # accountValue / web USDC Value. It already reflects account-level
+            # mark-to-market value, so do not add per-position unrealized PnL
+            # again here.
+            equity = spot_total
+            available_balance = spot_total - spot_hold
+        else:
+            equity = perp_equity
+            available_balance = raw_usd
+
         return AccountState(
             equity=equity,
-            # In unified/classic account mode, idle spot USDC is available as
-            # trading equity even when perp marginSummary is still zero before
-            # the first perp trade. Treat it as available pilot collateral.
-            available_balance=raw_usd + spot_usdc if equity > 0 else equity,
-            total_margin_used=Decimal(str(margin.get("totalMarginUsed", "0"))),
+            available_balance=available_balance,
+            total_margin_used=total_margin_used,
             positions=positions,
+            unrealized_pnl=unrealized_pnl,
         )
 
     async def get_position(self, symbol: str) -> Position | None:

@@ -481,7 +481,7 @@ async def test_target_tick_splits_sign_flip_reduce_first(tmp_path) -> None:
     await engine._tick()
 
     assert notifier.messages[-1] == (
-        "⏰ Tick #1 | $10000.0 | DD 0.00%\n"
+        "⏰ Tick #1 | Eq $10000.0 | Avail $10000.0 | DD 0.00%\n"
         "Actions (2):\n"
         "- SELL BTC $5000 reduce\n"
         "- SELL BTC $2000\n"
