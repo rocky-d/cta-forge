@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from report_service.app import app
-from report_service.metrics import calculate_metrics
+from report_service.metrics import calculate_live_metrics, calculate_metrics
 from report_service.plot import plot_live_journal
 
 
@@ -49,6 +50,32 @@ class TestMetrics:
         trades = [{"pnl": 100}, {"pnl": 100}, {"pnl": -50}]
         metrics = calculate_metrics(_make_curve(50), trades)
         assert metrics.profit_factor == 4.0  # 200 / 50
+
+    def test_live_metrics_use_elapsed_time_and_suppress_short_samples(self):
+        curve = [
+            (datetime(2026, 5, 5, 0, tzinfo=UTC), 100.0),
+            (datetime(2026, 5, 5, 6, tzinfo=UTC), 105.0),
+        ]
+        live_metrics = calculate_live_metrics(curve, [])
+
+        assert live_metrics.annualized_status == "unstable"
+        assert live_metrics.metrics.total_return == pytest.approx(0.05)
+        assert live_metrics.metrics.annualized_return == 0.0
+        assert live_metrics.annualized_return_raw is not None
+        assert live_metrics.cadence_median_hours == 6.0
+
+    def test_live_metrics_suppresses_short_sample_after_one_week(self):
+        curve = [
+            (datetime(2026, 5, 1, tzinfo=UTC), 100.0),
+            (datetime(2026, 5, 11, tzinfo=UTC), 101.0),
+        ]
+        live_metrics = calculate_live_metrics(curve, [])
+
+        assert live_metrics.annualized_status == "short_sample"
+        assert live_metrics.metrics.annualized_return == 0.0
+        assert live_metrics.annualized_return_raw is not None
+        assert live_metrics.annualized_return_raw > 0
+        assert live_metrics.elapsed_days == 10.0
 
 
 class TestRoutes:

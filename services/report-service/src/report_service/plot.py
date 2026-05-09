@@ -11,7 +11,7 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 
-from core.metrics import calculate_metrics
+from core.metrics import calculate_live_metrics
 
 matplotlib.use("Agg")
 
@@ -157,14 +157,23 @@ def plot_backtest(
     label_parts = []
     if metrics:
         m = metrics
+        annualized_status = m.get("annualized_status")
+        if annualized_status in {"insufficient", "unstable", "short_sample"}:
+            annualized_label = f"Ann: {annualized_status}"
+        else:
+            annualized_label = f"Ann: {m.get('annualized_return', 0) * 100:+.1f}%"
         metric_parts = [
             f"Return: {m.get('total_return', 0) * 100:+.1f}%",
-            f"Ann: {m.get('annualized_return', 0) * 100:+.1f}%",
+            annualized_label,
             f"Sharpe: {m.get('sharpe_ratio', 0):.2f}",
             f"Sortino: {m.get('sortino_ratio', 0):.2f}",
             f"MaxDD: {m.get('max_drawdown', 0) * 100:.1f}%",
             f"Calmar: {m.get('calmar_ratio', 0):.2f}",
         ]
+        if m.get("elapsed_days") is not None:
+            metric_parts.append(f"Elapsed: {m.get('elapsed_days', 0):.1f}d")
+        if m.get("cadence_median_hours") is not None:
+            metric_parts.append(f"Cadence: {m.get('cadence_median_hours', 0):.1f}h")
         if m.get("profit_factor") is not None:
             metric_parts.append(f"PF: {m.get('profit_factor', 0):.2f}")
         if m.get("win_rate") is not None:
@@ -276,10 +285,16 @@ def plot_live_journal(
         for row in sorted(equity_records, key=lambda r: (str(r["ts"]), int(r["bar"])))
     ]
     closed_trades = [trade for trade in trades or [] if "pnl" in trade]
-    metrics = calculate_metrics(curve, closed_trades, periods_per_year=365 * 24)
+    live_metrics = calculate_live_metrics(curve, closed_trades)
+    metrics = live_metrics.metrics
     metrics_dict = {
         "total_return": metrics.total_return,
         "annualized_return": metrics.annualized_return,
+        "annualized_return_raw": live_metrics.annualized_return_raw,
+        "annualized_status": live_metrics.annualized_status,
+        "elapsed_days": live_metrics.elapsed_days,
+        "cadence_median_hours": live_metrics.cadence_median_hours,
+        "record_count": live_metrics.record_count,
         "sharpe_ratio": metrics.sharpe_ratio,
         "sortino_ratio": metrics.sortino_ratio,
         "max_drawdown": metrics.max_drawdown,

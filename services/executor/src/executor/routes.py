@@ -10,7 +10,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
-from core.metrics import calculate_metrics
+from core.metrics import calculate_live_metrics, calculate_metrics
 
 from .backtest import BacktestResult, calc_ulcer, run_full_backtest
 from .decision import V10GStrategyParams
@@ -233,11 +233,11 @@ async def get_live_report() -> dict[str, Any]:
         return data
 
     curve = data["equity_curve"]
-    m = calculate_metrics(
+    live_metrics = calculate_live_metrics(
         [(ts, eq) for ts, eq in curve],
         data["trades"],
-        periods_per_year=365 * 24,
     )
+    m = live_metrics.metrics
 
     first_eq = curve[0][1]
     last_eq = curve[-1][1]
@@ -251,6 +251,11 @@ async def get_live_report() -> dict[str, Any]:
         "metrics": {
             "total_return": m.total_return,
             "annualized_return": m.annualized_return,
+            "annualized_return_raw": live_metrics.annualized_return_raw,
+            "annualized_status": live_metrics.annualized_status,
+            "elapsed_days": live_metrics.elapsed_days,
+            "cadence_median_hours": live_metrics.cadence_median_hours,
+            "record_count": live_metrics.record_count,
             "sharpe_ratio": m.sharpe_ratio,
             "sortino_ratio": m.sortino_ratio,
             "max_drawdown": m.max_drawdown,
