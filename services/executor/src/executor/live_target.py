@@ -119,11 +119,11 @@ def record_target_diagnostics(
             {
                 "symbol": order.symbol,
                 "side": order.side,
-                "qty": round(order.qty, 8),
-                "current_weight": round(order.current_weight, 8),
-                "target_weight": round(order.target_weight, 8),
-                "delta_weight": round(order.delta_weight, 8),
-                "delta_notional": round(order.delta_notional, 4),
+                "qty": float(order.qty),
+                "current_weight": float(order.current_weight),
+                "target_weight": float(order.target_weight),
+                "delta_weight": float(order.delta_weight),
+                "delta_notional": float(order.delta_notional),
                 "reduce_only": order.reduce_only,
             }
             for order in orders

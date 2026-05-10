@@ -47,7 +47,7 @@ def _price_series(result: BacktestResult, symbol: str) -> list[dict[str, Any]]:
         return []
     curve_start = result.equity_curve[0][0]
     return [
-        {"timestamp": t.isoformat(), "close": round(float(p), 2)}
+        {"timestamp": t.isoformat(), "close": float(p)}
         for t, p in zip(df["open_time"].to_list(), df["close"].to_list())
         if t >= curve_start
     ]
@@ -89,14 +89,13 @@ def _format_result(result: BacktestResult) -> dict[str, Any]:
             "ulcer_index": ulcer,
         },
         "yearly": {
-            str(yr): round(
-                (yearly[yr]["last"] - yearly[yr]["first"]) / yearly[yr]["first"] * 100,
-                1,
-            )
+            str(yr): (yearly[yr]["last"] - yearly[yr]["first"])
+            / yearly[yr]["first"]
+            * 100
             for yr in sorted(yearly)
         },
         "equity_curve": [
-            {"timestamp": ts.isoformat(), "equity": round(eq, 2)}
+            {"timestamp": ts.isoformat(), "equity": float(eq)}
             for ts, eq in result.equity_curve
         ],
         "btc_prices": _price_series(result, "BTCUSDT"),

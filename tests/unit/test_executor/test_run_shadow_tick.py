@@ -205,9 +205,9 @@ def test_record_phase_comparison_writes_read_only_diagnostics(
 
     assert record is not None
     assert record["metrics"] == {
-        "l1": 0.15,
-        "max_abs": 0.15,
-        "cosine": -0.31622777,
+        "l1": pytest.approx(0.15),
+        "max_abs": pytest.approx(0.15),
+        "cosine": pytest.approx(-0.3162277660168379),
         "sign_flips": 1,
     }
     assert record["phases"]["0"]["n_orders"] >= 1
@@ -239,8 +239,8 @@ def test_summarize_latest_target_has_no_warning_when_coverage_is_good() -> None:
 
         summary = summarize_latest_target(directory)
 
-    assert summary["ignored_gross_ratio"] == 0.1
-    assert summary["execution_coverage"] == 0.9
+    assert summary["ignored_gross_ratio"] == pytest.approx(0.1)
+    assert summary["execution_coverage"] == pytest.approx(0.9)
     assert summary["warnings"] == []
 
 

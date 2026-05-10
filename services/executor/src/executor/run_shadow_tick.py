@@ -129,11 +129,11 @@ def _order_to_dict(order: TargetOrder) -> dict[str, Any]:
     return {
         "symbol": order.symbol,
         "side": order.side,
-        "qty": round(order.qty, 8),
-        "current_weight": round(order.current_weight, 8),
-        "target_weight": round(order.target_weight, 8),
-        "delta_weight": round(order.delta_weight, 8),
-        "delta_notional": round(order.delta_notional, 4),
+        "qty": float(order.qty),
+        "current_weight": float(order.current_weight),
+        "target_weight": float(order.target_weight),
+        "delta_weight": float(order.delta_weight),
+        "delta_notional": float(order.delta_notional),
         "reduce_only": order.reduce_only,
     }
 
@@ -159,9 +159,9 @@ def phase_diff_metrics(
         if abs(a) > 1e-12 and abs(b) > 1e-12 and a * b < 0
     )
     return {
-        "l1": round(l1, 8),
-        "max_abs": round(max_abs, 8),
-        "cosine": round(cosine, 8),
+        "l1": float(l1),
+        "max_abs": float(max_abs),
+        "cosine": float(cosine),
         "sign_flips": flips,
     }
 
@@ -254,16 +254,14 @@ async def record_phase_comparison(
         normalized_by_phase[phase] = normalized
         phase_summaries[str(phase)] = {
             "target_ts": target.timestamp.isoformat(),
-            "staleness_seconds": round((now - target.timestamp).total_seconds(), 3),
-            "target_gross": round(target.gross, 6),
-            "normalized_gross": round(sum(abs(w) for w in normalized.values()), 6),
-            "ignored_gross": round(sum(abs(w) for w in ignored.values()), 6),
+            "staleness_seconds": float((now - target.timestamp).total_seconds()),
+            "target_gross": float(target.gross),
+            "normalized_gross": float(sum(abs(w) for w in normalized.values())),
+            "ignored_gross": float(sum(abs(w) for w in ignored.values())),
             "n_orders": len(orders),
-            "weights": {
-                k: round(v, 8) for k, v in normalized.items() if abs(v) > 1e-12
-            },
+            "weights": {k: float(v) for k, v in normalized.items() if abs(v) > 1e-12},
             "ignored_weights": {
-                k: round(v, 8) for k, v in ignored.items() if abs(v) > 1e-12
+                k: float(v) for k, v in ignored.items() if abs(v) > 1e-12
             },
             "orders": [_order_to_dict(order) for order in orders],
         }
@@ -272,7 +270,7 @@ async def record_phase_comparison(
         "ts": now.isoformat(),
         "base_core_phase_hours": config.core_phase_hours,
         "compare_core_phase_hours": config.compare_core_phase_hours,
-        "equity": round(float(account.equity), 6),
+        "equity": float(account.equity),
         "allowed_symbols": sorted(allowed_symbols),
         "metrics": phase_diff_metrics(
             normalized_by_phase[config.core_phase_hours],

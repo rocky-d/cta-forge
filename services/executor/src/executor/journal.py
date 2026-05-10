@@ -48,9 +48,9 @@ class TradeJournal:
         record = {
             "ts": datetime.now(tz=UTC).isoformat(),
             "bar": bar,
-            "equity": round(equity, 2),
-            "peak": round(peak, 2),
-            "dd_pct": round(dd_pct, 2),
+            "equity": float(equity),
+            "peak": float(peak),
+            "dd_pct": float(dd_pct),
             "n_positions": len(positions),
             "positions": positions,
         }
@@ -78,15 +78,15 @@ class TradeJournal:
             "kind": kind,
             "symbol": symbol,
             "side": side,
-            "qty": round(qty, 8),
+            "qty": float(qty),
             "price": float(price),
             "reason": reason,
         }
         # Only include PnL fields for closes
         if kind in ("close", "partial_close", "flatten_all"):
             record["entry_price"] = float(entry_price)
-            record["pnl"] = round(pnl, 4)
-            record["pnl_pct"] = round(pnl_pct, 4)
+            record["pnl"] = float(pnl)
+            record["pnl_pct"] = float(pnl_pct)
             record["held_bars"] = held_bars
 
         self._append(self._trades_file, record)
@@ -100,7 +100,7 @@ class TradeJournal:
         record = {
             "ts": datetime.now(tz=UTC).isoformat(),
             "bar": bar,
-            "signals": {k: round(v, 4) for k, v in signals.items()},
+            "signals": {k: float(v) for k, v in signals.items()},
         }
         self._append(self._signals_file, record)
 
@@ -130,15 +130,15 @@ class TradeJournal:
             "bar": bar,
             "profile": profile,
             "target_ts": target_ts,
-            "staleness_seconds": round(staleness_seconds, 3),
-            "target_gross": round(target_gross, 6),
-            "normalized_gross": round(normalized_gross, 6),
-            "ignored_gross": round(ignored_gross, 6),
-            "ignored_gross_ratio": round(ignored_gross_ratio, 6),
-            "execution_coverage": round(execution_coverage, 6),
-            "weights": {k: round(v, 8) for k, v in weights.items() if abs(v) > 1e-12},
+            "staleness_seconds": float(staleness_seconds),
+            "target_gross": float(target_gross),
+            "normalized_gross": float(normalized_gross),
+            "ignored_gross": float(ignored_gross),
+            "ignored_gross_ratio": float(ignored_gross_ratio),
+            "execution_coverage": float(execution_coverage),
+            "weights": {k: float(v) for k, v in weights.items() if abs(v) > 1e-12},
             "ignored_weights": {
-                k: round(v, 8)
+                k: float(v)
                 for k, v in (ignored_weights or {}).items()
                 if abs(v) > 1e-12
             },

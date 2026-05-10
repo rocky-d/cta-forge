@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 
+import pytest
 from executor.journal import TradeJournal
 from executor.routes import _journal_to_report_format
 
@@ -44,11 +45,11 @@ class TestJournalLoad:
             targets = j.load_targets()
             assert len(targets) == 1
             assert targets[0]["profile"] == "test-profile"
-            assert targets[0]["weights"] == {"BTC": 0.12345679}
-            assert targets[0]["ignored_weights"] == {"XRPUSDT": 0.05}
-            assert targets[0]["ignored_gross"] == 0.05
-            assert targets[0]["ignored_gross_ratio"] == 0.166667
-            assert targets[0]["execution_coverage"] == 0.666667
+            assert targets[0]["weights"] == {"BTC": 0.123456789}
+            assert targets[0]["ignored_weights"] == {"XRPUSDT": 0.050000004}
+            assert targets[0]["ignored_gross"] == 0.050000004
+            assert targets[0]["ignored_gross_ratio"] == pytest.approx(0.16666668)
+            assert targets[0]["execution_coverage"] == pytest.approx(0.6666666666666667)
 
     def test_record_trade_preserves_price_precision(self) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -67,11 +68,11 @@ class TestJournalLoad:
             )
 
             trade = j.load_trades()[0]
-            assert trade["qty"] == 259.12345679
+            assert trade["qty"] == 259.123456789
             assert trade["price"] == 0.068897
             assert trade["entry_price"] == 0.059547
-            assert trade["pnl"] == 1.2346
-            assert trade["pnl_pct"] == 2.3457
+            assert trade["pnl"] == 1.234567
+            assert trade["pnl_pct"] == 2.345678
 
     def test_record_tick_clamps_stale_peak_to_current_equity(self) -> None:
         with tempfile.TemporaryDirectory() as d:
