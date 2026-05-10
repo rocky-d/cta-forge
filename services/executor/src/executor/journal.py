@@ -79,12 +79,12 @@ class TradeJournal:
             "symbol": symbol,
             "side": side,
             "qty": round(qty, 8),
-            "price": round(price, 4),
+            "price": float(price),
             "reason": reason,
         }
         # Only include PnL fields for closes
         if kind in ("close", "partial_close", "flatten_all"):
-            record["entry_price"] = round(entry_price, 4)
+            record["entry_price"] = float(entry_price)
             record["pnl"] = round(pnl, 4)
             record["pnl_pct"] = round(pnl_pct, 4)
             record["held_bars"] = held_bars

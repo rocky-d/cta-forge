@@ -36,8 +36,10 @@ class TestJournalLoad:
                 ignored_weights={"XRPUSDT": 0.050000004},
             )
 
+            trades = j.load_trades()
             assert len(j.load_equity()) == 2
-            assert len(j.load_trades()) == 1
+            assert len(trades) == 1
+            assert trades[0]["price"] == 50000.0
             assert len(j.load_signals()) == 1
             targets = j.load_targets()
             assert len(targets) == 1
@@ -47,6 +49,29 @@ class TestJournalLoad:
             assert targets[0]["ignored_gross"] == 0.05
             assert targets[0]["ignored_gross_ratio"] == 0.166667
             assert targets[0]["execution_coverage"] == 0.666667
+
+    def test_record_trade_preserves_price_precision(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            j = TradeJournal(d)
+            j.record_trade(
+                1,
+                "close",
+                "SEI",
+                259.123456789,
+                0.068897,
+                "target",
+                side="long",
+                entry_price=0.059547,
+                pnl=1.234567,
+                pnl_pct=2.345678,
+            )
+
+            trade = j.load_trades()[0]
+            assert trade["qty"] == 259.12345679
+            assert trade["price"] == 0.068897
+            assert trade["entry_price"] == 0.059547
+            assert trade["pnl"] == 1.2346
+            assert trade["pnl_pct"] == 2.3457
 
     def test_record_tick_clamps_stale_peak_to_current_equity(self) -> None:
         with tempfile.TemporaryDirectory() as d:
