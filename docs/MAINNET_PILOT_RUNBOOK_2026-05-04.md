@@ -120,7 +120,7 @@ ssh -i /home/node/.ssh/cta-forge.pem -o BatchMode=yes admin@35.74.148.197
 cd ~/cta-forge
 docker inspect cta-forge-executor --format 'status={{.State.Status}} restart={{.RestartCount}} oom={{.State.OOMKilled}} started={{.State.StartedAt}}'
 docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' \
-  | grep -E '^(HL_NETWORK|DRY_RUN|ALLOW_MAINNET_PILOT_LIVE|STRATEGY_PROFILE|V16A_CORE_PHASE_HOURS|V16A_COMPARE_CORE_PHASE_HOURS|MAX_ORDER_NOTIONAL|TARGET_SCALE|TARGET_GROSS_CAP|HL_LEVERAGE)=' \
+  | grep -E '^(HL_NETWORK|DRY_RUN|ALLOW_MAINNET_PILOT_LIVE|ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS|STRATEGY_PROFILE|V16A_CORE_PHASE_HOURS|V16A_COMPARE_CORE_PHASE_HOURS|MAX_ORDER_NOTIONAL|TARGET_SCALE|TARGET_GROSS_CAP|HL_LEVERAGE)=' \
   | sort
 docker logs --since 15m cta-forge-executor 2>&1 \
   | grep -Ei 'ERROR|Traceback|Exception|OOM|insufficient|reject|failed|placed' || true

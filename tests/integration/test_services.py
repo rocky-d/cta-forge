@@ -322,6 +322,10 @@ class TestExecutorService:
         assert data["v16a_profile"] == "v16a-badscore-overlay"
         assert data["v16a_mainnet_pilot_profile"] == "v16a-mainnet-pilot"
         assert data["mainnet_pilot_caps"]["max_equity"] == 200.0
+        assert data["mainnet_pilot_caps"]["uncapped_orders_env"] == (
+            "ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS"
+        )
+        assert data["allow_mainnet_pilot_uncapped_orders"] is False
         assert "private" not in data
         assert "token" not in data
 
