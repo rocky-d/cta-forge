@@ -172,7 +172,7 @@ jobs:
               exit 1
             fi
             echo "Expected deploy target: ${{ inputs.target }}"
-            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(HL_NETWORK|DRY_RUN|STRATEGY_PROFILE|ALLOW_MAINNET_PILOT_LIVE|TARGET_SCALE|TARGET_GROSS_CAP|MAX_ORDER_NOTIONAL|HL_LEVERAGE|STATE_FILE|JOURNAL_DIR|TG_CHAT_ID|V16A_CORE_PHASE_HOURS)=' | sort
+            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(HL_NETWORK|DRY_RUN|STRATEGY_PROFILE|ALLOW_MAINNET_PILOT_LIVE|ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS|TARGET_SCALE|TARGET_GROSS_CAP|MAX_ORDER_NOTIONAL|HL_LEVERAGE|STATE_FILE|JOURNAL_DIR|TG_CHAT_ID|V16A_CORE_PHASE_HOURS)=' | sort
             if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ] || [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
               docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^HL_NETWORK=mainnet$'
               docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
