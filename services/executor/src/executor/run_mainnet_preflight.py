@@ -168,6 +168,7 @@ async def _build_report() -> dict[str, Any]:
             "caps": {
                 "max_equity": max_equity,
                 "max_order_notional": max_order_notional,
+                "allow_uncapped_orders": allow_uncapped_orders,
                 "target_gross_cap": target_gross_cap,
                 "v16a_core_phase_hours": v16a_core_phase_hours,
                 "leverage": leverage,
