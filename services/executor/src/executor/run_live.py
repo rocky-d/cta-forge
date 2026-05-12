@@ -34,6 +34,7 @@ MAINNET_PILOT_MAX_EQUITY = 200.0
 MAINNET_PILOT_MAX_ORDER_NOTIONAL = 50.0
 MAINNET_PILOT_MAX_TARGET_GROSS_CAP = 4.0
 MAINNET_PILOT_MAX_LEVERAGE = 5
+ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV = "ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS"
 
 
 def _validate_mainnet_pilot_caps(
@@ -42,18 +43,26 @@ def _validate_mainnet_pilot_caps(
     max_order_notional: float | None,
     target_gross_cap: float,
     leverage: int,
+    allow_uncapped_orders: bool = False,
 ) -> None:
     """Require explicit bounded risk caps for mainnet pilot live mode."""
     if max_equity is None or max_equity > MAINNET_PILOT_MAX_EQUITY:
         msg = f"mainnet pilot live requires MAX_EQUITY <= {MAINNET_PILOT_MAX_EQUITY:g}"
         raise ValueError(msg)
-    if (
-        max_order_notional is None
-        or max_order_notional > MAINNET_PILOT_MAX_ORDER_NOTIONAL
-    ):
+    if max_order_notional is None:
+        if not allow_uncapped_orders:
+            msg = (
+                "mainnet pilot live requires "
+                f"MAX_ORDER_NOTIONAL <= {MAINNET_PILOT_MAX_ORDER_NOTIONAL:g} "
+                f"unless {ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV}=true"
+            )
+            raise ValueError(msg)
+    elif max_order_notional > MAINNET_PILOT_MAX_ORDER_NOTIONAL:
         msg = (
             "mainnet pilot live requires "
-            f"MAX_ORDER_NOTIONAL <= {MAINNET_PILOT_MAX_ORDER_NOTIONAL:g}"
+            f"MAX_ORDER_NOTIONAL <= {MAINNET_PILOT_MAX_ORDER_NOTIONAL:g}; "
+            "use an empty MAX_ORDER_NOTIONAL with "
+            f"{ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV}=true for no-max mode"
         )
         raise ValueError(msg)
     if target_gross_cap > MAINNET_PILOT_MAX_TARGET_GROSS_CAP:
@@ -79,6 +88,7 @@ def _validate_v16a_live_mode(
     max_order_notional: float | None = None,
     target_gross_cap: float = 1.0,
     leverage: int = LiveEngine.DEFAULT_LEVERAGE,
+    allow_uncapped_orders: bool = False,
 ) -> None:
     """Validate v16a live-mode guardrails before constructing the engine."""
     if dry_run:
@@ -96,6 +106,7 @@ def _validate_v16a_live_mode(
                 max_order_notional=max_order_notional,
                 target_gross_cap=target_gross_cap,
                 leverage=leverage,
+                allow_uncapped_orders=allow_uncapped_orders,
             )
         return
     if not testnet:
@@ -219,6 +230,9 @@ def main() -> None:
     )
     allow_v16a_testnet_live = _is_truthy(os.environ.get("ALLOW_V16A_TESTNET_LIVE"))
     allow_mainnet_pilot_live = _is_truthy(os.environ.get("ALLOW_MAINNET_PILOT_LIVE"))
+    allow_uncapped_orders = _is_truthy(
+        os.environ.get(ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV)
+    )
 
     try:
         _validate_mainnet_non_dry_run_profile(
@@ -242,6 +256,7 @@ def main() -> None:
                 max_order_notional=max_order_notional,
                 target_gross_cap=target_gross_cap,
                 leverage=leverage,
+                allow_uncapped_orders=allow_uncapped_orders,
             )
         except ValueError as exc:
             logging.error("%s", exc)

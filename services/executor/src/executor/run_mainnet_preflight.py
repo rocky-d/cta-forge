@@ -28,6 +28,8 @@ from .profiles.v16a_badscore_overlay import (
     validate_core_phase_hours,
 )
 from .run_live import (
+    ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
+    _is_truthy,
     _parse_optional_float,
     _parse_symbols,
     _validate_mainnet_pilot_caps,
@@ -67,11 +69,15 @@ async def _build_report() -> dict[str, Any]:
     max_equity = _parse_optional_float(os.environ.get("MAX_EQUITY"))
     max_order_notional = _parse_optional_float(os.environ.get("MAX_ORDER_NOTIONAL"))
     leverage = int(os.environ.get("HL_LEVERAGE", "5"))
+    allow_uncapped_orders = _is_truthy(
+        os.environ.get(ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV)
+    )
     _validate_mainnet_pilot_caps(
         max_equity=max_equity,
         max_order_notional=max_order_notional,
         target_gross_cap=target_gross_cap,
         leverage=leverage,
+        allow_uncapped_orders=allow_uncapped_orders,
     )
 
     adapter = HyperliquidAdapter(pk, addr, testnet=False)

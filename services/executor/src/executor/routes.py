@@ -21,6 +21,7 @@ from .profiles.v16a_badscore_overlay import (
     validate_core_phase_hours,
 )
 from .run_live import (
+    ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
     MAINNET_PILOT_MAX_EQUITY,
     MAINNET_PILOT_MAX_LEVERAGE,
     MAINNET_PILOT_MAX_ORDER_NOTIONAL,
@@ -149,6 +150,9 @@ async def get_config() -> dict[str, Any]:
         ),
         "min_order_notional": float(os.environ.get("MIN_ORDER_NOTIONAL", "10")),
         "max_order_notional": _optional_float_from_env("MAX_ORDER_NOTIONAL"),
+        "allow_mainnet_pilot_uncapped_orders": _is_truthy(
+            os.environ.get(ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV)
+        ),
         "min_equity": _optional_float_from_env("MIN_EQUITY"),
         "min_available_balance": _optional_float_from_env("MIN_AVAILABLE_BALANCE"),
         "max_equity": _optional_float_from_env("MAX_EQUITY"),
@@ -163,6 +167,7 @@ async def get_config() -> dict[str, Any]:
         "mainnet_pilot_caps": {
             "max_equity": MAINNET_PILOT_MAX_EQUITY,
             "max_order_notional": MAINNET_PILOT_MAX_ORDER_NOTIONAL,
+            "uncapped_orders_env": ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
             "target_gross_cap": MAINNET_PILOT_MAX_TARGET_GROSS_CAP,
             "leverage": MAINNET_PILOT_MAX_LEVERAGE,
         },

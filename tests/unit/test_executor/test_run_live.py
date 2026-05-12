@@ -123,10 +123,49 @@ def test_validate_mainnet_pilot_enforced_caps() -> None:
             allow_mainnet_pilot_live=True,
             enforce_pilot_caps=True,
             max_equity=200,
+            max_order_notional=None,
+            target_gross_cap=4.0,
+            leverage=5,
+        )
+    with pytest.raises(ValueError, match="MAX_ORDER_NOTIONAL"):
+        _validate_v16a_live_mode(
+            dry_run=False,
+            testnet=False,
+            strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+            allow_mainnet_pilot_live=True,
+            enforce_pilot_caps=True,
+            max_equity=200,
             max_order_notional=51,
             target_gross_cap=4.0,
             leverage=5,
         )
+    _validate_v16a_live_mode(
+        dry_run=False,
+        testnet=False,
+        strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+        allow_mainnet_pilot_live=True,
+        enforce_pilot_caps=True,
+        max_equity=200,
+        max_order_notional=None,
+        target_gross_cap=4.0,
+        leverage=5,
+        allow_uncapped_orders=True,
+    )
+
+    with pytest.raises(ValueError, match="MAX_ORDER_NOTIONAL"):
+        _validate_v16a_live_mode(
+            dry_run=False,
+            testnet=False,
+            strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+            allow_mainnet_pilot_live=True,
+            enforce_pilot_caps=True,
+            max_equity=200,
+            max_order_notional=51,
+            target_gross_cap=4.0,
+            leverage=5,
+            allow_uncapped_orders=True,
+        )
+
     with pytest.raises(ValueError, match="TARGET_GROSS_CAP"):
         _validate_v16a_live_mode(
             dry_run=False,

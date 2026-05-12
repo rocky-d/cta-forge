@@ -37,12 +37,12 @@ caps. For mainnet non-dry-run, the executable fails closed unless the guarded
 `v16a-mainnet-pilot` profile is used and the pilot caps stay within:
 
 - `MAX_EQUITY <= 200`
-- `MAX_ORDER_NOTIONAL <= 50`
+- `MAX_ORDER_NOTIONAL <= 50`, or empty/unset only with explicit `ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS=true`
 - `TARGET_GROSS_CAP <= 4.00`
 - `HL_LEVERAGE <= 5`
 
-Do not raise these values from the EC2 host or compose files as an ad hoc tweak.
-Any increase is a new live-risk decision and should go through research, code
+Do not raise or remove these values from the EC2 host or compose files as an ad hoc tweak.
+Any increase or no-max change is a new live-risk decision and should go through research, code
 review, CI, deploy, and post-deploy health checks.
 
 ## Hyperliquid unified-account balance accounting
