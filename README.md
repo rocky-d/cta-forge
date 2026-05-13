@@ -17,18 +17,6 @@ runtime checks and private deployment configuration.
 - `libs/core` — shared protocols, constants, and metrics
 - `libs/exchange` — exchange adapter interfaces and Hyperliquid integration
 
-## Safety model
-
-- Secrets, exchange credentials, notification endpoints, runtime journals, market
-  data caches, state files, and operator infrastructure notes must stay outside
-  git.
-- `.env.example` documents variable names only; real values belong in private
-  deployment environments.
-- Live trading paths are fail-closed and require explicit profile/network/guard
-  flags before submitting orders.
-- Public docs should describe design and research conclusions, not private host,
-  account, wallet, funding, or position details.
-
 ## Development
 
 Local validation mirrors GitHub CI:
