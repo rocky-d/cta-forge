@@ -31,6 +31,11 @@ variable "volume_size" {
   default = 20
 }
 
+variable "ssh_allowed_cidr" {
+  description = "Operator-controlled SSH source CIDR. Do not use 0.0.0.0/0 for live hosts."
+  type        = string
+}
+
 # ── Data sources ─────────────────────────────────────────────────
 
 # Latest Debian 13 AMI (official, HVM, amd64)
@@ -65,7 +70,7 @@ resource "aws_security_group" "cta_forge" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.ssh_allowed_cidr]
   }
 
   egress {

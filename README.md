@@ -1,66 +1,37 @@
 # cta-forge
 
-Crypto CTA strategy forge, monorepo microservices architecture.
+Crypto CTA research and execution playground.
 
-## Services
+The repository is a Python `uv` workspace with microservices for market data,
+alpha research, strategy construction, execution, and reporting. It is intended
+for reproducible research first, with live trading guarded behind explicit
+runtime checks and private deployment configuration.
 
-| Service | Description |
-|---|---|
-| data-service | Binance historical data provider |
-| alpha-service | Alpha factor computation |
-| strategy-service | Signal composition, asset selection, allocation, risk |
-| executor | Backtest & live execution |
-| report-service | Performance metrics & visualization |
+## Workspace
 
-## Libraries
+- `services/data-service` — historical market data access and storage
+- `services/alpha-service` — alpha/factor computation
+- `services/strategy-service` — signal composition, allocation, and risk helpers
+- `services/executor` — backtests, target construction, and guarded live runtime
+- `services/report-service` — metrics and chart rendering
+- `libs/core` — shared protocols, constants, and metrics
+- `libs/exchange` — exchange adapter interfaces and Hyperliquid integration
 
-| Library | Description |
-|---|---|
-| core | Shared protocols, constants, metrics |
-| exchange | Exchange connectivity (Hyperliquid adapter) |
+## Safety model
 
-Ports and service URLs are configured in `core/constants.py` with sensible defaults, overridable via environment variables (see `.env.example`).
+- Secrets, exchange credentials, notification endpoints, runtime journals, market
+  data caches, state files, and operator infrastructure notes must stay outside
+  git.
+- `.env.example` documents variable names only; real values belong in private
+  deployment environments.
+- Live trading paths are fail-closed and require explicit profile/network/guard
+  flags before submitting orders.
+- Public docs should describe design and research conclusions, not private host,
+  account, wallet, funding, or position details.
 
-## Quick Start
+## Development
 
-```bash
-# Install all workspace members
-uv sync
-
-# Run a single service (dev)
-cd services/data-service && uv run uvicorn data_service.app:app --reload
-
-# Reproduce the default v10g backtest
-# scripts/backtest is a thin CLI wrapper; strategy logic lives in executor.*
-uv run python scripts/backtest/v10g_maxrange.py
-
-# Reproduce the current v16a research checkpoint and three-panel chart
-# Core logic lives in executor.profiles.v16a_badscore_overlay,
-# executor.signal_pipeline, and executor.portfolio_backtest.
-uv run python scripts/backtest/joint_badscore_research.py
-
-# Run one v16a target shadow tick (dry-run only; no real orders)
-# Requires HL_PRIVATE_KEY/HL_ACCOUNT_ADDRESS in the environment or sourced .env.
-DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick
-
-# Add read-only phase-2 comparison diagnostics after the dry-run shadow tick.
-DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay V16A_COMPARE_CORE_PHASE_HOURS=2 uv run python -m executor.run_shadow_tick
-
-# Record a cache-only phase-2 comparison snapshot without refreshing market data.
-DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay V16A_COMPARE_CORE_PHASE_HOURS=2 uv run python -m executor.run_phase_shadow_snapshot
-
-# Inspect target-mode diagnostics after a shadow/live run
-cat journal/shadow-v16a/targets.jsonl
-cat journal/phase-shadow/phase_comparisons.jsonl
-cat journal/targets.jsonl
-
-# Full stack
-docker compose up
-```
-
-## Validation
-
-Local checks mirror the GitHub Lint/Test workflows:
+Local validation mirrors GitHub CI:
 
 ```bash
 uv run ruff check .
@@ -69,16 +40,12 @@ uv run ty check
 uv run pytest -q
 ```
 
-Deployment is manual via GitHub Actions `workflow_dispatch`; do not use deploys for strategy experiments.
+## Stack
 
-v16a is shadow-safe by default: use `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay` for observation. Non-dry-run v16a requires either `HL_NETWORK=testnet` plus explicit `ALLOW_V16A_TESTNET_LIVE=true`, or the separate guarded `v16a-mainnet-pilot` profile plus `ALLOW_MAINNET_PILOT_LIVE=true`. Current mainnet rollout is the small-account live pilot via GitHub Actions target `mainnet-pilot-live`; see `docs/MAINNET_PILOT_RUNBOOK_2026-05-04.md` for the active caps and checks.
-
-## Tech Stack
-
-- Python 3.12, uv workspace
+- Python 3.12 + `uv`
 - FastAPI + uvicorn
-- httpx (inter-service + external APIs)
+- httpx
 - polars + numpy
-- parquet (local storage)
-- Docker + docker-compose
+- parquet local storage
+- Docker / docker compose
 - pytest + ruff + ty

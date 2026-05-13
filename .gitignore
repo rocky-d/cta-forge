@@ -19,7 +19,8 @@ htmlcov/
 .env
 *.pem
 
-# Terraform
+# Terraform / operator infrastructure
+infra/ec2-launch.sh
 infra/terraform/.terraform/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.backup

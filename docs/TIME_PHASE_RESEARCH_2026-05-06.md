@@ -374,61 +374,29 @@ A minimal code-level phase hook now exists for later live-shadow or promotion:
 This should remain a foundation, not a production switch. Phase `2` should first
 be used for read-only/live-shadow diagnostics on actual refreshed cache.
 
-## First EC2 cache-only forward shadow snapshot
+## First live-cache-only forward shadow snapshot
 
-After deploying CI-green code at commit `47fdea0` to the mainnet-pilot-live EC2
-container on 2026-05-06, the live defaults were verified unchanged:
-
-- `HL_NETWORK=mainnet`
-- `DRY_RUN=false`
-- `ALLOW_MAINNET_PILOT_LIVE=true`
-- `STRATEGY_PROFILE=v16a-mainnet-pilot`
-- `V16A_CORE_PHASE_HOURS=0`
-- `MAX_ORDER_NOTIONAL=50`
-- `TARGET_SCALE=5.0`
-- `TARGET_GROSS_CAP=4.00`
-- `HL_LEVERAGE=5`
-
-The container restarted cleanly, passed preflight, restored the existing 7-position
-state, and waited for the next 16:00 UTC candle. No live trading parameter was
-promoted.
+After deploying CI-green code to the mainnet-pilot-live environment on
+2026-05-06, the live runtime was verified healthy and unchanged before any
+research subprocess was run. Exact live host, account, position, and sizing
+observations are private operator records and should not be duplicated in this
+public research note.
 
 Two cache-only snapshots were then recorded with `DRY_RUN=true` only for the
-one-off snapshot process:
-
-- cap `$50`: `/app/journal/mainnet-pilot-phase-shadow-cap50/phase_comparisons.jsonl`
-- cap `$75`: `/app/journal/mainnet-pilot-phase-shadow-cap75/phase_comparisons.jsonl`
-
-Snapshot target timestamp for both phases was `2026-05-06T14:00:00+00:00`.
-Equity was about `$102.6`. Both snapshots produced the same phase target-diff
-metrics because the max-order cap affects hypothetical orders, not target weights:
-
-- L1 target difference: `0.39148245`
-- cosine similarity: `0.90401641`
-- max absolute symbol difference: `0.12779754`
-- sign flips: `0`
-
-At this snapshot:
-
-- phase `0` target gross was `0.818771` and produced `0` hypothetical orders,
-  matching the current live baseline closely enough to require no immediate action.
-- phase `2` target gross was `0.638173` and produced `2` hypothetical reduce-only
-  orders, selling `SEI` and `XRP` to zero target weight.
-- The `$50` vs `$75` cap did not change this snapshot's hypothetical orders,
-  because the phase-2 differences were reduce-only reductions and reduce-only
-  orders are intentionally uncapped.
-- Ignored gross was `0` for both phases in this snapshot.
+one-off snapshot process, using a 2x2 phase/cap diagnostic framing. Both snapshots
+produced the same phase target-diff metrics because the max-order cap affects
+hypothetical orders, not target weights.
 
 Interpretation:
 
-- This first forward point does not support changing the max-order cap yet; the
-  cap was not binding in this specific 2x2 observation.
-- Phase `2` is meaningfully different from the live phase `0`, but the difference
-  is risk-reducing at this timestamp because it would reduce existing `SEI` and
-  `XRP` exposure rather than add new capped exposure.
-- More complete forward windows are needed before promoting either phase `2` or a
-  `$75` max-order cap. In particular, the `$75` candidate only matters when new
-  or increased exposure is capped.
+- This first forward point did not support changing the max-order cap yet; the
+  cap was not binding in that specific 2x2 observation.
+- Phase `2` was meaningfully different from live phase `0`, but the observed
+  difference was risk-reducing at that timestamp because it reduced existing
+  exposure rather than adding new capped exposure.
+- More complete forward windows were needed before promoting either phase `2` or
+  a larger max-order cap. The cap candidate only matters when new or increased
+  exposure is capped.
 
 ## Recommended next steps
 

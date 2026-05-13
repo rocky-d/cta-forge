@@ -142,10 +142,9 @@ jobs:
               if ! docker compose $COMPOSE_FILES run --rm --no-deps \
                 executor-live uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
                 echo "✗ Pre-start mainnet pilot preflight failed"
-                cat /tmp/mainnet-preflight.json
+                echo "Preflight details are intentionally not printed to public GitHub logs. Inspect /tmp/mainnet-preflight.json on the deployment host."
                 exit 1
               fi
-              cat /tmp/mainnet-preflight.json
               echo "✓ Pre-start mainnet pilot preflight passed"
             fi
             # Graceful shutdown: give live engine time to finish any in-flight tick
@@ -172,7 +171,7 @@ jobs:
               exit 1
             fi
             echo "Expected deploy target: ${{ inputs.target }}"
-            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(HL_NETWORK|DRY_RUN|STRATEGY_PROFILE|ALLOW_MAINNET_PILOT_LIVE|ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS|TARGET_SCALE|TARGET_GROSS_CAP|MAX_ORDER_NOTIONAL|HL_LEVERAGE|STATE_FILE|JOURNAL_DIR|TG_CHAT_ID|V16A_CORE_PHASE_HOURS)=' | sort
+            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(HL_NETWORK|DRY_RUN|STRATEGY_PROFILE|ALLOW_MAINNET_PILOT_LIVE|ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS|MAX_ORDER_NOTIONAL|V16A_CORE_PHASE_HOURS)=' | sort
             if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ] || [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
               docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^HL_NETWORK=mainnet$'
               docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
@@ -188,10 +187,9 @@ jobs:
               echo "Running strict mainnet pilot preflight..."
               if ! docker exec cta-forge-executor uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
                 echo "✗ Mainnet pilot preflight failed"
-                cat /tmp/mainnet-preflight.json
+                echo "Preflight details are intentionally not printed to public GitHub logs. Inspect /tmp/mainnet-preflight.json on the deployment host."
                 exit 1
               fi
-              cat /tmp/mainnet-preflight.json
               echo "✓ Mainnet pilot preflight passed"
             fi
             # Check for LiveEngine startup in logs
