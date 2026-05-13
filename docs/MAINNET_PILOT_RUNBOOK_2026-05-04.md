@@ -37,7 +37,7 @@ mutation except read-only diagnostics or emergency stop/rollback.
 For each live deployment:
 
 1. Confirm the intended commit has passed CI.
-2. Confirm the workflow target matches the intended environment.
+2. Confirm the single production compose file matches the intended environment.
 3. Confirm private deployment configuration matches the approved live-risk record.
 4. Deploy once, then observe health and the next scheduled tick before further
    experiments or configuration changes.

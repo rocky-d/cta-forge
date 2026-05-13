@@ -7,22 +7,12 @@ on:
         description: "Image tag to deploy (default: latest commit SHA)"
         required: false
         default: ""
-      target:
-        description: "Deployment target"
-        required: true
-        default: "testnet-live"
-        type: choice
-        options:
-          - testnet-live
-          - mainnet-pilot-dry-run
-          - mainnet-pilot-live
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: rocky-d/cta-forge/executor
 
 jobs:
-  # Gate: ensure CI passed on this commit before deploying
   check-ci:
     runs-on: ubuntu-latest
     permissions:
@@ -101,27 +91,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Resolve compose files
-        id: compose
-        run: |
-          if [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
-            echo "source=docker-compose.prod.yml,docker-compose.mainnet-pilot.yml,docker-compose.mainnet-pilot-live.yml" >> "$GITHUB_OUTPUT"
-            echo "files=-f docker-compose.prod.yml -f docker-compose.mainnet-pilot.yml -f docker-compose.mainnet-pilot-live.yml" >> "$GITHUB_OUTPUT"
-          elif [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ]; then
-            echo "source=docker-compose.prod.yml,docker-compose.mainnet-pilot.yml" >> "$GITHUB_OUTPUT"
-            echo "files=-f docker-compose.prod.yml -f docker-compose.mainnet-pilot.yml" >> "$GITHUB_OUTPUT"
-          else
-            echo "source=docker-compose.prod.yml" >> "$GITHUB_OUTPUT"
-            echo "files=-f docker-compose.prod.yml" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Sync compose file to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: ${{ steps.compose.outputs.source }}
+          source: docker-compose.prod.yml
           target: ~/cta-forge/
 
       - name: Deploy to EC2
@@ -133,21 +109,16 @@ jobs:
           script: |
             cd ~/cta-forge
             echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u rocky-d --password-stdin
-            COMPOSE_FILES="${{ steps.compose.outputs.files }}"
-            echo "Deploy target: ${{ inputs.target }}"
-            echo "Compose files: $COMPOSE_FILES"
+            COMPOSE_FILES="-f docker-compose.prod.yml"
             docker compose $COMPOSE_FILES pull
-            if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ] || [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
-              echo "Running pre-start strict mainnet pilot preflight..."
-              if ! docker compose $COMPOSE_FILES run --rm --no-deps \
-                executor-live uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
-                echo "✗ Pre-start mainnet pilot preflight failed"
-                echo "Preflight details are intentionally not printed to public GitHub logs. Inspect /tmp/mainnet-preflight.json on the deployment host."
-                exit 1
-              fi
-              echo "✓ Pre-start mainnet pilot preflight passed"
+            echo "Running pre-start strict mainnet pilot preflight..."
+            if ! docker compose $COMPOSE_FILES run --rm --no-deps \
+              executor-live uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
+              echo "✗ Pre-start mainnet pilot preflight failed"
+              echo "Preflight details are intentionally not printed to public GitHub logs. Inspect /tmp/mainnet-preflight.json on the deployment host."
+              exit 1
             fi
-            # Graceful shutdown: give live engine time to finish any in-flight tick
+            echo "✓ Pre-start mainnet pilot preflight passed"
             docker compose $COMPOSE_FILES stop -t 30
             docker compose $COMPOSE_FILES down --remove-orphans
             docker compose $COMPOSE_FILES up -d
@@ -162,7 +133,6 @@ jobs:
           script: |
             cd ~/cta-forge
             sleep 15
-            # Check container is running (not restarting)
             STATUS=$(docker inspect --format='{{.State.Status}}' cta-forge-executor 2>/dev/null || echo "missing")
             echo "Container status: $STATUS"
             if [ "$STATUS" != "running" ]; then
@@ -170,29 +140,18 @@ jobs:
               docker logs cta-forge-executor --tail 20 2>&1
               exit 1
             fi
-            echo "Expected deploy target: ${{ inputs.target }}"
             docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(HL_NETWORK|DRY_RUN|STRATEGY_PROFILE|ALLOW_MAINNET_PILOT_LIVE|ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS|MAX_ORDER_NOTIONAL|V16A_CORE_PHASE_HOURS)=' | sort
-            if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ] || [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
-              docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^HL_NETWORK=mainnet$'
-              docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
+            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^HL_NETWORK=mainnet$'
+            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^DRY_RUN=false$'
+            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
+            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^ALLOW_MAINNET_PILOT_LIVE=true$'
+            echo "Running strict mainnet pilot preflight..."
+            if ! docker exec cta-forge-executor uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
+              echo "✗ Mainnet pilot preflight failed"
+              echo "Preflight details are intentionally not printed to public GitHub logs. Inspect /tmp/mainnet-preflight.json on the deployment host."
+              exit 1
             fi
-            if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ]; then
-              docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^DRY_RUN=true$'
-            fi
-            if [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
-              docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^DRY_RUN=false$'
-              docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^ALLOW_MAINNET_PILOT_LIVE=true$'
-            fi
-            if [ "${{ inputs.target }}" = "mainnet-pilot-dry-run" ] || [ "${{ inputs.target }}" = "mainnet-pilot-live" ]; then
-              echo "Running strict mainnet pilot preflight..."
-              if ! docker exec cta-forge-executor uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
-                echo "✗ Mainnet pilot preflight failed"
-                echo "Preflight details are intentionally not printed to public GitHub logs. Inspect /tmp/mainnet-preflight.json on the deployment host."
-                exit 1
-              fi
-              echo "✓ Mainnet pilot preflight passed"
-            fi
-            # Check for LiveEngine startup in logs
+            echo "✓ Mainnet pilot preflight passed"
             if docker logs cta-forge-executor 2>&1 | grep -q "Preflight PASSED"; then
               echo "✓ LiveEngine started successfully"
             elif docker logs cta-forge-executor 2>&1 | grep -q "Waiting.*until next candle"; then
