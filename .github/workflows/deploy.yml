@@ -8,6 +8,13 @@ on:
         required: false
         default: ""
 
+permissions:
+  contents: read
+
+concurrency:
+  group: cta-forge-production-deploy
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: rocky-d/cta-forge/executor
@@ -68,9 +75,17 @@ jobs:
 
       - name: Set image tag
         id: tag
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          if [ -n "$TAG_INPUT" ]; then
+            case "$TAG_INPUT" in
+              *[!A-Za-z0-9._-]* | .* | *..* | *- )
+                echo "Invalid image tag: use only A-Z, a-z, 0-9, dot, underscore, and dash; do not start with dot or end with dash."
+                exit 1
+                ;;
+            esac
+            echo "tag=$TAG_INPUT" >> "$GITHUB_OUTPUT"
           else
             echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           fi
@@ -87,6 +102,9 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment: production
 
     steps:
       - uses: actions/checkout@v6
@@ -102,13 +120,17 @@ jobs:
 
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: GHCR_TOKEN
           script: |
+            set -euo pipefail
             cd ~/cta-forge
-            echo ${{ secrets.GHCR_TOKEN }} | docker login ghcr.io -u rocky-d --password-stdin
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u rocky-d --password-stdin
             COMPOSE_FILES="-f docker-compose.prod.yml"
             docker compose $COMPOSE_FILES pull
             echo "Running pre-start strict mainnet pilot preflight..."
@@ -131,20 +153,21 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -euo pipefail
             cd ~/cta-forge
             sleep 15
             STATUS=$(docker inspect --format='{{.State.Status}}' cta-forge-executor 2>/dev/null || echo "missing")
             echo "Container status: $STATUS"
             if [ "$STATUS" != "running" ]; then
-              echo "✗ Container not running!"
-              docker logs cta-forge-executor --tail 20 2>&1
+              echo "✗ Container not running. Inspect host logs directly; they are not printed to public CI logs."
               exit 1
             fi
-            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(HL_NETWORK|DRY_RUN|STRATEGY_PROFILE|ALLOW_MAINNET_PILOT_LIVE|ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS|MAX_ORDER_NOTIONAL|V16A_CORE_PHASE_HOURS)=' | sort
-            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^HL_NETWORK=mainnet$'
-            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^DRY_RUN=false$'
-            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
-            docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -q '^ALLOW_MAINNET_PILOT_LIVE=true$'
+            ENV_DUMP=$(docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}')
+            printf '%s\n' "$ENV_DUMP" | grep -q '^HL_NETWORK=mainnet$'
+            printf '%s\n' "$ENV_DUMP" | grep -q '^DRY_RUN=false$'
+            printf '%s\n' "$ENV_DUMP" | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
+            printf '%s\n' "$ENV_DUMP" | grep -q '^ALLOW_MAINNET_PILOT_LIVE=true$'
+            echo "✓ Required deployment guard flags verified"
             echo "Running strict mainnet pilot preflight..."
             if ! docker exec cta-forge-executor uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
               echo "✗ Mainnet pilot preflight failed"
@@ -157,6 +180,5 @@ jobs:
             elif docker logs cta-forge-executor 2>&1 | grep -q "Waiting.*until next candle"; then
               echo "✓ LiveEngine started, waiting for next tick"
             else
-              echo "⚠ LiveEngine startup not confirmed yet (may still be initializing)"
-              docker logs cta-forge-executor --tail 10 2>&1
+              echo "⚠ LiveEngine startup not confirmed yet. Inspect host logs directly; they are not printed to public CI logs."
             fi

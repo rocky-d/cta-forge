@@ -4,12 +4,26 @@ __pycache__
 *.pyc
 .pytest_cache
 .ruff_cache
+.learnings/
+.env
+*.pem
+
+# Local/runtime data should never enter Docker build context.
 data/
+data-*/
 backtest-results/
+journal/
+state/
+live-report/
+engine-state*.json
+engine.log
+*.log
+
+# Non-runtime project material is not needed in service images.
 scripts/
 docs/
 archive/
-.env
-engine-state.json
+infra/
+
 *.png
 *.pdf
