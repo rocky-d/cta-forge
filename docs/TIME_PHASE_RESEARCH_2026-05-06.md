@@ -198,6 +198,14 @@ Interpretation:
   live-shadow conditions, not as a live default.
 
 
+## Status note — 2026-05-13
+
+This file is a historical research note. Some recommendations below were written
+before later live-pilot promotions and should not be read as current runtime
+state. The current live phase/order-cap posture is owned by private host-side
+deployment config and the running executor container; verify those before
+quoting live turnover, phase, cap, or risk settings.
+
 ## Phase 2 vs phase 0 shadow-impact audit
 
 Repo-native follow-up script:
@@ -210,7 +218,7 @@ It writes:
 - `backtest-results/v16a_phase_shadow_audit.json`
 
 Purpose:
-- Compare phase `2` against the current phase `0` baseline at the target/exposure
+- Compare phase `2` against the then-current phase `0` baseline at the target/exposure
   level, not just at the performance-metric level.
 - Estimate mainnet-pilot-style order impact with the same
   `executor.targeting.weights_to_orders()` reduce-first reconciliation mechanism.
@@ -237,7 +245,7 @@ Recent-window impact is mixed:
 - This reinforces the earlier rolling-OOS caution: phase `2` is not uniformly
   better in recent history.
 
-Mainnet-pilot-style order impact under current pilot assumptions (`$200` equity,
+Mainnet-pilot-style order impact under then-current pilot assumptions (`$200` equity,
 `TARGET_SCALE=5`, gross cap `4`, min order `$10`, max increase order `$50`):
 - Phase `2` does not imply high order frequency in this simplified audit:
   recent 30-90 day mean order rate is about `0.066` to `0.069` orders/hour.
@@ -252,9 +260,9 @@ Interpretation:
 - Phase `2` is feasible to shadow from an order-frequency perspective.
 - The bigger live concern is not order count; it is target tracking quality under
   small pilot equity and min-notional constraints, plus mixed recent performance.
-- Do not switch live defaults. The next safe step would be a read-only/live-shadow
-  diagnostic that records phase `0` and phase `2` targets side by side on actual
-  refreshed live cache.
+- At the time, do not switch live defaults. The next safe step was a
+  read-only/live-shadow diagnostic that records phase `0` and phase `2` targets
+  side by side on actual refreshed live cache.
 
 ## Live-like pilot constraint ablation
 
@@ -273,10 +281,10 @@ Purpose:
 - Keep v16a targets fixed while ablating practical execution constraints:
   initial equity, min order notional, max increase order notional, target scale,
   gross cap, fee, and a simple slippage assumption.
-- Preserve the current production/live defaults; this is research-only.
+- Preserve the then-current production/live defaults; this was research-only.
 
 Assumptions for the live-like case:
-- initial equity: `$100`, matching the current practical pilot capital base;
+- initial equity: `$100`, matching the practical pilot capital base at the time;
 - `TARGET_SCALE=5`;
 - `TARGET_GROSS_CAP=4`;
 - min order notional: `$10`;
@@ -329,8 +337,8 @@ Interpretation:
   while keeping max increase fixed at `$50` reduced full-history return and
   increased residual tracking error.
 - Gross cap values above about `2` were not materially binding in this live-like
-  setup; increasing `TARGET_GROSS_CAP` above the current `4` has no practical
-  benefit here.
+  setup; increasing `TARGET_GROSS_CAP` above the configured gross cap used in
+  this research has no practical benefit here.
 - `TARGET_SCALE` has return upside in the historical simulation, but changing it
   directly increases exposure, drawdown, margin/liquidation sensitivity, and
   unmodeled execution risk. It is a poor first optimization lever for live.
@@ -344,8 +352,8 @@ Max-increase sensitivity with `$100` equity and `$10` min order:
   return `73.46`.
 
 Research recommendation:
-- Do not change live defaults immediately.
-- Keep `TARGET_SCALE`, `TARGET_GROSS_CAP`, and `V16A_CORE_PHASE_HOURS` unchanged.
+- At the time, do not change live defaults immediately.
+- At the time, keep `TARGET_SCALE`, `TARGET_GROSS_CAP`, and `V16A_CORE_PHASE_HOURS` unchanged.
 - If further research supports a live adjustment, the most plausible first lever
   is a small `MAX_ORDER_NOTIONAL` increase from `$50` to `$75`, not a scale or
   gross-cap change.
@@ -361,7 +369,7 @@ targets faster, but it also establishes new risk faster.
 
 A minimal code-level phase hook now exists for later live-shadow or promotion:
 
-- `V16A_CORE_PHASE_HOURS` defaults to `0`, so existing live behavior is unchanged.
+- `V16A_CORE_PHASE_HOURS` code default is `0`; existing live behavior is unchanged only when the private runtime env leaves it at `0`.
 - Valid values are integer UTC-hour offsets `0..5` for the 6h v10g core sleeve.
 - Non-zero values derive phased 6h core bars from the refreshed 1h parquet cache;
   the 1h overlay path and target/order reconciliation stay unchanged.
@@ -371,8 +379,9 @@ A minimal code-level phase hook now exists for later live-shadow or promotion:
   record read-only side-by-side phase diagnostics from the same refreshed cache
   and account state.
 
-This should remain a foundation, not a production switch. Phase `2` should first
-be used for read-only/live-shadow diagnostics on actual refreshed cache.
+This was the foundation before any production switch. Later live state must be
+verified from private runtime config rather than inferred from this historical
+note.
 
 ## First live-cache-only forward shadow snapshot
 
@@ -400,9 +409,9 @@ Interpretation:
 
 ## Recommended next steps
 
-1. Keep live unchanged for now.
+1. Historical recommendation at the time: keep live unchanged while collecting forward evidence.
 2. Continue the 2x2 read-only shadow framing:
-   - phase `0`, cap `$50`: current baseline;
+   - phase `0`, cap `$50`: then-current baseline;
    - phase `2`, cap `$50`: phase candidate only;
    - phase `0`, cap `$75`: execution-cap candidate only;
    - phase `2`, cap `$75`: combined candidate, research-only.

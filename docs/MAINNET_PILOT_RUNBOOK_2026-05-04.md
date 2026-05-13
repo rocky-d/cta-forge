@@ -4,8 +4,9 @@ Purpose: define the public safety posture for the guarded mainnet pilot without
 publishing private operator details.
 
 Private deployment records must contain the live host, SSH user, exact account
-state, capital, symbol universe, notification endpoints, and historical runtime
-snapshots. Do not duplicate those details in this repository.
+state, capital, symbol universe, notification endpoints, active phase, order-cap
+posture, and historical runtime snapshots. Do not duplicate those details in
+this repository.
 
 ## Guardrail design
 
@@ -37,8 +38,11 @@ mutation except read-only diagnostics or emergency stop/rollback.
 For each live deployment:
 
 1. Confirm the intended commit has passed CI.
-2. Confirm the single production compose file matches the intended environment.
-3. Confirm private deployment configuration matches the approved live-risk record.
+2. Confirm the production compose files provide structure only, not stale runtime
+   values.
+3. Confirm private deployment configuration matches the approved live-risk
+   record, including phase, scale/gross cap, leverage, symbol universe, and
+   order-cap posture.
 4. Deploy once, then observe health and the next scheduled tick before further
    experiments or configuration changes.
 
@@ -49,6 +53,8 @@ After deployment, check at minimum:
 - container is running and not repeatedly restarting;
 - OOM/restart counters are normal;
 - expected non-secret guard flags are present;
+- runtime env matches the approved private live-risk record; do not rely on code
+  defaults or historical research docs for active phase/cap state;
 - strict preflight passes;
 - recent logs contain no unexpected errors, rejects, stale-data warnings, or order
   placement anomalies.
