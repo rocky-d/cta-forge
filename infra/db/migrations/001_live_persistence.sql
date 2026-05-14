@@ -140,7 +140,8 @@ create table if not exists live_trades (
     held_bars integer,
     exchange_order_id text,
     raw_json jsonb not null default '{}'::jsonb,
-    created_at timestamptz not null default now()
+    created_at timestamptz not null default now(),
+    unique (live_instance_id, run_id, bar, ts, kind, symbol, qty, price, reason)
 );
 
 create table if not exists live_signals (

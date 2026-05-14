@@ -72,3 +72,12 @@ def test_position_rows_cannot_reference_a_different_instance_than_tick() -> None
 
     assert "foreign key (tick_id, live_instance_id)" in block
     assert "references live_ticks(id, live_instance_id) on delete cascade" in block
+
+
+def test_trade_rows_are_idempotent_for_historical_imports() -> None:
+    block = _table_block(_schema_sql(), "live_trades").lower()
+
+    assert (
+        "unique (live_instance_id, run_id, bar, ts, kind, symbol, qty, price, reason)"
+        in block
+    )
