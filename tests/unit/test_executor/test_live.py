@@ -121,6 +121,27 @@ class FakeExchange:
         pass
 
 
+def test_live_engine_records_runtime_identity_metadata(tmp_path) -> None:
+    """Runtime identity passed to LiveEngine reaches additive journal metadata."""
+
+    exchange = FakeExchange()
+    engine = LiveEngine(
+        exchange,
+        dry_run=True,
+        journal_dir=str(tmp_path / "journal"),
+        live_instance_id="cta-forge-mainnet-pilot-01",
+        run_id="20260514T221212Z-deadbeef",
+        public_instance_slug="mainnet-pilot",
+    )
+
+    engine._journal.record_tick(1, 100.0, 100.0, {})
+
+    record = engine._journal.load_equity()[0]
+    assert record["live_instance_id"] == "cta-forge-mainnet-pilot-01"
+    assert record["run_id"] == "20260514T221212Z-deadbeef"
+    assert record["public_instance_slug"] == "mainnet-pilot"
+
+
 @pytest.mark.asyncio
 async def test_preflight_clean_account() -> None:
     """Preflight passes on clean account."""

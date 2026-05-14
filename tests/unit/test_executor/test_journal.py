@@ -51,6 +51,59 @@ class TestJournalLoad:
             assert targets[0]["ignored_gross_ratio"] == pytest.approx(0.16666668)
             assert targets[0]["execution_coverage"] == pytest.approx(0.6666666666666667)
 
+    def test_identity_fields_are_additive_when_configured(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            j = TradeJournal(
+                d,
+                live_instance_id="cta-forge-mainnet-pilot-01",
+                run_id="20260514T221212Z-deadbeef",
+                public_instance_slug="mainnet-pilot",
+            )
+            j.record_tick(1, 101.123456789, 102.0, {})
+            j.record_trade(
+                1,
+                "open_long",
+                "SEI",
+                259.123456789,
+                0.068897,
+                "target",
+                side="long",
+            )
+            j.record_signals(1, {"SEI": 0.123456789})
+            j.record_target(
+                bar=1,
+                profile="test-profile",
+                target_ts="2026-05-14T22:00:00+00:00",
+                staleness_seconds=1.23456789,
+                target_gross=0.123456789,
+                normalized_gross=0.123456789,
+                weights={"SEI": 0.123456789},
+                orders=[{"symbol": "SEI", "qty": 259.123456789}],
+            )
+
+            for record in (
+                j.load_equity()[0],
+                j.load_trades()[0],
+                j.load_signals()[0],
+                j.load_targets()[0],
+            ):
+                assert record["live_instance_id"] == "cta-forge-mainnet-pilot-01"
+                assert record["run_id"] == "20260514T221212Z-deadbeef"
+                assert record["public_instance_slug"] == "mainnet-pilot"
+
+            assert j.load_trades()[0]["qty"] == 259.123456789
+            assert j.load_targets()[0]["weights"] == {"SEI": 0.123456789}
+
+    def test_identity_fields_are_absent_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            j = TradeJournal(d)
+            j.record_tick(1, 100.0, 100.0, {})
+
+            record = j.load_equity()[0]
+            assert "live_instance_id" not in record
+            assert "run_id" not in record
+            assert "public_instance_slug" not in record
+
     def test_record_trade_preserves_price_precision(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             j = TradeJournal(d)

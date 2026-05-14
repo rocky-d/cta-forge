@@ -6,7 +6,10 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import timedelta
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from exchange.hyperliquid import HyperliquidAdapter
 
@@ -28,6 +31,36 @@ from .notify import (
 def _is_truthy(value: str | None) -> bool:
     """Return whether an environment-style flag is enabled."""
     return (value or "").lower() in {"1", "true", "yes", "y"}
+
+
+@dataclass(frozen=True)
+class RuntimeIdentity:
+    """Non-secret runtime identity attached to live journal records."""
+
+    live_instance_id: str | None
+    public_instance_slug: str | None
+    run_id: str
+
+
+def _optional_env_text(value: str | None) -> str | None:
+    """Return a stripped env value, or None when absent/blank."""
+    stripped = (value or "").strip()
+    return stripped or None
+
+
+def _new_run_id() -> str:
+    """Generate a compact human-readable process run identifier."""
+    stamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+    return f"{stamp}-{uuid4().hex[:8]}"
+
+
+def _load_runtime_identity(env: Mapping[str, str] = os.environ) -> RuntimeIdentity:
+    """Load optional live instance identity from environment variables."""
+    return RuntimeIdentity(
+        live_instance_id=_optional_env_text(env.get("LIVE_INSTANCE_ID")),
+        public_instance_slug=_optional_env_text(env.get("PUBLIC_INSTANCE_SLUG")),
+        run_id=_optional_env_text(env.get("RUN_ID")) or _new_run_id(),
+    )
 
 
 MAINNET_PILOT_MAX_EQUITY = 200.0
@@ -208,6 +241,7 @@ def main() -> None:
         logging.error("%s", exc)
         sys.exit(1)
     dry_run = _is_truthy(os.environ.get("DRY_RUN", "false"))
+    identity = _load_runtime_identity(os.environ)
     state_file = os.environ.get("STATE_FILE", "engine-state.json")
     journal_dir = os.environ.get("JOURNAL_DIR", "journal")
     data_dir = os.environ.get("DATA_DIR", "data")
@@ -279,6 +313,13 @@ def main() -> None:
 
     notifier = _build_notifier()
 
+    logging.info(
+        "Runtime identity: live_instance_id=%s, public_instance_slug=%s, run_id=%s",
+        identity.live_instance_id or "-",
+        identity.public_instance_slug or "-",
+        identity.run_id,
+    )
+
     adapter = HyperliquidAdapter(pk, addr, testnet=testnet)
     engine = LiveEngine(
         adapter,
@@ -297,6 +338,9 @@ def main() -> None:
         min_available_balance=min_available_balance,
         max_equity=max_equity,
         leverage=leverage,
+        live_instance_id=identity.live_instance_id,
+        run_id=identity.run_id,
+        public_instance_slug=identity.public_instance_slug,
     )
 
     async def run() -> None:

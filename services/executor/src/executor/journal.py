@@ -8,6 +8,10 @@ Files written (inside the configured directory):
   - trades.jsonl: one line per trade action {ts, bar, kind, symbol, qty, price, reason, pnl, ...}
   - signals.jsonl: one line per tick {ts, bar, signals: {symbol: value}}
   - targets.jsonl: one line per target tick {ts, bar, profile, target_ts, weights, ignored_weights, orders}
+
+When configured, records also include additive runtime identity fields such as
+live_instance_id, run_id, and public_instance_slug. Older readers can ignore
+these unknown fields.
 """
 
 from __future__ import annotations
@@ -23,13 +27,29 @@ logger = logging.getLogger(__name__)
 class TradeJournal:
     """Append-only trade journal backed by JSONL files."""
 
-    def __init__(self, directory: str | Path = "journal") -> None:
+    def __init__(
+        self,
+        directory: str | Path = "journal",
+        *,
+        live_instance_id: str | None = None,
+        run_id: str | None = None,
+        public_instance_slug: str | None = None,
+    ) -> None:
         self._dir = Path(directory)
         self._dir.mkdir(parents=True, exist_ok=True)
         self._equity_file = self._dir / "equity.jsonl"
         self._trades_file = self._dir / "trades.jsonl"
         self._signals_file = self._dir / "signals.jsonl"
         self._targets_file = self._dir / "targets.jsonl"
+        self._identity_fields = {
+            key: value
+            for key, value in {
+                "live_instance_id": live_instance_id,
+                "run_id": run_id,
+                "public_instance_slug": public_instance_slug,
+            }.items()
+            if value
+        }
         logger.info("TradeJournal initialized: %s", self._dir)
 
     def record_tick(
@@ -54,7 +74,7 @@ class TradeJournal:
             "n_positions": len(positions),
             "positions": positions,
         }
-        self._append(self._equity_file, record)
+        self._append(self._equity_file, self._with_identity(record))
 
     def record_trade(
         self,
@@ -89,7 +109,7 @@ class TradeJournal:
             record["pnl_pct"] = float(pnl_pct)
             record["held_bars"] = held_bars
 
-        self._append(self._trades_file, record)
+        self._append(self._trades_file, self._with_identity(record))
 
     def record_signals(
         self,
@@ -102,7 +122,7 @@ class TradeJournal:
             "bar": bar,
             "signals": {k: float(v) for k, v in signals.items()},
         }
-        self._append(self._signals_file, record)
+        self._append(self._signals_file, self._with_identity(record))
 
     def record_target(
         self,
@@ -144,7 +164,7 @@ class TradeJournal:
             },
             "orders": orders,
         }
-        self._append(self._targets_file, record)
+        self._append(self._targets_file, self._with_identity(record))
 
     def load_equity(self) -> list[dict]:
         """Load all equity snapshots from JSONL."""
@@ -177,6 +197,12 @@ class TradeJournal:
                 except json.JSONDecodeError:
                     logger.warning("Skipping corrupt journal line %s:%d", path, line_no)
         return records
+
+    def _with_identity(self, record: dict) -> dict:
+        """Attach configured runtime identity fields to a journal record."""
+        if self._identity_fields:
+            record.update(self._identity_fields)
+        return record
 
     def _append(self, path: Path, record: dict) -> None:
         """Append a JSON record to a JSONL file."""

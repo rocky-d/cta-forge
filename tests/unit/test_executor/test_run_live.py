@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import pytest
 
@@ -10,6 +11,7 @@ from executor.profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
 from executor.run_mainnet_preflight import _check_runtime_paths, _report_has_errors
 from executor.run_live import (
     _is_truthy,
+    _load_runtime_identity,
     _parse_hl_network,
     _parse_symbols,
     _suppress_secret_bearing_http_logs,
@@ -25,6 +27,33 @@ def test_is_truthy_accepts_common_env_values() -> None:
     assert _is_truthy("y") is True
     assert _is_truthy("false") is False
     assert _is_truthy(None) is False
+
+
+def test_load_runtime_identity_uses_explicit_values() -> None:
+    identity = _load_runtime_identity(
+        {
+            "LIVE_INSTANCE_ID": " cta-forge-mainnet-pilot-01 ",
+            "PUBLIC_INSTANCE_SLUG": " mainnet-pilot ",
+            "RUN_ID": " run-001 ",
+        }
+    )
+
+    assert identity.live_instance_id == "cta-forge-mainnet-pilot-01"
+    assert identity.public_instance_slug == "mainnet-pilot"
+    assert identity.run_id == "run-001"
+
+
+def test_load_runtime_identity_generates_run_id_and_ignores_blank_values() -> None:
+    identity = _load_runtime_identity(
+        {
+            "LIVE_INSTANCE_ID": " ",
+            "PUBLIC_INSTANCE_SLUG": "",
+        }
+    )
+
+    assert identity.live_instance_id is None
+    assert identity.public_instance_slug is None
+    assert re.fullmatch(r"\d{8}T\d{6}Z-[0-9a-f]{8}", identity.run_id)
 
 
 def test_validate_v16a_live_mode_allows_shadow_without_flag() -> None:

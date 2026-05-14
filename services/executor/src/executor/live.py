@@ -212,6 +212,9 @@ class LiveEngine:
         min_available_balance: float | None = None,
         max_equity: float | None = None,
         leverage: int | None = None,
+        live_instance_id: str | None = None,
+        run_id: str | None = None,
+        public_instance_slug: str | None = None,
     ) -> None:
         self._exchange = exchange
         # Auto-filter symbols unavailable on testnet
@@ -228,7 +231,12 @@ class LiveEngine:
         self._bars_cache: dict[str, pl.DataFrame] = {}
         self._state_file = state_file
         self._store = ParquetStore(data_dir)
-        self._journal = TradeJournal(journal_dir)
+        self._journal = TradeJournal(
+            journal_dir,
+            live_instance_id=live_instance_id,
+            run_id=run_id,
+            public_instance_slug=public_instance_slug,
+        )
         self._notify = notify or NullNotifier()
         self._target_strategy = target_strategy
         self._strategy_profile = (
