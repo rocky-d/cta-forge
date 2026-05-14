@@ -598,6 +598,7 @@ Progress trace:
 - 2026-05-14: Reserved Worker public instance discovery/read routes and instance-scoped storage keys while preserving existing strategy-level public endpoints as compatibility aliases.
 - 2026-05-14: Reserved Worker public instance ingest routes so default-instance snapshot/history/realtime writes also refresh strategy-level compatibility aliases, without changing live runtime behavior.
 - 2026-05-14: Added an injected-connection `PostgresLiveJournalStore` for DB-backed journal ticks/trades/signals/targets; still not wired into live runtime. Position writes clear existing rows for the affected tick before upsert to avoid stale DB positions on re-import.
+- 2026-05-14: Added optional `QD_PUBLIC_INSTANCE_SLUG` support in collector/realtime sidecars so existing strategy-level ingest endpoints can be rewritten to Worker instance-scoped ingest routes without payload contract changes.
 
 Scope:
 
