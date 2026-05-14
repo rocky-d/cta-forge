@@ -19,6 +19,7 @@ class PublicDashboardInstance:
 def build_public_instances_payload(
     *,
     strategy_slug: str,
+    generated_at: str,
     instances: Sequence[PublicDashboardInstance],
 ) -> dict[str, Any]:
     """Build the public instance-list payload without private identifiers."""
@@ -26,7 +27,8 @@ def build_public_instances_payload(
     default_instance_slug = _default_instance_slug(instances)
     return {
         "schema_version": "dashboard.public_instances.v1",
-        "strategy_slug": strategy_slug,
+        "generated_at": generated_at,
+        "strategy": {"slug": strategy_slug},
         "default_instance_slug": default_instance_slug,
         "instances": [
             {

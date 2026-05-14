@@ -7,11 +7,12 @@ from executor.live_public_instances import (
 def test_build_public_instances_payload_excludes_private_identity() -> None:
     payload = build_public_instances_payload(
         strategy_slug="cta-forge",
+        generated_at="2026-05-14T23:12:00Z",
         instances=[
             PublicDashboardInstance(
                 public_instance_slug="mainnet-pilot",
                 display_name="Mainnet Pilot",
-                status="active",
+                status="live",
                 is_default=True,
             )
         ],
@@ -19,13 +20,14 @@ def test_build_public_instances_payload_excludes_private_identity() -> None:
 
     assert payload == {
         "schema_version": "dashboard.public_instances.v1",
-        "strategy_slug": "cta-forge",
+        "generated_at": "2026-05-14T23:12:00Z",
+        "strategy": {"slug": "cta-forge"},
         "default_instance_slug": "mainnet-pilot",
         "instances": [
             {
                 "public_instance_slug": "mainnet-pilot",
                 "display_name": "Mainnet Pilot",
-                "status": "active",
+                "status": "live",
                 "is_default": True,
             }
         ],
@@ -37,9 +39,10 @@ def test_build_public_instances_payload_excludes_private_identity() -> None:
 def test_build_public_instances_payload_uses_first_instance_when_no_default() -> None:
     payload = build_public_instances_payload(
         strategy_slug="cta-forge",
+        generated_at="2026-05-14T23:12:00Z",
         instances=[
-            PublicDashboardInstance("pilot-a", "Pilot A", "active"),
-            PublicDashboardInstance("pilot-b", "Pilot B", "active"),
+            PublicDashboardInstance("pilot-a", "Pilot A", "live"),
+            PublicDashboardInstance("pilot-b", "Pilot B", "stale"),
         ],
     )
 
@@ -47,7 +50,9 @@ def test_build_public_instances_payload_uses_first_instance_when_no_default() ->
 
 
 def test_build_public_instances_payload_handles_empty_list() -> None:
-    payload = build_public_instances_payload(strategy_slug="cta-forge", instances=[])
+    payload = build_public_instances_payload(
+        strategy_slug="cta-forge", generated_at="2026-05-14T23:12:00Z", instances=[]
+    )
 
     assert payload["default_instance_slug"] is None
     assert payload["instances"] == []

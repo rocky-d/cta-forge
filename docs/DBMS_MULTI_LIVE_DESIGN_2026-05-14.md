@@ -363,7 +363,7 @@ Multi-live extension to design now, implement later:
   - `/api/v1/live/cta-forge/instances/{public_instance_slug}/public/realtime`
 - Keep strategy-level default endpoints as aliases, not as the only canonical storage key.
 
-Suggested public instance metadata payload:
+Current public instance metadata payload:
 
 ```json
 {
@@ -373,12 +373,10 @@ Suggested public instance metadata payload:
   "default_instance_slug": "mainnet-pilot",
   "instances": [
     {
-      "slug": "mainnet-pilot",
+      "public_instance_slug": "mainnet-pilot",
       "display_name": "Mainnet Pilot",
       "status": "live",
-      "visibility": "public",
-      "started_at": "2026-05-04T10:00:00Z",
-      "latest_tick_at": "2026-05-14T06:03:00Z"
+      "is_default": true
     }
   ]
 }
@@ -596,7 +594,8 @@ Progress trace:
 - 2026-05-14: Added a safe live persistence import CLI whose default mode is dry-run summary; DB writes require explicit `--write --database-url`.
 - 2026-05-14: Extracted reusable live state payload encode/decode helpers so file and future DB checkpoint stores share one checkpoint format.
 - 2026-05-14: Added an injected-connection `PostgresLiveStateStore` for DB checkpoints, not wired into live runtime.
-- 2026-05-14: Added public-safe dashboard instance projection and a PostgreSQL query helper that only loads active public instance rows.
+- 2026-05-14: Added public-safe dashboard instance projection and a PostgreSQL query helper that loads non-hidden public instance rows.
+- 2026-05-14: Reserved Worker public instance discovery/read routes and instance-scoped storage keys while preserving existing strategy-level public endpoints as compatibility aliases.
 
 Scope:
 
