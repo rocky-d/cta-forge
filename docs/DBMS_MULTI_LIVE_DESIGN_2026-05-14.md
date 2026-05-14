@@ -590,6 +590,7 @@ Progress trace:
 - 2026-05-14: Made `LiveEngine` accept injected journal/state stores while defaulting to existing file-backed persistence.
 - 2026-05-14: Added schema-only PostgreSQL migration draft for live persistence and public dashboard instance metadata; no runtime DB wiring.
 - 2026-05-14: Added Decimal-safe file import helpers for existing live JSONL/state records as a foundation for historical PostgreSQL import.
+- 2026-05-14: Added schema-shaped row normalization for Decimal-safe live import batches and dry-checked it against existing local journal artifacts.
 
 Scope:
 
