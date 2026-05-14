@@ -16,6 +16,7 @@ from executor.live_persistence_import import (
 from executor.live_persistence_postgres import (
     LivePersistenceReferenceData,
     PostgresLiveStateStore,
+    load_public_dashboard_instances,
     write_live_import_rows,
     write_live_reference_rows,
 )
@@ -31,17 +32,23 @@ class FakeCursor:
     def __init__(
         self,
         row: tuple[Any, ...] | Mapping[str, Any] | None = None,
+        rows: list[tuple[Any, ...] | Mapping[str, Any]] | None = None,
     ) -> None:
         self._row = row
+        self._rows = rows or []
 
     def fetchone(self) -> tuple[Any, ...] | Mapping[str, Any] | None:
         return self._row
+
+    def fetchall(self) -> list[tuple[Any, ...] | Mapping[str, Any]]:
+        return self._rows
 
 
 class FakeConnection:
     def __init__(self) -> None:
         self.calls: list[RecordedExecute] = []
         self.next_row: tuple[Any, ...] | Mapping[str, Any] | None = None
+        self.next_rows: list[tuple[Any, ...] | Mapping[str, Any]] | None = None
 
     def execute(
         self, query: str, params: Mapping[str, Any] | None = None
@@ -50,7 +57,7 @@ class FakeConnection:
         self.calls.append(RecordedExecute(query, bound))
         lowered = query.lower()
         if lowered.lstrip().startswith("select"):
-            return FakeCursor(self.next_row)
+            return FakeCursor(self.next_row, self.next_rows)
         if "returning id, bar" in lowered:
             bar = bound["bar"]
             return FakeCursor((10_000 + bar, bar))
@@ -203,6 +210,36 @@ def test_postgres_live_state_store_returns_none_when_checkpoint_missing() -> Non
     store = PostgresLiveStateStore(conn, live_instance_id="instance", run_id="run")
 
     assert store.load() is None
+
+
+def test_load_public_dashboard_instances_queries_only_active_public_rows() -> None:
+    conn = FakeConnection()
+    conn.next_rows = [
+        {
+            "public_instance_slug": "mainnet-pilot",
+            "display_name": "Mainnet Pilot",
+            "status": "active",
+            "is_default": True,
+        },
+        ("testnet-shadow", "Testnet Shadow", "active", False),
+    ]
+
+    instances = load_public_dashboard_instances(conn, strategy_slug="cta-forge")
+
+    assert [instance.public_instance_slug for instance in instances] == [
+        "mainnet-pilot",
+        "testnet-shadow",
+    ]
+    assert instances[0].is_default is True
+    assert "status = 'active'" in conn.calls[-1].sql.lower()
+    assert conn.calls[-1].params == {"strategy_slug": "cta-forge"}
+
+
+def test_load_public_dashboard_instances_requires_strategy_slug() -> None:
+    conn = FakeConnection()
+
+    with pytest.raises(LivePersistenceImportError, match="strategy_slug"):
+        load_public_dashboard_instances(conn, strategy_slug=" ")
 
 
 def test_write_live_reference_rows_upserts_identity_and_public_instance() -> None:

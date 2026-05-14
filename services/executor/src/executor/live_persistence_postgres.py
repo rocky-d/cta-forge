@@ -18,14 +18,19 @@ from .live_persistence_import import (
     LivePersistenceImportError,
     LivePersistenceImportRows,
 )
+from .live_public_instances import PublicDashboardInstance
 from .state import decode_state_payload, encode_state_payload
 
 
 class DbCursor(Protocol):
-    """Minimal cursor shape used by the import writer."""
+    """Minimal cursor shape used by the import writer and query helpers."""
 
     def fetchone(self) -> Sequence[Any] | Mapping[str, Any] | None:
         """Return one result row."""
+        ...
+
+    def fetchall(self) -> Sequence[Sequence[Any] | Mapping[str, Any]]:
+        """Return all result rows."""
         ...
 
 
@@ -93,6 +98,35 @@ class PostgresLiveStateStore:
                 "payload_json": payload,
             },
         )
+
+
+def load_public_dashboard_instances(
+    conn: DbConnection,
+    *,
+    strategy_slug: str,
+) -> list[PublicDashboardInstance]:
+    """Load public-safe active dashboard instances for one strategy."""
+
+    if not strategy_slug.strip():
+        raise LivePersistenceImportError("strategy_slug is required")
+    cursor = conn.execute(
+        """
+        select public_instance_slug, display_name, status, is_default
+        from public_dashboard_instances
+        where strategy_slug = %(strategy_slug)s and status = 'active'
+        order by is_default desc, public_instance_slug asc
+        """,
+        {"strategy_slug": strategy_slug},
+    )
+    return [
+        PublicDashboardInstance(
+            public_instance_slug=str(_row_value(row, "public_instance_slug", 0)),
+            display_name=str(_row_value(row, "display_name", 1)),
+            status=str(_row_value(row, "status", 2)),
+            is_default=bool(_row_value(row, "is_default", 3)),
+        )
+        for row in cursor.fetchall()
+    ]
 
 
 @dataclass(frozen=True)
