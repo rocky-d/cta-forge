@@ -588,6 +588,7 @@ Progress trace:
 - 2026-05-14: Added downstream dashboard collector/realtime tests proving the new identity metadata is ignored by public payload generation and does not truncate source numeric precision.
 - 2026-05-14: Introduced small live journal/state persistence ports while keeping the existing JSONL/JSON file implementations as the only runtime backends.
 - 2026-05-14: Made `LiveEngine` accept injected journal/state stores while defaulting to existing file-backed persistence.
+- 2026-05-14: Added schema-only PostgreSQL migration draft for live persistence and public dashboard instance metadata; no runtime DB wiring.
 
 Scope:
 
