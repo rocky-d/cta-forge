@@ -596,6 +596,7 @@ Progress trace:
 - 2026-05-14: Added an injected-connection `PostgresLiveStateStore` for DB checkpoints, not wired into live runtime.
 - 2026-05-14: Added public-safe dashboard instance projection and a PostgreSQL query helper that loads non-hidden public instance rows.
 - 2026-05-14: Reserved Worker public instance discovery/read routes and instance-scoped storage keys while preserving existing strategy-level public endpoints as compatibility aliases.
+- 2026-05-14: Reserved Worker public instance ingest routes so default-instance snapshot/history/realtime writes also refresh strategy-level compatibility aliases, without changing live runtime behavior.
 
 Scope:
 
