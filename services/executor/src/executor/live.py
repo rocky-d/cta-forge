@@ -23,6 +23,8 @@ from data_service.store import ParquetStore
 if TYPE_CHECKING:
     from exchange.adapter import AccountState, ExchangeAdapter
 
+    from .state import LiveStateStore
+
 from alpha_service.factors.v10g_composite import (
     V10GCompositeFactor,
     V10GCompositeParams,
@@ -215,6 +217,8 @@ class LiveEngine:
         live_instance_id: str | None = None,
         run_id: str | None = None,
         public_instance_slug: str | None = None,
+        journal: LiveJournalStore | None = None,
+        state_store: LiveStateStore | None = None,
     ) -> None:
         self._exchange = exchange
         # Auto-filter symbols unavailable on testnet
@@ -231,12 +235,15 @@ class LiveEngine:
         self._bars_cache: dict[str, pl.DataFrame] = {}
         self._state_file = state_file
         self._store = ParquetStore(data_dir)
-        self._journal: LiveJournalStore = TradeJournal(
-            journal_dir,
-            live_instance_id=live_instance_id,
-            run_id=run_id,
-            public_instance_slug=public_instance_slug,
-        )
+        self._state_store = state_store
+        if journal is None:
+            journal = TradeJournal(
+                journal_dir,
+                live_instance_id=live_instance_id,
+                run_id=run_id,
+                public_instance_slug=public_instance_slug,
+            )
+        self._journal: LiveJournalStore = journal
         self._notify = notify or NullNotifier()
         self._target_strategy = target_strategy
         self._strategy_profile = (
@@ -291,7 +298,9 @@ class LiveEngine:
         # create a circular dependency.
         from .state import JsonFileLiveStateStore
 
-        state_store = JsonFileLiveStateStore(self._state_file)
+        state_store = self._state_store
+        if state_store is None:
+            state_store = JsonFileLiveStateStore(self._state_file)
         restored = state_store.load()
         account = await self._exchange.get_account_state()
         exchange_positions = {p.symbol: p for p in account.positions}

@@ -9,7 +9,9 @@ from decimal import Decimal
 import polars as pl
 import pytest
 from executor.decision import PositionState
+from executor.journal import TradeJournal
 from executor.live import LiveEngine
+from executor.state import JsonFileLiveStateStore
 from executor.targeting import PortfolioTarget, StrategyProfile
 from exchange.adapter import AccountState, MarketSnapshot, OrderResult, Position
 
@@ -119,6 +121,34 @@ class FakeExchange:
 
     async def close(self) -> None:
         pass
+
+
+def test_live_engine_accepts_injected_journal_store(tmp_path) -> None:
+    """LiveEngine can depend on a journal port supplied by callers."""
+
+    exchange = FakeExchange()
+    journal = TradeJournal(tmp_path / "journal")
+    engine = LiveEngine(
+        exchange,
+        dry_run=True,
+        journal=journal,
+        live_instance_id="ignored-when-journal-is-injected",
+    )
+
+    engine._journal.record_tick(1, 100.0, 100.0, {})
+
+    assert journal.load_equity()[0]["equity"] == 100.0
+    assert "live_instance_id" not in journal.load_equity()[0]
+
+
+def test_live_engine_accepts_injected_state_store(tmp_path) -> None:
+    """LiveEngine keeps an injected state store for future persistence backends."""
+
+    exchange = FakeExchange()
+    state_store = JsonFileLiveStateStore(tmp_path / "state.json")
+    engine = LiveEngine(exchange, dry_run=True, state_store=state_store)
+
+    assert engine._state_store is state_store
 
 
 def test_live_engine_records_runtime_identity_metadata(tmp_path) -> None:
