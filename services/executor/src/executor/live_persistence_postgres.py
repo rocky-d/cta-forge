@@ -13,10 +13,12 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Mapping, Protocol, Sequence, cast
 
+from .live import LiveState
 from .live_persistence_import import (
     LivePersistenceImportError,
     LivePersistenceImportRows,
 )
+from .state import decode_state_payload, encode_state_payload
 
 
 class DbCursor(Protocol):
@@ -33,6 +35,64 @@ class DbConnection(Protocol):
     def execute(self, query: str, params: Mapping[str, Any] | None = None) -> DbCursor:
         """Execute one SQL statement."""
         ...
+
+
+class PostgresLiveStateStore:
+    """PostgreSQL-backed live checkpoint store.
+
+    The store depends on an injected connection and is not wired into the live
+    runtime by default. Callers own transaction/connection lifecycle.
+    """
+
+    def __init__(
+        self,
+        conn: DbConnection,
+        *,
+        live_instance_id: str,
+        run_id: str,
+    ) -> None:
+        if not live_instance_id.strip():
+            raise LivePersistenceImportError("live_instance_id is required")
+        if not run_id.strip():
+            raise LivePersistenceImportError("run_id is required")
+        self._conn = conn
+        self._live_instance_id = live_instance_id
+        self._run_id = run_id
+
+    def load(self) -> LiveState | None:
+        """Load the latest DB checkpoint for this live instance."""
+
+        cursor = self._conn.execute(
+            """
+            select payload_json
+            from engine_checkpoints
+            where live_instance_id = %(live_instance_id)s
+            """,
+            {"live_instance_id": self._live_instance_id},
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        payload = _row_value(row, "payload_json", 0)
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        if not isinstance(payload, dict):
+            raise LivePersistenceImportError("checkpoint payload_json must be object")
+        return decode_state_payload(payload)
+
+    def save(self, state: LiveState) -> None:
+        """Persist the latest DB checkpoint for this live instance."""
+
+        payload = encode_state_payload(state)
+        _write_checkpoint(
+            self._conn,
+            {
+                "live_instance_id": self._live_instance_id,
+                "run_id": self._run_id,
+                "bar_count": state.bar_count,
+                "payload_json": payload,
+            },
+        )
 
 
 @dataclass(frozen=True)
@@ -461,9 +521,15 @@ def _json_default(value: Any) -> str:
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
-def _row_values(row: Sequence[Any] | Mapping[str, Any], *keys: str) -> tuple[Any, ...]:
+def _row_value(
+    row: Sequence[Any] | Mapping[str, Any],
+    key: str,
+    index: int,
+) -> Any:
     if isinstance(row, Mapping):
-        mapping = cast(Mapping[str, Any], row)
-        return tuple(mapping[key] for key in keys)
-    sequence = cast(Sequence[Any], row)
-    return tuple(sequence[index] for index, _ in enumerate(keys))
+        return cast(Mapping[str, Any], row)[key]
+    return cast(Sequence[Any], row)[index]
+
+
+def _row_values(row: Sequence[Any] | Mapping[str, Any], *keys: str) -> tuple[Any, ...]:
+    return tuple(_row_value(row, key, index) for index, key in enumerate(keys))

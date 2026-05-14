@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any, Mapping
 
 import pytest
+from executor.live import LiveState
 from executor.live_persistence_import import (
     LivePersistenceImportError,
     LivePersistenceImportKeys,
@@ -14,6 +15,7 @@ from executor.live_persistence_import import (
 )
 from executor.live_persistence_postgres import (
     LivePersistenceReferenceData,
+    PostgresLiveStateStore,
     write_live_import_rows,
     write_live_reference_rows,
 )
@@ -26,23 +28,30 @@ class RecordedExecute:
 
 
 class FakeCursor:
-    def __init__(self, row: tuple[Any, ...] | None = None) -> None:
+    def __init__(
+        self,
+        row: tuple[Any, ...] | Mapping[str, Any] | None = None,
+    ) -> None:
         self._row = row
 
-    def fetchone(self) -> tuple[Any, ...] | None:
+    def fetchone(self) -> tuple[Any, ...] | Mapping[str, Any] | None:
         return self._row
 
 
 class FakeConnection:
     def __init__(self) -> None:
         self.calls: list[RecordedExecute] = []
+        self.next_row: tuple[Any, ...] | Mapping[str, Any] | None = None
 
     def execute(
         self, query: str, params: Mapping[str, Any] | None = None
     ) -> FakeCursor:
         bound = params or {}
         self.calls.append(RecordedExecute(query, bound))
-        if "returning id, bar" in query.lower():
+        lowered = query.lower()
+        if lowered.lstrip().startswith("select"):
+            return FakeCursor(self.next_row)
+        if "returning id, bar" in lowered:
             bar = bound["bar"]
             return FakeCursor((10_000 + bar, bar))
         return FakeCursor()
@@ -121,6 +130,79 @@ def _rows(tmp_path):
             run_id="20260514T060000Z-test",
         ),
     )
+
+
+def test_postgres_live_state_store_saves_checkpoint_payload() -> None:
+    conn = FakeConnection()
+    store = PostgresLiveStateStore(
+        conn,
+        live_instance_id="cta-forge-mainnet-pilot-01",
+        run_id="20260514T060000Z-test",
+    )
+
+    store.save(
+        LiveState(
+            bar_count=91,
+            initial_equity=99.7,
+            peak_equity=112.438665987654321,
+            last_tick_equity=106.294634123456789,
+        )
+    )
+
+    call = conn.calls[-1]
+    assert "insert into engine_checkpoints" in call.sql.lower()
+    assert call.params["live_instance_id"] == "cta-forge-mainnet-pilot-01"
+    assert call.params["run_id"] == "20260514T060000Z-test"
+    assert call.params["bar_count"] == 91
+    assert "106.29463412345679" in call.params["payload_json"]
+
+
+def test_postgres_live_state_store_loads_checkpoint_payload_from_mapping() -> None:
+    conn = FakeConnection()
+    conn.next_row = {
+        "payload_json": {
+            "version": 1,
+            "saved_at": "2026-05-14T06:03:00+00:00",
+            "bar_count": 91,
+            "initial_equity": 99.7,
+            "peak_equity": 112.438665987654321,
+            "dd_breaker_active": False,
+            "last_signals": {},
+            "recent_returns": [],
+            "last_tick_equity": 106.294634123456789,
+            "positions": {},
+        }
+    }
+    store = PostgresLiveStateStore(conn, live_instance_id="instance", run_id="run")
+
+    state = store.load()
+
+    assert state is not None
+    assert state.bar_count == 91
+    assert state.last_tick_equity == 106.294634123456789
+    assert "from engine_checkpoints" in conn.calls[-1].sql.lower()
+
+
+def test_postgres_live_state_store_loads_checkpoint_payload_from_json_text() -> None:
+    conn = FakeConnection()
+    conn.next_row = (
+        '{"version":1,"saved_at":"2026-05-14T06:03:00+00:00",'
+        '"bar_count":91,"initial_equity":99.7,"peak_equity":112.4,'
+        '"positions":{}}',
+    )
+    store = PostgresLiveStateStore(conn, live_instance_id="instance", run_id="run")
+
+    state = store.load()
+
+    assert state is not None
+    assert state.bar_count == 91
+
+
+def test_postgres_live_state_store_returns_none_when_checkpoint_missing() -> None:
+    conn = FakeConnection()
+    store = PostgresLiveStateStore(conn, live_instance_id="instance", run_id="run")
+
+    assert store.load() is None
 
 
 def test_write_live_reference_rows_upserts_identity_and_public_instance() -> None:
