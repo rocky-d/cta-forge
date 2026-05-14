@@ -212,16 +212,16 @@ def test_postgres_live_state_store_returns_none_when_checkpoint_missing() -> Non
     assert store.load() is None
 
 
-def test_load_public_dashboard_instances_queries_only_active_public_rows() -> None:
+def test_load_public_dashboard_instances_queries_only_non_hidden_public_rows() -> None:
     conn = FakeConnection()
     conn.next_rows = [
         {
             "public_instance_slug": "mainnet-pilot",
             "display_name": "Mainnet Pilot",
-            "status": "active",
+            "status": "live",
             "is_default": True,
         },
-        ("testnet-shadow", "Testnet Shadow", "active", False),
+        ("testnet-shadow", "Testnet Shadow", "stale", False),
     ]
 
     instances = load_public_dashboard_instances(conn, strategy_slug="cta-forge")
@@ -231,7 +231,7 @@ def test_load_public_dashboard_instances_queries_only_active_public_rows() -> No
         "testnet-shadow",
     ]
     assert instances[0].is_default is True
-    assert "status = 'active'" in conn.calls[-1].sql.lower()
+    assert "status <> 'hidden'" in conn.calls[-1].sql.lower()
     assert conn.calls[-1].params == {"strategy_slug": "cta-forge"}
 
 

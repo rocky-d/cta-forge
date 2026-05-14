@@ -105,7 +105,7 @@ def load_public_dashboard_instances(
     *,
     strategy_slug: str,
 ) -> list[PublicDashboardInstance]:
-    """Load public-safe active dashboard instances for one strategy."""
+    """Load public-safe non-hidden dashboard instances for one strategy."""
 
     if not strategy_slug.strip():
         raise LivePersistenceImportError("strategy_slug is required")
@@ -113,7 +113,7 @@ def load_public_dashboard_instances(
         """
         select public_instance_slug, display_name, status, is_default
         from public_dashboard_instances
-        where strategy_slug = %(strategy_slug)s and status = 'active'
+        where strategy_slug = %(strategy_slug)s and status <> 'hidden'
         order by is_default desc, public_instance_slug asc
         """,
         {"strategy_slug": strategy_slug},
