@@ -13,6 +13,7 @@ import json
 import logging
 import shutil
 from datetime import UTC, datetime
+from typing import Any
 from decimal import Decimal
 from pathlib import Path
 from typing import Protocol
@@ -60,13 +61,17 @@ class _DecimalEncoder(json.JSONEncoder):
         return super().default(o)
 
 
-def save_state(state: LiveState, path: str | Path = DEFAULT_STATE_FILE) -> None:
-    """Persist engine state to disk."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = {
+def encode_state_payload(
+    state: LiveState,
+    *,
+    saved_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Encode live engine state into the persisted checkpoint payload."""
+
+    saved_at = saved_at or datetime.now(tz=UTC)
+    return {
         "version": 1,
-        "saved_at": datetime.now(tz=UTC).isoformat(),
+        "saved_at": saved_at.isoformat(),
         "bar_count": state.bar_count,
         "initial_equity": state.initial_equity,
         "peak_equity": state.peak_equity,
@@ -89,6 +94,48 @@ def save_state(state: LiveState, path: str | Path = DEFAULT_STATE_FILE) -> None:
         },
     }
 
+
+def decode_state_payload(data: dict[str, Any]) -> LiveState | None:
+    """Decode a persisted checkpoint payload into live engine state."""
+
+    if data.get("version") != 1:
+        logger.warning("Unknown state version %s — ignoring", data.get("version"))
+        return None
+
+    state = LiveState(
+        bar_count=data["bar_count"],
+        initial_equity=data["initial_equity"],
+        peak_equity=data["peak_equity"],
+        dd_breaker_active=data.get("dd_breaker_active", False),
+        last_signals=data.get("last_signals", {}),
+        recent_returns=[float(x) for x in data.get("recent_returns", [])[-120:]],
+        last_tick_equity=(
+            float(data["last_tick_equity"])
+            if data.get("last_tick_equity") is not None
+            else None
+        ),
+    )
+
+    for sym, pos_data in data.get("positions", {}).items():
+        state.positions[sym] = LivePosition(
+            symbol=pos_data["symbol"],
+            side=pos_data["side"],
+            entry_price=pos_data["entry_price"],
+            entry_bar=pos_data["entry_bar"],
+            size=Decimal(pos_data["size"]),
+            trailing_stop=pos_data["trailing_stop"],
+            highest_pnl=pos_data.get("highest_pnl", 0.0),
+            bars_held=pos_data.get("bars_held", 0),
+        )
+    return state
+
+
+def save_state(state: LiveState, path: str | Path = DEFAULT_STATE_FILE) -> None:
+    """Persist engine state to disk."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = encode_state_payload(state)
+
     # Write atomically: write to tmp then move.
     # shutil.move handles Docker bind-mounted files where os.rename fails
     # with ERRNO 16 (Device or resource busy).
@@ -109,35 +156,9 @@ def load_state(path: str | Path = DEFAULT_STATE_FILE) -> LiveState | None:
 
     try:
         data = json.loads(path.read_text())
-        if data.get("version") != 1:
-            logger.warning("Unknown state version %s — ignoring", data.get("version"))
+        state = decode_state_payload(data)
+        if state is None:
             return None
-
-        state = LiveState(
-            bar_count=data["bar_count"],
-            initial_equity=data["initial_equity"],
-            peak_equity=data["peak_equity"],
-            dd_breaker_active=data.get("dd_breaker_active", False),
-            last_signals=data.get("last_signals", {}),
-            recent_returns=[float(x) for x in data.get("recent_returns", [])[-120:]],
-            last_tick_equity=(
-                float(data["last_tick_equity"])
-                if data.get("last_tick_equity") is not None
-                else None
-            ),
-        )
-
-        for sym, pos_data in data.get("positions", {}).items():
-            state.positions[sym] = LivePosition(
-                symbol=pos_data["symbol"],
-                side=pos_data["side"],
-                entry_price=pos_data["entry_price"],
-                entry_bar=pos_data["entry_bar"],
-                size=Decimal(pos_data["size"]),
-                trailing_stop=pos_data["trailing_stop"],
-                highest_pnl=pos_data.get("highest_pnl", 0.0),
-                bars_held=pos_data.get("bars_held", 0),
-            )
 
         saved_at = data.get("saved_at", "unknown")
         logger.info(

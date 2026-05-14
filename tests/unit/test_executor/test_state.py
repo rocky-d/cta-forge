@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from executor.live import LivePosition, LiveState
-from executor.state import JsonFileLiveStateStore, load_state, save_state
+from executor.state import (
+    JsonFileLiveStateStore,
+    decode_state_payload,
+    encode_state_payload,
+    load_state,
+    save_state,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -112,6 +119,48 @@ def test_json_file_live_state_store_roundtrip(tmp_path: Path) -> None:
     assert loaded.peak_equity == 105.987654321
     assert loaded.recent_returns == [0.00123456789]
     assert loaded.last_tick_equity == 104.555555555
+
+
+def test_state_payload_codec_preserves_existing_checkpoint_shape() -> None:
+    """Pure codec keeps the same persisted state payload shape for DB reuse."""
+    state = LiveState(
+        bar_count=12,
+        initial_equity=100.123456789,
+        peak_equity=111.987654321,
+        dd_breaker_active=True,
+        last_signals={"BTC": 0.25},
+        recent_returns=[float(i) for i in range(130)],
+        last_tick_equity=109.555555555,
+    )
+    state.positions["BTC"] = LivePosition(
+        symbol="BTC",
+        side="long",
+        entry_price=73000.0,
+        entry_bar=3,
+        size=Decimal("0.000123456789"),
+        trailing_stop=69000.0,
+        highest_pnl=0.02,
+        bars_held=7,
+    )
+
+    payload = encode_state_payload(
+        state,
+        saved_at=datetime(2026, 5, 14, 6, 3, tzinfo=UTC),
+    )
+    decoded = decode_state_payload(payload)
+
+    assert payload["version"] == 1
+    assert payload["saved_at"] == "2026-05-14T06:03:00+00:00"
+    assert payload["recent_returns"] == [float(i) for i in range(10, 130)]
+    assert payload["positions"]["BTC"]["size"] == "0.000123456789"
+    assert decoded is not None
+    assert decoded.bar_count == state.bar_count
+    assert decoded.last_tick_equity == state.last_tick_equity
+    assert decoded.positions["BTC"].size == Decimal("0.000123456789")
+
+
+def test_decode_state_payload_rejects_wrong_version() -> None:
+    assert decode_state_payload({"version": 99}) is None
 
 
 def test_load_missing_file(tmp_path: Path) -> None:
