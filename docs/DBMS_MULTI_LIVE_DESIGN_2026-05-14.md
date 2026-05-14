@@ -593,6 +593,7 @@ Progress trace:
 - 2026-05-14: Added schema-shaped row normalization for Decimal-safe live import batches and dry-checked it against existing local journal artifacts.
 - 2026-05-14: Tightened the live trade schema with an import idempotency constraint before adding DB write code.
 - 2026-05-14: Added connection-protocol PostgreSQL upsert helpers for reference rows and normalized import rows, covered by fake-connection tests; still no runtime DB dependency or live wiring.
+- 2026-05-14: Added a safe live persistence import CLI whose default mode is dry-run summary; DB writes require explicit `--write --database-url`.
 
 Scope:
 
