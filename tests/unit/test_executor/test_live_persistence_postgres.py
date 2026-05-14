@@ -15,6 +15,7 @@ from executor.live_persistence_import import (
 )
 from executor.live_persistence_postgres import (
     LivePersistenceReferenceData,
+    PostgresLiveJournalStore,
     PostgresLiveStateStore,
     load_public_dashboard_instances,
     write_live_import_rows,
@@ -49,6 +50,7 @@ class FakeConnection:
         self.calls: list[RecordedExecute] = []
         self.next_row: tuple[Any, ...] | Mapping[str, Any] | None = None
         self.next_rows: list[tuple[Any, ...] | Mapping[str, Any]] | None = None
+        self.queued_rows: list[list[tuple[Any, ...] | Mapping[str, Any]]] = []
 
     def execute(
         self, query: str, params: Mapping[str, Any] | None = None
@@ -57,7 +59,8 @@ class FakeConnection:
         self.calls.append(RecordedExecute(query, bound))
         lowered = query.lower()
         if lowered.lstrip().startswith("select"):
-            return FakeCursor(self.next_row, self.next_rows)
+            rows = self.queued_rows.pop(0) if self.queued_rows else self.next_rows
+            return FakeCursor(self.next_row, rows)
         if "returning id, bar" in lowered:
             bar = bound["bar"]
             return FakeCursor((10_000 + bar, bar))
@@ -137,6 +140,211 @@ def _rows(tmp_path):
             run_id="20260514T060000Z-test",
         ),
     )
+
+
+def test_postgres_live_journal_store_records_tick_with_positions() -> None:
+    conn = FakeConnection()
+    store = PostgresLiveJournalStore(
+        conn,
+        live_instance_id="cta-forge-mainnet-pilot-01",
+        run_id="20260514T060000Z-test",
+    )
+
+    store.record_tick(
+        91,
+        106.294634123456789,
+        112.438665987654321,
+        {
+            "LINK": {
+                "side": "long",
+                "qty": 2.000000000000001,
+                "entry": 9.91873,
+                "best": 9.7069,
+            }
+        },
+    )
+
+    tick_call = next(
+        call for call in conn.calls if "insert into live_ticks" in call.sql
+    )
+    assert tick_call.params["live_instance_id"] == "cta-forge-mainnet-pilot-01"
+    assert tick_call.params["run_id"] == "20260514T060000Z-test"
+    assert tick_call.params["bar"] == 91
+    assert tick_call.params["account_equity"] == Decimal("106.29463412345679")
+    assert tick_call.params["peak_equity"] == Decimal("112.43866598765432")
+    assert tick_call.params["n_positions"] == 1
+    assert tick_call.params["summary_json"] == "{}"
+
+    delete_call = next(
+        call for call in conn.calls if "delete from live_positions" in call.sql
+    )
+    assert delete_call.params == {"tick_id": 10_091}
+
+    position_call = next(
+        call for call in conn.calls if "insert into live_positions" in call.sql
+    )
+    assert position_call.params["tick_id"] == 10_091
+    assert position_call.params["symbol"] == "LINK"
+    assert position_call.params["side"] == "long"
+    assert position_call.params["qty"] == Decimal("2.000000000000001")
+    assert '"best":9.7069' in position_call.params["raw_json"]
+
+
+def test_postgres_live_journal_store_records_trade_signals_and_target() -> None:
+    conn = FakeConnection()
+    store = PostgresLiveJournalStore(conn, live_instance_id="instance", run_id="run")
+
+    store.record_trade(
+        92,
+        "close",
+        "LINK",
+        2.5,
+        9.8,
+        "risk:stop",
+        side="long",
+        entry_price=10.0,
+        pnl=-0.5,
+        pnl_pct=-2.0,
+        held_bars=7,
+    )
+    store.record_signals(92, {"LINK": 0.12345678901234567})
+    store.record_target(
+        bar=92,
+        profile="v16a-mainnet-pilot",
+        target_ts="2026-05-14T06:00:00Z",
+        staleness_seconds=180.125,
+        target_gross=0.6,
+        normalized_gross=0.3,
+        weights={"LINK": 0.3, "BTC": 0.0},
+        ignored_weights={"ETH": -0.2},
+        orders=[{"symbol": "LINK", "side": "sell", "qty": 1.0}],
+    )
+
+    trade_call = next(
+        call for call in conn.calls if "insert into live_trades" in call.sql
+    )
+    assert trade_call.params["pnl"] == Decimal("-0.5")
+    assert trade_call.params["pnl_pct"] == Decimal("-2.0")
+    assert trade_call.params["held_bars"] == 7
+    assert '"entry_price":10.0' in trade_call.params["raw_json"]
+
+    signal_call = next(
+        call for call in conn.calls if "insert into live_signals" in call.sql
+    )
+    assert signal_call.params["signals_json"] == '{"LINK":0.12345678901234566}'
+
+    target_call = next(
+        call for call in conn.calls if "insert into live_targets" in call.sql
+    )
+    assert target_call.params["target_gross"] == Decimal("0.6")
+    assert target_call.params["ignored_gross"] == Decimal("0.2")
+    assert target_call.params["execution_coverage"] == Decimal("0.5")
+    assert target_call.params["weights_json"] == '{"LINK":0.3}'
+    assert target_call.params["ignored_weights_json"] == '{"ETH":-0.2}'
+
+
+def test_postgres_live_journal_store_loads_journal_shapes() -> None:
+    conn = FakeConnection()
+    conn.queued_rows = [
+        [
+            {
+                "id": 10_091,
+                "ts": "2026-05-14T06:03:00+00:00",
+                "bar": 91,
+                "account_equity": Decimal("106.294634123456789"),
+                "peak_equity": Decimal("112.438665987654321"),
+                "dd_pct": Decimal("5.464"),
+                "n_positions": 1,
+                "summary_json": {"status": "ok"},
+            }
+        ],
+        [
+            {
+                "tick_id": 10_091,
+                "symbol": "LINK",
+                "side": "long",
+                "qty": Decimal("2.000000000000001"),
+                "entry_price": Decimal("9.91873"),
+                "best_price": Decimal("9.7069"),
+                "raw_json": {"side": "long", "source": "core"},
+            }
+        ],
+        [
+            {
+                "raw_json": {
+                    "ts": "2026-05-14T06:03:01+00:00",
+                    "bar": 91,
+                    "kind": "target_buy",
+                    "symbol": "LINK",
+                    "qty": 2.0,
+                    "price": 9.7069,
+                    "reason": "target:v16a-mainnet-pilot",
+                }
+            }
+        ],
+        [
+            {
+                "ts": "2026-05-14T06:03:00+00:00",
+                "bar": 91,
+                "signals_json": {"LINK": 0.12345678901234566},
+            }
+        ],
+        [
+            {
+                "ts": "2026-05-14T06:03:00+00:00",
+                "bar": 91,
+                "profile": "v16a-mainnet-pilot",
+                "target_ts": "2026-05-14T06:00:00+00:00",
+                "staleness_seconds": Decimal("180.125"),
+                "target_gross": Decimal("0.5461864655472283"),
+                "normalized_gross": Decimal("0.5461864655472283"),
+                "ignored_gross": Decimal("0"),
+                "ignored_gross_ratio": Decimal("0"),
+                "execution_coverage": Decimal("1"),
+                "weights_json": {"LINK": 0.18428112026966947},
+                "ignored_weights_json": {},
+                "orders_json": [],
+            }
+        ],
+    ]
+    store = PostgresLiveJournalStore(conn, live_instance_id="instance", run_id="run")
+
+    equity = store.load_equity()
+    trades = store.load_trades()
+    signals = store.load_signals()
+    targets = store.load_targets()
+
+    assert equity == [
+        {
+            "status": "ok",
+            "ts": "2026-05-14T06:03:00+00:00",
+            "bar": 91,
+            "equity": 106.29463412345679,
+            "peak": 112.43866598765432,
+            "dd_pct": 5.464,
+            "n_positions": 1,
+            "positions": {
+                "LINK": {
+                    "side": "long",
+                    "source": "core",
+                    "qty": 2.000000000000001,
+                    "entry": 9.91873,
+                    "best": 9.7069,
+                }
+            },
+        }
+    ]
+    assert trades[0]["kind"] == "target_buy"
+    assert signals == [
+        {
+            "ts": "2026-05-14T06:03:00+00:00",
+            "bar": 91,
+            "signals": {"LINK": 0.12345678901234566},
+        }
+    ]
+    assert targets[0]["profile"] == "v16a-mainnet-pilot"
+    assert targets[0]["target_gross"] == 0.5461864655472283
+    assert targets[0]["weights"] == {"LINK": 0.18428112026966947}
 
 
 def test_postgres_live_state_store_saves_checkpoint_payload() -> None:

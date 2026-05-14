@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Mapping, Protocol, Sequence, cast
 
@@ -98,6 +99,333 @@ class PostgresLiveStateStore:
                 "payload_json": payload,
             },
         )
+
+
+class PostgresLiveJournalStore:
+    """PostgreSQL-backed live journal store with injected connection.
+
+    The store is intentionally not wired into the live runtime by default.
+    Callers own transaction/connection lifecycle.
+    """
+
+    def __init__(
+        self,
+        conn: DbConnection,
+        *,
+        live_instance_id: str,
+        run_id: str,
+    ) -> None:
+        if not live_instance_id.strip():
+            raise LivePersistenceImportError("live_instance_id is required")
+        if not run_id.strip():
+            raise LivePersistenceImportError("run_id is required")
+        self._conn = conn
+        self._live_instance_id = live_instance_id
+        self._run_id = run_id
+
+    def record_tick(
+        self,
+        bar: int,
+        equity: float,
+        peak_equity: float,
+        positions: dict[str, dict],
+    ) -> None:
+        """Record an equity snapshot for the current tick."""
+
+        ts = _utc_now_iso()
+        peak = max(float(peak_equity), float(equity))
+        dd_pct = (peak - float(equity)) / peak * 100 if peak > 0 else 0.0
+        tick_ids = _write_ticks(
+            self._conn,
+            [
+                {
+                    "live_instance_id": self._live_instance_id,
+                    "run_id": self._run_id,
+                    "bar": bar,
+                    "ts": ts,
+                    "account_equity": _numeric(equity),
+                    "peak_equity": _numeric(peak),
+                    "dd_pct": _numeric(dd_pct),
+                    "n_positions": len(positions),
+                    "summary_json": {},
+                }
+            ],
+        )
+        _write_positions(
+            self._conn,
+            [
+                _runtime_position_row(bar, symbol, record, self._live_instance_id)
+                for symbol, record in sorted(positions.items())
+            ],
+            tick_ids,
+        )
+
+    def record_trade(
+        self,
+        bar: int,
+        kind: str,
+        symbol: str,
+        qty: float,
+        price: float,
+        reason: str,
+        *,
+        side: str = "",
+        entry_price: float = 0.0,
+        pnl: float = 0.0,
+        pnl_pct: float = 0.0,
+        held_bars: int = 0,
+    ) -> None:
+        """Record a trade action."""
+
+        record: dict[str, Any] = {
+            "ts": _utc_now_iso(),
+            "bar": bar,
+            "kind": kind,
+            "symbol": symbol,
+            "side": side,
+            "qty": float(qty),
+            "price": float(price),
+            "reason": reason,
+        }
+        if kind in ("close", "partial_close", "flatten_all"):
+            record.update(
+                {
+                    "entry_price": float(entry_price),
+                    "pnl": float(pnl),
+                    "pnl_pct": float(pnl_pct),
+                    "held_bars": held_bars,
+                }
+            )
+        _write_trade(
+            self._conn,
+            {
+                "live_instance_id": self._live_instance_id,
+                "run_id": self._run_id,
+                "bar": bar,
+                "ts": record["ts"],
+                "kind": kind,
+                "symbol": symbol,
+                "side": side or None,
+                "qty": _numeric(qty),
+                "price": _numeric(price),
+                "reason": reason,
+                "pnl": _numeric(pnl)
+                if kind in ("close", "partial_close", "flatten_all")
+                else None,
+                "pnl_pct": _numeric(pnl_pct)
+                if kind in ("close", "partial_close", "flatten_all")
+                else None,
+                "held_bars": held_bars
+                if kind in ("close", "partial_close", "flatten_all")
+                else None,
+                "exchange_order_id": None,
+                "raw_json": record,
+            },
+        )
+
+    def record_signals(self, bar: int, signals: dict[str, float]) -> None:
+        """Record signal values for the current tick."""
+
+        _write_signal(
+            self._conn,
+            {
+                "live_instance_id": self._live_instance_id,
+                "run_id": self._run_id,
+                "bar": bar,
+                "ts": _utc_now_iso(),
+                "signals_json": {key: float(value) for key, value in signals.items()},
+            },
+        )
+
+    def record_target(
+        self,
+        *,
+        bar: int,
+        profile: str,
+        target_ts: str,
+        staleness_seconds: float,
+        target_gross: float,
+        normalized_gross: float,
+        weights: dict[str, float],
+        orders: list[dict],
+        ignored_weights: dict[str, float] | None = None,
+    ) -> None:
+        """Record target-weight diagnostics."""
+
+        ignored_gross = sum(abs(value) for value in (ignored_weights or {}).values())
+        execution_coverage = (
+            normalized_gross / target_gross if abs(target_gross) > 1e-12 else 1.0
+        )
+        ignored_gross_ratio = (
+            ignored_gross / target_gross if abs(target_gross) > 1e-12 else 0.0
+        )
+        _write_target(
+            self._conn,
+            {
+                "live_instance_id": self._live_instance_id,
+                "run_id": self._run_id,
+                "bar": bar,
+                "ts": _utc_now_iso(),
+                "profile": profile,
+                "target_ts": target_ts,
+                "staleness_seconds": _numeric(staleness_seconds),
+                "target_gross": _numeric(target_gross),
+                "normalized_gross": _numeric(normalized_gross),
+                "ignored_gross": _numeric(ignored_gross),
+                "ignored_gross_ratio": _numeric(ignored_gross_ratio),
+                "execution_coverage": _numeric(execution_coverage),
+                "weights_json": {
+                    key: float(value)
+                    for key, value in weights.items()
+                    if abs(value) > 1e-12
+                },
+                "ignored_weights_json": {
+                    key: float(value)
+                    for key, value in (ignored_weights or {}).items()
+                    if abs(value) > 1e-12
+                },
+                "orders_json": orders,
+            },
+        )
+
+    def load_equity(self) -> list[dict]:
+        """Load equity snapshots in file-journal-compatible shape."""
+
+        tick_cursor = self._conn.execute(
+            """
+            select id, ts, bar, account_equity, peak_equity, dd_pct,
+                   n_positions, summary_json
+            from live_ticks
+            where live_instance_id = %(live_instance_id)s
+            order by bar asc
+            """,
+            {"live_instance_id": self._live_instance_id},
+        )
+        tick_rows = tick_cursor.fetchall()
+        if not tick_rows:
+            return []
+        position_cursor = self._conn.execute(
+            """
+            select tick_id, symbol, side, qty, entry_price, best_price, raw_json
+            from live_positions
+            where live_instance_id = %(live_instance_id)s
+            order by tick_id asc, symbol asc
+            """,
+            {"live_instance_id": self._live_instance_id},
+        )
+        positions_by_tick: dict[Any, dict[str, dict[str, Any]]] = {}
+        for row in position_cursor.fetchall():
+            tick_id = _row_value(row, "tick_id", 0)
+            symbol = str(_row_value(row, "symbol", 1))
+            position = _json_object(_row_value(row, "raw_json", 6))
+            position.setdefault("side", _row_value(row, "side", 2))
+            position.setdefault("qty", _json_number(_row_value(row, "qty", 3)))
+            entry_price = _row_value(row, "entry_price", 4)
+            best_price = _row_value(row, "best_price", 5)
+            if entry_price is not None:
+                position.setdefault("entry", _json_number(entry_price))
+            if best_price is not None:
+                position.setdefault("best", _json_number(best_price))
+            positions_by_tick.setdefault(tick_id, {})[symbol] = position
+
+        records: list[dict] = []
+        for row in tick_rows:
+            tick_id = _row_value(row, "id", 0)
+            summary = _json_object(_row_value(row, "summary_json", 7))
+            records.append(
+                summary
+                | {
+                    "ts": _iso_value(_row_value(row, "ts", 1)),
+                    "bar": _row_value(row, "bar", 2),
+                    "equity": _json_number(_row_value(row, "account_equity", 3)),
+                    "peak": _json_number(_row_value(row, "peak_equity", 4)),
+                    "dd_pct": _json_number(_row_value(row, "dd_pct", 5)),
+                    "n_positions": _row_value(row, "n_positions", 6),
+                    "positions": positions_by_tick.get(tick_id, {}),
+                }
+            )
+        return records
+
+    def load_trades(self) -> list[dict]:
+        """Load trade records in file-journal-compatible shape."""
+
+        cursor = self._conn.execute(
+            """
+            select raw_json
+            from live_trades
+            where live_instance_id = %(live_instance_id)s
+            order by ts asc, id asc
+            """,
+            {"live_instance_id": self._live_instance_id},
+        )
+        return [
+            _json_object(_row_value(row, "raw_json", 0)) for row in cursor.fetchall()
+        ]
+
+    def load_signals(self) -> list[dict]:
+        """Load signal records in file-journal-compatible shape."""
+
+        cursor = self._conn.execute(
+            """
+            select ts, bar, signals_json
+            from live_signals
+            where live_instance_id = %(live_instance_id)s
+            order by bar asc
+            """,
+            {"live_instance_id": self._live_instance_id},
+        )
+        return [
+            {
+                "ts": _iso_value(_row_value(row, "ts", 0)),
+                "bar": _row_value(row, "bar", 1),
+                "signals": _json_object(_row_value(row, "signals_json", 2)),
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def load_targets(self) -> list[dict]:
+        """Load target diagnostics in file-journal-compatible shape."""
+
+        cursor = self._conn.execute(
+            """
+            select ts, bar, profile, target_ts, staleness_seconds,
+                   target_gross, normalized_gross, ignored_gross,
+                   ignored_gross_ratio, execution_coverage, weights_json,
+                   ignored_weights_json, orders_json
+            from live_targets
+            where live_instance_id = %(live_instance_id)s
+            order by bar asc, ts asc, id asc
+            """,
+            {"live_instance_id": self._live_instance_id},
+        )
+        return [
+            {
+                "ts": _iso_value(_row_value(row, "ts", 0)),
+                "bar": _row_value(row, "bar", 1),
+                "profile": _row_value(row, "profile", 2),
+                "target_ts": _iso_value(_row_value(row, "target_ts", 3)),
+                "staleness_seconds": _json_number(
+                    _row_value(row, "staleness_seconds", 4)
+                ),
+                "target_gross": _json_number(_row_value(row, "target_gross", 5)),
+                "normalized_gross": _json_number(
+                    _row_value(row, "normalized_gross", 6)
+                ),
+                "ignored_gross": _json_number(_row_value(row, "ignored_gross", 7)),
+                "ignored_gross_ratio": _json_number(
+                    _row_value(row, "ignored_gross_ratio", 8)
+                ),
+                "execution_coverage": _json_number(
+                    _row_value(row, "execution_coverage", 9)
+                ),
+                "weights": _json_object(_row_value(row, "weights_json", 10)),
+                "ignored_weights": _json_object(
+                    _row_value(row, "ignored_weights_json", 11)
+                ),
+                "orders": _json_array(_row_value(row, "orders_json", 12)),
+            }
+            for row in cursor.fetchall()
+        ]
 
 
 def load_public_dashboard_instances(
@@ -399,6 +727,14 @@ def _write_positions(
     rows: list[dict[str, Any]],
     tick_ids: Mapping[Any, Any],
 ) -> None:
+    for tick_id in tick_ids.values():
+        conn.execute(
+            """
+            delete from live_positions
+            where tick_id = %(tick_id)s
+            """,
+            {"tick_id": tick_id},
+        )
     for row in rows:
         tick_bar = row["tick_bar"]
         if tick_bar not in tick_ids:
@@ -538,6 +874,77 @@ def _validate_reference(reference: LivePersistenceReferenceData) -> None:
         raise LivePersistenceImportError(
             "public_instance_slug is required when public_enabled is true"
         )
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(tz=UTC).isoformat()
+
+
+def _numeric(value: Any) -> Decimal:
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
+def _runtime_position_row(
+    bar: int,
+    symbol: str,
+    record: dict[str, Any],
+    live_instance_id: str,
+) -> dict[str, Any]:
+    side = record.get("side")
+    if side not in {"long", "short"}:
+        raise LivePersistenceImportError(f"position {symbol}: invalid side {side!r}")
+    if "qty" not in record:
+        raise LivePersistenceImportError(
+            f"position {symbol}: missing required field 'qty'"
+        )
+    entry_price = record.get("entry", record.get("entry_price"))
+    best_price = record.get("best", record.get("best_price"))
+    return {
+        "tick_bar": bar,
+        "live_instance_id": live_instance_id,
+        "symbol": symbol,
+        "side": side,
+        "qty": _numeric(record["qty"]),
+        "entry_price": _numeric(entry_price) if entry_price is not None else None,
+        "best_price": _numeric(best_price) if best_price is not None else None,
+        "raw_json": record,
+    }
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        value = json.loads(value)
+    if not isinstance(value, Mapping):
+        raise LivePersistenceImportError("expected JSON object field")
+    return dict(value)
+
+
+def _json_array(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = json.loads(value)
+    if not isinstance(value, list):
+        raise LivePersistenceImportError("expected JSON array field")
+    return value
+
+
+def _json_number(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return float(value)
+    return value
+
+
+def _iso_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
 
 
 def _jsonb(value: Any) -> str:
