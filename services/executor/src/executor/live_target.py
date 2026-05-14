@@ -15,7 +15,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from .decision import EngineState, PositionState
-from .journal import TradeJournal
+from .journal import LiveJournalStore
 from .targeting import (
     PortfolioTarget,
     TargetOrder,
@@ -94,7 +94,7 @@ async def fetch_target_prices(
 
 
 def record_target_diagnostics(
-    journal: TradeJournal,
+    journal: LiveJournalStore,
     *,
     state: EngineState,
     profile: str,
@@ -135,7 +135,7 @@ def record_target_diagnostics(
 async def execute_target_order(
     *,
     exchange: "ExchangeAdapter",
-    journal: TradeJournal,
+    journal: LiveJournalStore,
     state: EngineState,
     profile: str,
     dry_run: bool,
@@ -249,7 +249,7 @@ def apply_target_fill(state: EngineState, order: TargetOrder, price: float) -> N
 async def execute_target_portfolio(
     *,
     exchange: "ExchangeAdapter",
-    journal: TradeJournal,
+    journal: LiveJournalStore,
     state: EngineState,
     account: "AccountState",
     equity: float,

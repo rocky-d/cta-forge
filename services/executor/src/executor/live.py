@@ -42,7 +42,7 @@ from .decision import (
     V10GDecisionEngine,
     V10GStrategyParams,
 )
-from .journal import TradeJournal
+from .journal import LiveJournalStore, TradeJournal
 from .live_data import fetch_live_bars
 from .live_target import execute_target_portfolio, sync_target_state_from_account
 from .notify import NullNotifier, _Notifier
@@ -231,7 +231,7 @@ class LiveEngine:
         self._bars_cache: dict[str, pl.DataFrame] = {}
         self._state_file = state_file
         self._store = ParquetStore(data_dir)
-        self._journal = TradeJournal(
+        self._journal: LiveJournalStore = TradeJournal(
             journal_dir,
             live_instance_id=live_instance_id,
             run_id=run_id,
@@ -289,9 +289,10 @@ class LiveEngine:
         # Keep this import local: state.py imports LiveState/LivePosition from this
         # module for backward-compatible persistence, so a top-level import would
         # create a circular dependency.
-        from .state import load_state, save_state
+        from .state import JsonFileLiveStateStore
 
-        restored = load_state(self._state_file)
+        state_store = JsonFileLiveStateStore(self._state_file)
+        restored = state_store.load()
         account = await self._exchange.get_account_state()
         exchange_positions = {p.symbol: p for p in account.positions}
 
@@ -377,14 +378,14 @@ class LiveEngine:
                     self._state,
                     last_tick_equity=self._last_tick_equity,
                 )
-                save_state(live_state, self._state_file)
+                state_store.save(live_state)
             except asyncio.CancelledError:
                 logger.info("LiveEngine cancelled")
                 live_state = _engine_to_live_state(
                     self._state,
                     last_tick_equity=self._last_tick_equity,
                 )
-                save_state(live_state, self._state_file)
+                state_store.save(live_state)
                 break
             except Exception:
                 logger.exception("LiveEngine tick error")
@@ -392,7 +393,7 @@ class LiveEngine:
                     self._state,
                     last_tick_equity=self._last_tick_equity,
                 )
-                save_state(live_state, self._state_file)
+                state_store.save(live_state)
                 await asyncio.sleep(60)
 
         logger.info("LiveEngine stopped")

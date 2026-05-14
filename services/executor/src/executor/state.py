@@ -15,12 +15,40 @@ import shutil
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Protocol
 
 from .live import LivePosition, LiveState
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_STATE_FILE = "engine-state.json"
+
+
+class LiveStateStore(Protocol):
+    """Persistence port for live engine checkpoints."""
+
+    def load(self) -> LiveState | None:
+        """Load the latest live engine state checkpoint."""
+        ...
+
+    def save(self, state: LiveState) -> None:
+        """Persist the latest live engine state checkpoint."""
+        ...
+
+
+class JsonFileLiveStateStore:
+    """File-backed live state store using the existing JSON format."""
+
+    def __init__(self, path: str | Path = DEFAULT_STATE_FILE) -> None:
+        self._path = Path(path)
+
+    def load(self) -> LiveState | None:
+        """Load the latest live engine state checkpoint."""
+        return load_state(self._path)
+
+    def save(self, state: LiveState) -> None:
+        """Persist the latest live engine state checkpoint."""
+        save_state(state, self._path)
 
 
 class _DecimalEncoder(json.JSONEncoder):

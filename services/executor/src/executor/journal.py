@@ -20,8 +20,77 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
+
+
+class LiveJournalStore(Protocol):
+    """Persistence port for live journal records."""
+
+    def record_tick(
+        self,
+        bar: int,
+        equity: float,
+        peak_equity: float,
+        positions: dict[str, dict],
+    ) -> None:
+        """Record an equity snapshot for the current tick."""
+        ...
+
+    def record_trade(
+        self,
+        bar: int,
+        kind: str,
+        symbol: str,
+        qty: float,
+        price: float,
+        reason: str,
+        *,
+        side: str = "",
+        entry_price: float = 0.0,
+        pnl: float = 0.0,
+        pnl_pct: float = 0.0,
+        held_bars: int = 0,
+    ) -> None:
+        """Record a trade action."""
+        ...
+
+    def record_signals(self, bar: int, signals: dict[str, float]) -> None:
+        """Record signal values for the current tick."""
+        ...
+
+    def record_target(
+        self,
+        *,
+        bar: int,
+        profile: str,
+        target_ts: str,
+        staleness_seconds: float,
+        target_gross: float,
+        normalized_gross: float,
+        weights: dict[str, float],
+        orders: list[dict],
+        ignored_weights: dict[str, float] | None = None,
+    ) -> None:
+        """Record target-weight diagnostics."""
+        ...
+
+    def load_equity(self) -> list[dict]:
+        """Load equity snapshots."""
+        ...
+
+    def load_trades(self) -> list[dict]:
+        """Load trade records."""
+        ...
+
+    def load_signals(self) -> list[dict]:
+        """Load signal records."""
+        ...
+
+    def load_targets(self) -> list[dict]:
+        """Load target diagnostics."""
+        ...
 
 
 class TradeJournal:

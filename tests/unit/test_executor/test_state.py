@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from executor.live import LivePosition, LiveState
-from executor.state import load_state, save_state
+from executor.state import JsonFileLiveStateStore, load_state, save_state
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -89,6 +89,29 @@ def test_save_and_load_with_positions(tmp_path: Path) -> None:
     eth = loaded.positions["ETH"]
     assert eth.side == "short"
     assert eth.size == Decimal("0.15")
+
+
+def test_json_file_live_state_store_roundtrip(tmp_path: Path) -> None:
+    """File-backed state store preserves the existing JSON state format."""
+    path = tmp_path / "state.json"
+    store = JsonFileLiveStateStore(path)
+    state = LiveState(
+        bar_count=7,
+        initial_equity=100.123456789,
+        peak_equity=105.987654321,
+        recent_returns=[0.00123456789],
+        last_tick_equity=104.555555555,
+    )
+
+    store.save(state)
+    loaded = store.load()
+
+    assert loaded is not None
+    assert loaded.bar_count == 7
+    assert loaded.initial_equity == 100.123456789
+    assert loaded.peak_equity == 105.987654321
+    assert loaded.recent_returns == [0.00123456789]
+    assert loaded.last_tick_equity == 104.555555555
 
 
 def test_load_missing_file(tmp_path: Path) -> None:
