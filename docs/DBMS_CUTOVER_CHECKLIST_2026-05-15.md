@@ -17,12 +17,25 @@ It does not authorize:
 
 Those actions require a separate explicit approval checkpoint.
 
+## Full historical import requirement
+
+Boss explicitly wants DBMS persistence to become complete enough that all previous useful local live records can be manually or otherwise imported into DB. After that cutover, the old local JSONL/state channel should be treated as migration input or backup evidence, not as the long-term source of truth.
+
+Implications:
+
+- Before DB runtime cutover, produce a local-data inventory manifest covering known journal/state artifact directories.
+- Classify each artifact as import-ready, duplicate/ambiguous, malformed, or intentionally out of scope.
+- Import all approved historical local records into PostgreSQL before declaring DB persistence complete.
+- Preserve raw local files until DB import, parity, backup, and restore evidence are all complete.
+- Do not silently drop duplicate or malformed local records; document the resolution for each blocked artifact.
+
 ## Current proven baseline
 
 As of 2026-05-15:
 
 - PostgreSQL schema `001_live_persistence.sql` applies cleanly to local PostgreSQL 15.
 - Historical JSONL/state import is Decimal-safe.
+- Local historical data must be inventoried before final DBMS cutover so previous local records can be imported into DB rather than remaining a permanent dependency.
 - Import CLI is dry-run by default.
 - DB writes require explicit `--write --database-url`.
 - `--parity-check` reads DB rows back in the same transaction and fails closed on mismatches.
@@ -30,6 +43,30 @@ As of 2026-05-15:
 - A non-duplicate 77-tick artifact imported with parity ok and idempotent row counts.
 - DB-derived journal read model produced the same live report shape as the source JSONL artifact.
 - Live runtime remains file-backed; no DB runtime wiring exists yet.
+
+## Local inventory command
+
+Use the inventory command before any full historical DB import:
+
+```bash
+uv run python -m executor.run_inventory_live_persistence \
+  --root live-report \
+  --root backtest-results/openclaw-cleanup-20260512/workspace/artifacts
+```
+
+The command emits a JSON manifest with:
+
+- discovered journal directories
+- equity/trade/signal/target row counts
+- first/latest tick summaries
+- latest target summary
+- candidate `engine-state.json` files
+- duplicate tick/signal bars that block the current PostgreSQL import shape
+- parse errors for malformed JSONL
+
+Use `--fail-on-blocked` in automation when all discovered directories are expected to be import-ready.
+
+First local inventory sample on 2026-05-15 over `live-report` plus recovered artifact roots found 7 journal directories: 6 ready and 1 blocked due duplicate bar `1` in `live-report` equity/signals.
 
 ## Required decisions before production cutover
 
@@ -67,6 +104,8 @@ Before any production runtime wiring:
 - [ ] Targeted ty passes for touched files.
 - [ ] GitHub Lint/Test passes on pushed commit.
 - [ ] Production DB migration has been rehearsed on a clean test DB.
+- [ ] Local-data inventory manifest is generated and reviewed.
+- [ ] Every useful local journal/state artifact is classified as import-ready, blocked, or intentionally out of scope.
 - [ ] Historical import from copied production journals passes `--write --parity-check` on test DB.
 - [ ] DB-derived live report equals JSONL-derived live report for the copied journals.
 - [ ] Duplicate-bar or other ambiguous historical records are either fixed by an approved migration rule or explicitly excluded with evidence.
@@ -84,14 +123,16 @@ Before any production runtime wiring:
 5. Take initial empty DB backup.
 6. Stop. No executor changes.
 
-### Phase 1 — historical import rehearsal from production copies
+### Phase 1 — full historical import rehearsal from local/production copies
 
-1. Copy production journals/state to a safe staging path.
-2. Run import CLI dry-run.
-3. Run import CLI with `--write --parity-check` against staging/test DB.
-4. Compare DB-derived report to JSONL-derived report.
-5. Record row counts and latest tick/target/trade evidence.
-6. Stop. No executor changes.
+1. Generate an inventory manifest for known local journal/state roots.
+2. Classify each discovered artifact as import-ready, duplicate/ambiguous, malformed, or intentionally out of scope.
+3. Copy production journals/state to a safe staging path when needed.
+4. Run import CLI dry-run for each approved artifact.
+5. Run import CLI with `--write --parity-check` against staging/test DB.
+6. Compare DB-derived report to JSONL-derived report for representative artifacts.
+7. Record row counts and latest tick/target/trade evidence.
+8. Stop. No executor changes.
 
 ### Phase 2 — dual-write shadow mode, file remains source of truth
 
