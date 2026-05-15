@@ -193,3 +193,15 @@ Before any production DB import or runtime cutover:
 2. Decide how to handle blocked `live-report`.
 3. Preserve fresh-DB import evidence for approved artifacts.
 4. Keep runtime source as file until a separate explicit approval checkpoint.
+
+## Deployment record
+
+2026-05-15 planned import runner deployment:
+
+- Commit: `ef03d5e feat(executor): gate planned live persistence imports`.
+- Deploy workflow: `25908120639`, success.
+- Scope: executor image/tooling update only; no production historical import was executed.
+- Runtime guard after deploy: `PERSISTENCE_BACKEND=file`, `DATABASE_URL` configured, shadow policy `warn`.
+- Deployed image smoke test: `run_import_live_persistence_plan` dry-run available in the executor container and reported `write_requested=false`, `wrote=false`.
+- Post-deploy preflight: target ok, 0 planned orders, 0 open orders, positions BTC/SOL/BNB/DOGE/INJ/LINK/SEI.
+- PostgreSQL remained containerized and healthy; no PostgreSQL warnings/errors found since deploy.
