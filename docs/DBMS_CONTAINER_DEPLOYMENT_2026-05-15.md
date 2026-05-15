@@ -50,3 +50,22 @@ Do not commit these values. Do not print `DATABASE_URL` in logs.
 ## Deployment boundary
 
 This change prepares the database container and migrations. It does not import historical records, enable dual-write, or make PostgreSQL source of truth. Those remain separate gates.
+
+## Deployment record
+
+- Code commit: `318967a` added the containerized PostgreSQL service, migration CLI, deploy workflow integration, and tests.
+- Follow-up commit: `aeacaa3` fixed Docker build context inclusion for `infra/db/**` and added a regression test for the migration SQL not being ignored by `.dockerignore`.
+- First deploy attempt `25902077903` failed before touching EC2 deploy state because Docker build context excluded `infra/db/`.
+- Second deploy attempt `25902159077` built successfully but failed at `db-migrate`; root cause was an unescaped generated password in `DATABASE_URL` containing URL-reserved characters. The EC2 password was rotated to a URL-safe hex value and verified without printing secrets.
+- Successful deploy run: `25902330138` on `2026-05-15T05:38Z` for commit `aeacaa3`.
+- Post-deploy verification at `2026-05-15T05:46Z`:
+  - `cta-forge-postgres` running, healthy, restart `0`, OOM `false`.
+  - `cta-forge-executor` running from `2026-05-15T05:41:57Z`, restart `0`, OOM `false`.
+  - Docker volume present: `cta-forge_cta_forge_postgres_data`.
+  - Migration output showed `001_live_persistence.sql` applied from `/app/infra/db/migrations`.
+  - Public schema contained 12 tables: `engine_checkpoints`, `exchange_accounts`, `live_instances`, `live_positions`, `live_runs`, `live_signals`, `live_targets`, `live_ticks`, `live_trades`, `public_dashboard_instances`, `strategies`, `strategy_profiles`.
+  - Runtime guard remained file-backed: `PERSISTENCE_BACKEND=file`; `DATABASE_URL` configured; `LIVE_PERSISTENCE_SHADOW_FAILURE_POLICY=warn`.
+  - Strict mainnet preflight passed; live executor restored bar `#260`, 7 positions, no open orders, then waited for the `06:00 UTC` tick.
+  - Error scan since deploy found no error/exception/reject/insufficient/OOM lines.
+
+Operational note: URL-style env vars should use URL-safe generated secrets or explicit percent-encoding; do not paste arbitrary base64 directly into `DATABASE_URL`.
