@@ -43,6 +43,8 @@ As of 2026-05-15:
 - A non-duplicate 77-tick artifact imported with parity ok and idempotent row counts.
 - A canonical-plan fresh DB rehearsal imported the approved candidate with parity ok and stable row counts.
 - DB-derived journal read model produced the same live report shape as the source JSONL artifact.
+- Read-only file-vs-DB parity CLI passed against the local rehearsal DB and restored rehearsal DB.
+- PostgreSQL backup/restore runbook and local restore rehearsal evidence exist in `docs/DBMS_BACKUP_RESTORE_RUNBOOK_2026-05-15.md`.
 - Live runtime remains file-backed; no DB runtime wiring exists yet.
 
 ## Local inventory command
@@ -134,7 +136,7 @@ Before any production runtime wiring:
 - [ ] Historical import from copied production journals passes `--write --parity-check` on test DB.
 - [ ] DB-derived live report equals JSONL-derived live report for the copied journals.
 - [ ] Duplicate-bar or other ambiguous historical records are either fixed by an approved migration rule or explicitly excluded with evidence.
-- [ ] Backup and restore have been tested on non-production DB.
+- [x] Backup and restore have been tested on non-production DB (`cta_forge_plan_restore_rehearsal_20260515`, parity ok).
 - [ ] Public dashboard payload grep shows no private identifiers.
 
 ## Proposed production rollout sequence
