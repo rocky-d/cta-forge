@@ -39,6 +39,7 @@ class LivePersistenceInventoryItem:
     journal_dir: Path
     counts: dict[str, int]
     duplicate_bars: dict[str, list[Any]]
+    duplicate_bar_details: dict[str, list[dict[str, Any]]]
     bar_ranges: dict[str, dict[str, Any] | None]
     content_hashes: dict[str, str]
     combined_content_hash: str | None
@@ -58,6 +59,7 @@ class LivePersistenceInventoryItem:
             "journal_dir": str(self.journal_dir),
             "counts": self.counts,
             "duplicate_bars": self.duplicate_bars,
+            "duplicate_bar_details": self.duplicate_bar_details,
             "bar_ranges": self.bar_ranges,
             "content_hashes": self.content_hashes,
             "combined_content_hash": self.combined_content_hash,
@@ -150,6 +152,7 @@ def _inventory_item(
             journal_dir=journal_dir,
             counts={key: 0 for key in JOURNAL_FILES},
             duplicate_bars={},
+            duplicate_bar_details={},
             bar_ranges={},
             content_hashes=content_hashes,
             combined_content_hash=_combined_content_hash(content_hashes),
@@ -164,6 +167,7 @@ def _inventory_item(
         )
 
     duplicate_bars = _duplicate_bar_report(batch)
+    duplicate_bar_details = _duplicate_bar_details(batch)
     equity_bar_keys = _bar_keys(batch.equity)
     signal_bar_keys = _bar_keys(batch.signals)
     ready = bool(batch.equity) and not duplicate_bars
@@ -176,6 +180,7 @@ def _inventory_item(
             "targets": len(batch.targets),
         },
         duplicate_bars=duplicate_bars,
+        duplicate_bar_details=duplicate_bar_details,
         bar_ranges={
             "equity": _bar_range(batch.equity),
             "signals": _bar_range(batch.signals),
@@ -262,6 +267,38 @@ def _duplicate_bar_report(batch: LivePersistenceImportBatch) -> dict[str, list[A
 def _duplicate_bars(bars: list[Any]) -> list[Any]:
     counts = Counter(bars)
     return [bar for bar, count in counts.items() if count > 1]
+
+
+def _duplicate_bar_details(
+    batch: LivePersistenceImportBatch,
+) -> dict[str, list[dict[str, Any]]]:
+    details: dict[str, list[dict[str, Any]]] = {}
+    for key, records in {"equity": batch.equity, "signals": batch.signals}.items():
+        duplicate_bars = set(_duplicate_bars([record.get("bar") for record in records]))
+        if not duplicate_bars:
+            continue
+        details[key] = [
+            _duplicate_record_summary(key, record)
+            for record in records
+            if record.get("bar") in duplicate_bars
+        ]
+    return details
+
+
+def _duplicate_record_summary(key: str, record: dict[str, Any]) -> dict[str, Any]:
+    if key == "equity":
+        return {
+            "bar": _json_safe_number(record.get("bar")),
+            "ts": record.get("ts"),
+            "equity": _json_safe_number(record.get("equity")),
+            "peak": _json_safe_number(record.get("peak")),
+            "dd_pct": _json_safe_number(record.get("dd_pct")),
+            "n_positions": record.get("n_positions"),
+        }
+    return {
+        "bar": _json_safe_number(record.get("bar")),
+        "ts": record.get("ts"),
+    }
 
 
 def _bar_keys(records: list[dict[str, Any]]) -> frozenset[str]:

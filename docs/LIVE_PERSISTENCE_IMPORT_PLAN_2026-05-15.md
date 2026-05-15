@@ -61,7 +61,14 @@ These are older/lower-coverage snapshots whose bar and tick-time ranges are cove
 - `live-report`
   - reason: duplicate bar `1` in equity/signals
   - current import shape rejects this because PostgreSQL keys ticks/signals by `(live_instance_id, bar)`
-  - do not import silently; decide whether this is a separate historical instance, a malformed local artifact to exclude, or a record that needs an explicit approved repair rule
+  - duplicate equity records:
+    - bar 1 at `2026-04-15T18:00:32.021202+00:00`, equity `2010.75`, positions 1
+    - bar 1 at `2026-04-16T00:00:32.182013+00:00`, equity `2010.82`, positions 1
+  - duplicate signal records:
+    - bar 1 at `2026-04-15T18:00:32.021313+00:00`
+    - bar 1 at `2026-04-16T00:00:32.182873+00:00`
+  - chronological equity stream otherwise spans bar 1 through 9 from `2026-04-15T18:00:32.021202+00:00` to `2026-04-18T00:00:32.319400+00:00`
+  - do not import silently; decide whether this is a separate historical instance, a malformed local artifact to exclude, or a record that needs an explicit approved repair/reindex rule
 
 ## Fresh local DB rehearsal — 2026-05-15
 

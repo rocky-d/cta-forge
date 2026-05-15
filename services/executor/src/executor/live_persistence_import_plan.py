@@ -35,6 +35,7 @@ class LivePersistenceImportPlanItem:
     reason: str
     representative_journal_dir: Path | None
     counts: dict[str, int]
+    duplicate_bar_details: dict[str, list[dict[str, Any]]]
     bar_ranges: dict[str, dict[str, Any] | None]
     first_tick: dict[str, Any] | None
     latest_tick: dict[str, Any] | None
@@ -51,6 +52,7 @@ class LivePersistenceImportPlanItem:
             if self.representative_journal_dir is not None
             else None,
             "counts": self.counts,
+            "duplicate_bar_details": self.duplicate_bar_details,
             "bar_ranges": self.bar_ranges,
             "first_tick": self.first_tick,
             "latest_tick": self.latest_tick,
@@ -203,6 +205,7 @@ def _plan_item(
         reason=reason,
         representative_journal_dir=representative,
         counts=item.counts,
+        duplicate_bar_details=item.duplicate_bar_details,
         bar_ranges=item.bar_ranges,
         first_tick=item.first_tick,
         latest_tick=item.latest_tick,

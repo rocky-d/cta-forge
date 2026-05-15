@@ -74,6 +74,24 @@ def test_scan_live_persistence_journal_dirs_reports_ready_and_blocked(tmp_path) 
         "equity": [1],
         "signals": [1],
     }
+    assert items["blocked-journal"].duplicate_bar_details["equity"] == [
+        {
+            "bar": 1,
+            "ts": "2026-05-14T06:00:00Z",
+            "equity": "100.1",
+            "peak": "101.0",
+            "dd_pct": "0.9",
+            "n_positions": 0,
+        },
+        {
+            "bar": 1,
+            "ts": "2026-05-14T07:00:00Z",
+            "equity": "102.2",
+            "peak": "102.2",
+            "dd_pct": 0,
+            "n_positions": 0,
+        },
+    ]
     manifest = report.to_dict()
     assert manifest["summary"]["bar_overlaps"] == 1
     assert manifest["bar_overlaps"][0]["shared_equity_bars"] == {
