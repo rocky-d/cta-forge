@@ -602,6 +602,7 @@ Progress trace:
 - 2026-05-15: Added DB readback helpers and Decimal-safe post-import parity reporting for normalized live persistence rows. The import CLI can now run `--write --parity-check` against an explicitly supplied test PostgreSQL URL, then fail closed if DB rows differ from JSONL/state input rows. No live runtime wiring.
 - 2026-05-15: Ran a local PostgreSQL 15 rehearsal DB. Migration `001_live_persistence.sql` applied cleanly. A duplicate-bar historical `live-report` import failed closed and rolled back, so the writer now rejects duplicate tick/signal bars before DB writes. A non-duplicate 77-tick artifact imported with parity ok, and a second identical import kept row counts stable, proving idempotent write behavior for that artifact.
 - 2026-05-15: Pushed DBMS prep commits to `origin/main` after confirming deploy workflow is manual-only. GitHub Lint and Test runs for `ad8970b` passed; no deploy workflow was triggered. Added DB-derived journal/report compatibility coverage and verified a real local PostgreSQL read model produced the same live report shape as the source JSONL artifact.
+- 2026-05-15: Added `docs/DBMS_CUTOVER_CHECKLIST_2026-05-15.md` as the future production cutover/runbook gate. It keeps runtime wiring, deploy, restart, dual-write, DB source-of-truth, rollback, backup/restore, and post-cutover observation as separate explicit approval phases.
 
 Scope:
 
