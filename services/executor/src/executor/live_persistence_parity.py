@@ -47,16 +47,20 @@ def compare_live_persistence_import_rows(
     actual: LivePersistenceImportRows,
     *,
     max_examples: int = 20,
+    ignored_keys: set[str] | None = None,
 ) -> LivePersistenceParityReport:
     """Compare normalized import rows with rows read back from the database.
 
     Decimal values are compared as strings so precision is not truncated during
     parity checks. Timestamp strings and ``datetime`` objects are normalized to
-    UTC ``Z`` form before comparison.
+    UTC ``Z`` form before comparison. ``ignored_keys`` removes matching dict
+    keys recursively, which is useful when comparing a file snapshot against a
+    DB history that intentionally used different run identifiers.
     """
 
     counts: dict[str, dict[str, int]] = {}
     mismatches: list[str] = []
+    ignored_keys = ignored_keys or set()
     for section in _SECTIONS:
         expected_records = _section_records(expected, section)
         actual_records = _section_records(actual, section)
@@ -74,8 +78,8 @@ def compare_live_persistence_import_rows(
         for index, (expected_record, actual_record) in enumerate(
             zip(expected_records, actual_records, strict=True)
         ):
-            expected_canonical = _canonical(expected_record)
-            actual_canonical = _canonical(actual_record)
+            expected_canonical = _canonical(expected_record, ignored_keys=ignored_keys)
+            actual_canonical = _canonical(actual_record, ignored_keys=ignored_keys)
             if expected_canonical != actual_canonical:
                 _append_mismatch(
                     mismatches,
@@ -98,15 +102,25 @@ def _append_mismatch(mismatches: list[str], max_examples: int, message: str) -> 
         mismatches.append("additional mismatches omitted")
 
 
-def _canonical(value: Any, *, key: str | None = None) -> Any:
+def _canonical(
+    value: Any,
+    *,
+    key: str | None = None,
+    ignored_keys: set[str] | None = None,
+) -> Any:
+    ignored_keys = ignored_keys or set()
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, datetime):
         return _canonical_datetime(value)
     if isinstance(value, dict):
-        return {str(k): _canonical(v, key=str(k)) for k, v in sorted(value.items())}
+        return {
+            str(k): _canonical(v, key=str(k), ignored_keys=ignored_keys)
+            for k, v in sorted(value.items())
+            if str(k) not in ignored_keys
+        }
     if isinstance(value, list):
-        return [_canonical(item) for item in value]
+        return [_canonical(item, ignored_keys=ignored_keys) for item in value]
     if key in _TIMESTAMP_KEYS and isinstance(value, str):
         return _canonical_timestamp(value)
     return value

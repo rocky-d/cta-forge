@@ -92,6 +92,8 @@ After each observed tick, compare:
 - latest trade timestamp/idempotency
 - DB-derived report shape vs JSONL-derived report shape
 
+`services/executor/src/executor/run_check_live_persistence_parity.py` provides a read-only CLI for file-vs-DB row parity. It exits `0` on parity ok and `2` on mismatches. Use `--ignore-run-id` only when comparing a mixed historical/runtime DB history against a file snapshot whose rows intentionally use a different rehearsal run id.
+
 Any mismatch blocks promotion.
 
 ## Configuration required before enabling

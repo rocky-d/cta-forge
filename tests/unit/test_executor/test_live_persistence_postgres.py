@@ -721,6 +721,37 @@ def test_compare_live_persistence_import_rows_reports_mismatch(tmp_path) -> None
     assert report.mismatches == ["trades: expected 1 rows, got 0"]
 
 
+def test_compare_live_persistence_import_rows_can_ignore_run_id(tmp_path) -> None:
+    expected = _rows(tmp_path)
+    actual = replace(
+        expected,
+        checkpoint={**expected.checkpoint, "run_id": "db-run"}
+        if expected.checkpoint is not None
+        else None,
+        ticks=[{**row, "run_id": "db-run"} for row in expected.ticks],
+        targets=[{**row, "run_id": "db-run"} for row in expected.targets],
+        trades=[
+            {
+                **row,
+                "run_id": "db-run",
+                "raw_json": {**row["raw_json"], "run_id": "db-run"},
+            }
+            for row in expected.trades
+        ],
+        signals=[{**row, "run_id": "db-run"} for row in expected.signals],
+    )
+
+    strict_report = compare_live_persistence_import_rows(expected, actual)
+    ignored_report = compare_live_persistence_import_rows(
+        expected,
+        actual,
+        ignored_keys={"run_id"},
+    )
+
+    assert strict_report.ok is False
+    assert ignored_report.ok is True
+
+
 def _db_json(value: Any) -> Any:
     if isinstance(value, Decimal):
         return str(value)

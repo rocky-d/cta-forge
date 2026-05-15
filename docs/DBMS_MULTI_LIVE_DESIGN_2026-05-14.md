@@ -606,7 +606,7 @@ Progress trace:
 - 2026-05-15: Boss clarified that once DBMS persistence is ready, all useful previous local live records should be imported into DB so the old local JSONL/state channel is not a permanent dependency. Added local-data inventory/import-manifest tooling to classify historical artifact directories before migration.
 - 2026-05-15: Added a conservative canonical import-plan builder/CLI. It proposes import candidates, excludes exact duplicate copies and covered snapshots, and leaves blocked or partial-overlap artifacts for review. Current local planning evidence is documented in `docs/LIVE_PERSISTENCE_IMPORT_PLAN_2026-05-15.md`.
 - 2026-05-15: Ran a fresh PostgreSQL rehearsal DB from the canonical plan. Imported only the approved 77-tick candidate with `--write --parity-check`; parity was ok, rerun counts stayed stable, and DB-derived report shape matched source JSONL. Added `psycopg[binary]` to the executor package so maintained DB-write imports have the required driver.
-- 2026-05-15: Added `docs/DBMS_DUAL_WRITE_DESIGN_2026-05-15.md` as the design gate for any future dual-write shadow mode. It keeps file as source of truth, defaults `PERSISTENCE_BACKEND` to `file`, and blocks DB source-of-truth until separate approval and parity evidence. Added tested file-first dual-write wrappers, but did not wire them into live runtime.
+- 2026-05-15: Added `docs/DBMS_DUAL_WRITE_DESIGN_2026-05-15.md` as the design gate for any future dual-write shadow mode. It keeps file as source of truth, defaults `PERSISTENCE_BACKEND` to `file`, and blocks DB source-of-truth until separate approval and parity evidence. Added tested file-first dual-write wrappers and a read-only file-vs-DB parity CLI, but did not wire them into live runtime.
 
 Scope:
 
