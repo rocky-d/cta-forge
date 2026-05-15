@@ -36,7 +36,7 @@ Required defaults:
 - `postgres` requires `DATABASE_URL`, `LIVE_INSTANCE_ID`, `RUN_ID`, and `ALLOW_POSTGRES_SOURCE_OF_TRUTH=true`
 - `postgres` mode is not allowed until after a separate approval checkpoint
 
-`services/executor/src/executor/live_persistence_runtime.py` implements this config parser/validator as prep only. It is not wired into live runtime yet.
+`services/executor/src/executor/live_persistence_runtime.py` implements this config parser/validator as prep only. It is not wired into live runtime yet. `services/executor/src/executor/run_check_live_persistence_config.py` exposes the same validation as a safe read-only preflight that prints no database URL or secret-bearing values.
 
 ## Ordering rule
 
