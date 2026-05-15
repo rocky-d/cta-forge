@@ -621,6 +621,7 @@ def write_live_import_rows(conn: DbConnection, rows: LivePersistenceImportRows) 
     ticks, positions, targets, trades, and signals in FK-safe order.
     """
 
+    _validate_import_rows_for_write(rows)
     if rows.checkpoint is not None:
         _write_checkpoint(conn, rows.checkpoint)
     tick_ids = _write_ticks(conn, rows.ticks)
@@ -631,6 +632,25 @@ def write_live_import_rows(conn: DbConnection, rows: LivePersistenceImportRows) 
         _write_trade(conn, row)
     for row in rows.signals:
         _write_signal(conn, row)
+
+
+def _validate_import_rows_for_write(rows: LivePersistenceImportRows) -> None:
+    _reject_duplicate_bars("tick", [row["bar"] for row in rows.ticks])
+    _reject_duplicate_bars("signal", [row["bar"] for row in rows.signals])
+
+
+def _reject_duplicate_bars(label: str, bars: list[Any]) -> None:
+    seen: set[Any] = set()
+    duplicates: list[Any] = []
+    for bar in bars:
+        if bar in seen and bar not in duplicates:
+            duplicates.append(bar)
+        seen.add(bar)
+    if duplicates:
+        sample = ", ".join(str(bar) for bar in duplicates[:5])
+        raise LivePersistenceImportError(
+            f"duplicate {label} bars are ambiguous for PostgreSQL import: {sample}"
+        )
 
 
 def load_live_import_rows(

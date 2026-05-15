@@ -525,6 +525,14 @@ def test_write_live_import_rows_fails_when_position_tick_is_missing() -> None:
         )
 
 
+def test_write_live_import_rows_rejects_duplicate_tick_bars(tmp_path) -> None:
+    conn = FakeConnection()
+    rows = _rows(tmp_path)
+
+    with pytest.raises(LivePersistenceImportError, match="duplicate tick bars"):
+        write_live_import_rows(conn, replace(rows, ticks=[*rows.ticks, rows.ticks[0]]))
+
+
 def test_write_live_reference_rows_requires_public_slug_when_public() -> None:
     conn = FakeConnection()
     reference = _reference()

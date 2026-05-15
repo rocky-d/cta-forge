@@ -191,9 +191,9 @@ def _tick_and_position_rows(
             "run_id": keys.run_id,
             "bar": bar,
             "ts": _required(record, "ts", "equity"),
-            "account_equity": _required(record, "equity", "equity"),
-            "peak_equity": _required(record, "peak", "equity"),
-            "dd_pct": _required(record, "dd_pct", "equity"),
+            "account_equity": _numeric(_required(record, "equity", "equity")),
+            "peak_equity": _numeric(_required(record, "peak", "equity")),
+            "dd_pct": _numeric(_required(record, "dd_pct", "equity")),
             "n_positions": _required(record, "n_positions", "equity"),
             "summary_json": _unknown_fields(
                 record,
@@ -241,9 +241,11 @@ def _position_row(
         "live_instance_id": keys.live_instance_id,
         "symbol": symbol,
         "side": side,
-        "qty": _required(record, "qty", f"position {symbol}"),
-        "entry_price": record.get("entry", record.get("entry_price")),
-        "best_price": record.get("best", record.get("best_price")),
+        "qty": _numeric(_required(record, "qty", f"position {symbol}")),
+        "entry_price": _optional_numeric(
+            record.get("entry", record.get("entry_price"))
+        ),
+        "best_price": _optional_numeric(record.get("best", record.get("best_price"))),
         "raw_json": record,
     }
 
@@ -258,12 +260,16 @@ def _target_row(
         "ts": _required(record, "ts", "target"),
         "profile": _required(record, "profile", "target"),
         "target_ts": _required(record, "target_ts", "target"),
-        "staleness_seconds": _required(record, "staleness_seconds", "target"),
-        "target_gross": _required(record, "target_gross", "target"),
-        "normalized_gross": _required(record, "normalized_gross", "target"),
-        "ignored_gross": _required(record, "ignored_gross", "target"),
-        "ignored_gross_ratio": _required(record, "ignored_gross_ratio", "target"),
-        "execution_coverage": _required(record, "execution_coverage", "target"),
+        "staleness_seconds": _numeric(_required(record, "staleness_seconds", "target")),
+        "target_gross": _numeric(_required(record, "target_gross", "target")),
+        "normalized_gross": _numeric(_required(record, "normalized_gross", "target")),
+        "ignored_gross": _numeric(_required(record, "ignored_gross", "target")),
+        "ignored_gross_ratio": _numeric(
+            _required(record, "ignored_gross_ratio", "target")
+        ),
+        "execution_coverage": _numeric(
+            _required(record, "execution_coverage", "target")
+        ),
         "weights_json": _required(record, "weights", "target"),
         "ignored_weights_json": record.get("ignored_weights", {}),
         "orders_json": record.get("orders", []),
@@ -281,11 +287,11 @@ def _trade_row(
         "kind": _required(record, "kind", "trade"),
         "symbol": _required(record, "symbol", "trade"),
         "side": record.get("side") or None,
-        "qty": _required(record, "qty", "trade"),
-        "price": _required(record, "price", "trade"),
+        "qty": _numeric(_required(record, "qty", "trade")),
+        "price": _numeric(_required(record, "price", "trade")),
         "reason": _required(record, "reason", "trade"),
-        "pnl": record.get("pnl"),
-        "pnl_pct": record.get("pnl_pct"),
+        "pnl": _optional_numeric(record.get("pnl")),
+        "pnl_pct": _optional_numeric(record.get("pnl_pct")),
         "held_bars": record.get("held_bars"),
         "exchange_order_id": record.get("exchange_order_id"),
         "raw_json": record,
@@ -308,6 +314,18 @@ def _required(record: dict[str, Any], key: str, context: str) -> Any:
     if key not in record:
         raise LivePersistenceImportError(f"{context}: missing required field {key!r}")
     return record[key]
+
+
+def _numeric(value: Any) -> Decimal:
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
+def _optional_numeric(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    return _numeric(value)
 
 
 def _unknown_fields(record: dict[str, Any], known: set[str]) -> dict[str, Any]:

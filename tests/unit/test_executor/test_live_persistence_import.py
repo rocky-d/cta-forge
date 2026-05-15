@@ -70,7 +70,7 @@ def test_build_live_persistence_import_rows_maps_schema_shape(tmp_path) -> None:
         '"staleness_seconds":180.125,'
         '"target_gross":0.5461864655472283,'
         '"normalized_gross":0.5461864655472283,'
-        '"ignored_gross":0.0,"ignored_gross_ratio":0.0,'
+        '"ignored_gross":0,"ignored_gross_ratio":0.0,'
         '"execution_coverage":1.0,'
         '"weights":{"LINK":0.18428112026966947},'
         '"ignored_weights":{},"orders":[]}\n'
@@ -104,6 +104,7 @@ def test_build_live_persistence_import_rows_maps_schema_shape(tmp_path) -> None:
     assert rows.positions[0]["tick_bar"] == 91
     assert rows.positions[0]["qty"] == Decimal("2.000000000000001")
     assert rows.positions[0]["entry_price"] == Decimal("9.91873")
+    assert rows.targets[0]["ignored_gross"] == Decimal("0")
     assert rows.targets[0]["weights_json"]["LINK"] == Decimal("0.18428112026966947")
     assert rows.trades[0]["qty"] == Decimal("2.000000000000001")
     assert rows.signals[0]["signals_json"]["LINK"] == Decimal("0.12345678901234567")
