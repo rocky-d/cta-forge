@@ -11,7 +11,7 @@ import json
 import sys
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, cast
 
 from .live_persistence_import import (
     LivePersistenceImportError,
@@ -22,6 +22,7 @@ from .live_persistence_import import (
 )
 from .live_persistence_parity import compare_live_persistence_import_rows
 from .live_persistence_postgres import (
+    DbConnection,
     LivePersistenceReferenceData,
     load_live_import_rows,
     write_live_import_rows,
@@ -139,8 +140,9 @@ def _write(
             "psycopg is required for --write; install the PostgreSQL driver first"
         ) from exc
 
-    with psycopg.connect(args.database_url) as conn:
-        with conn.transaction():
+    with psycopg.connect(args.database_url) as raw_conn:
+        conn = cast(DbConnection, raw_conn)
+        with raw_conn.transaction():
             write_live_reference_rows(conn, reference)
             write_live_import_rows(conn, rows)
             if not args.parity_check:

@@ -63,13 +63,76 @@ These are older/lower-coverage snapshots whose bar and tick-time ranges are cove
   - current import shape rejects this because PostgreSQL keys ticks/signals by `(live_instance_id, bar)`
   - do not import silently; decide whether this is a separate historical instance, a malformed local artifact to exclude, or a record that needs an explicit approved repair rule
 
+## Fresh local DB rehearsal — 2026-05-15
+
+A fresh local PostgreSQL rehearsal DB was created from scratch:
+
+- database: `cta_forge_plan_rehearsal`
+- migration: `infra/db/migrations/001_live_persistence.sql`
+- table count after migration: 12
+- imported only the current `import_candidate`
+- did not import `live-report` because it remains `review_blocked`
+
+Import command shape:
+
+```bash
+uv run python -m executor.run_import_live_persistence \
+  --journal-dir backtest-results/openclaw-cleanup-20260512/workspace/artifacts/cta-forge-open-study-20260507 \
+  --live-instance-id mainnet-pilot \
+  --run-id historical-import-plan-20260515 \
+  --write \
+  --parity-check \
+  --database-url postgresql:///cta_forge_plan_rehearsal \
+  --profile-slug v16a-mainnet-pilot \
+  --profile-id v16a-mainnet-pilot \
+  --account-id historical-mainnet-pilot \
+  --network mainnet \
+  --account-label historical-mainnet-pilot \
+  --mode mainnet_pilot \
+  --public-instance-slug mainnet-pilot \
+  --public-display-name "Mainnet Pilot" \
+  --public-enabled
+```
+
+Result:
+
+- parity: ok
+- mismatch count: 0
+- checkpoint rows: 0
+- ticks: 77
+- positions: 282
+- targets: 77
+- trades: 18
+- signals: 77
+- latest tick: bar 77 at `2026-05-07T14:03:30.137784+00:00`
+- latest target: bar 77, target_ts `2026-05-07T13:00:00+00:00`
+
+Idempotency:
+
+- Re-running the same import kept row counts stable.
+
+DB-derived report parity:
+
+- `PostgresLiveJournalStore` report shape equals source `TradeJournal` JSONL report shape.
+- equity records: 77
+- closed trades in report: 0
+- bars: 77
+- latest positions: 7
+
+Public-safety note:
+
+- The importer writes public dashboard instance rows as `hidden` by default.
+- The public-safe loader returned no non-hidden rows in this rehearsal, so no public payload exposed `live_instance_id`, `account_id`, wallet, secret/private markers, or `exchange_order_id`.
+
+Packaging note:
+
+- `run_import_live_persistence --write` requires `psycopg`; the executor package now declares `psycopg[binary]>=3.2.0` so the maintained import CLI can run DB writes in a project environment.
+
 ## Next rehearsal gate
 
 Before any production DB import or runtime cutover:
 
 1. Review/approve the candidate/exclusion plan.
 2. Decide how to handle blocked `live-report`.
-3. Rehearse import into a fresh local PostgreSQL DB.
-4. Run `--write --parity-check` for approved artifacts.
-5. Confirm DB-derived report/public read model parity.
-6. Keep runtime source as file until a separate explicit approval checkpoint.
+3. Preserve fresh-DB import evidence for approved artifacts.
+4. Keep runtime source as file until a separate explicit approval checkpoint.

@@ -605,6 +605,7 @@ Progress trace:
 - 2026-05-15: Added `docs/DBMS_CUTOVER_CHECKLIST_2026-05-15.md` as the future production cutover/runbook gate. It keeps runtime wiring, deploy, restart, dual-write, DB source-of-truth, rollback, backup/restore, and post-cutover observation as separate explicit approval phases.
 - 2026-05-15: Boss clarified that once DBMS persistence is ready, all useful previous local live records should be imported into DB so the old local JSONL/state channel is not a permanent dependency. Added local-data inventory/import-manifest tooling to classify historical artifact directories before migration.
 - 2026-05-15: Added a conservative canonical import-plan builder/CLI. It proposes import candidates, excludes exact duplicate copies and covered snapshots, and leaves blocked or partial-overlap artifacts for review. Current local planning evidence is documented in `docs/LIVE_PERSISTENCE_IMPORT_PLAN_2026-05-15.md`.
+- 2026-05-15: Ran a fresh PostgreSQL rehearsal DB from the canonical plan. Imported only the approved 77-tick candidate with `--write --parity-check`; parity was ok, rerun counts stayed stable, and DB-derived report shape matched source JSONL. Added `psycopg[binary]` to the executor package so maintained DB-write imports have the required driver.
 
 Scope:
 

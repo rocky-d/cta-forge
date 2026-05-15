@@ -41,6 +41,7 @@ As of 2026-05-15:
 - `--parity-check` reads DB rows back in the same transaction and fails closed on mismatches.
 - Duplicate tick/signal bars are rejected before write because current schema keys ticks/signals by `(live_instance_id, bar)`.
 - A non-duplicate 77-tick artifact imported with parity ok and idempotent row counts.
+- A canonical-plan fresh DB rehearsal imported the approved candidate with parity ok and stable row counts.
 - DB-derived journal read model produced the same live report shape as the source JSONL artifact.
 - Live runtime remains file-backed; no DB runtime wiring exists yet.
 
@@ -89,7 +90,7 @@ The plan classifies artifacts as:
 - `review_blocked`
 - `review_overlap_identity`
 
-Use `--fail-on-review` in automation when no blocked or ambiguous artifacts are expected. Current planning evidence lives in `docs/LIVE_PERSISTENCE_IMPORT_PLAN_2026-05-15.md`.
+Use `--fail-on-review` in automation when no blocked or ambiguous artifacts are expected. Current planning and fresh local DB rehearsal evidence lives in `docs/LIVE_PERSISTENCE_IMPORT_PLAN_2026-05-15.md`.
 
 ## Required decisions before production cutover
 
