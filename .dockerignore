@@ -24,6 +24,8 @@ scripts/
 docs/
 archive/
 infra/
+!infra/db/
+!infra/db/**
 
 *.png
 *.pdf
