@@ -161,7 +161,7 @@ Before any production runtime wiring:
 
 ### Phase 2 — dual-write shadow mode, file remains source of truth
 
-Requires new code and separate approval.
+Requires new code and separate approval. Design gate: `docs/DBMS_DUAL_WRITE_DESIGN_2026-05-15.md`.
 
 1. Add `PERSISTENCE_BACKEND=file|dual|postgres`, default `file`.
 2. In `dual`, live runtime writes file first and DB second, or uses an explicitly chosen safe ordering.
