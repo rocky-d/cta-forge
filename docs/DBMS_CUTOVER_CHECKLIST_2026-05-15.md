@@ -242,3 +242,13 @@ Stop and do not proceed to the next phase if any of these occur:
 - Do not store private keys in DB.
 - Keep public instance metadata separate from internal account/runtime identity.
 - Prefer one reversible phase at a time over a large storage cutover.
+
+## 2026-05-15 containerized PostgreSQL deployment note
+
+Boss clarified that production PostgreSQL should be deployed containerized on EC2 rather than as a host package. The current implementation direction is documented in `docs/DBMS_CONTAINER_DEPLOYMENT_2026-05-15.md`:
+
+- `postgres:17-alpine` managed by `docker-compose.prod.yml`;
+- named volume `cta_forge_postgres_data` for data;
+- private EC2 `.env` for current practical secrets;
+- GitHub Actions starts PostgreSQL, applies migrations with a one-shot `db-migrate` service, then recreates only the executor;
+- live runtime remains `PERSISTENCE_BACKEND=file` until a separate dual-write approval gate.

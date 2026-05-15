@@ -133,6 +133,11 @@ jobs:
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u rocky-d --password-stdin
             COMPOSE_FILES="-f docker-compose.prod.yml"
             docker compose $COMPOSE_FILES pull
+            echo "Starting local PostgreSQL container..."
+            docker compose $COMPOSE_FILES up -d postgres
+            echo "Applying live persistence migrations..."
+            docker compose $COMPOSE_FILES --profile db-maintenance run --rm db-migrate >/tmp/live-persistence-migrate.json
+            echo "✓ Live persistence migrations applied"
             echo "Running pre-start strict mainnet pilot preflight..."
             if ! docker compose $COMPOSE_FILES run --rm --no-deps \
               executor-live uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
@@ -141,9 +146,7 @@ jobs:
               exit 1
             fi
             echo "✓ Pre-start mainnet pilot preflight passed"
-            docker compose $COMPOSE_FILES stop -t 30
-            docker compose $COMPOSE_FILES down --remove-orphans
-            docker compose $COMPOSE_FILES up -d
+            docker compose $COMPOSE_FILES up -d --no-deps --force-recreate executor-live
             docker image prune -f
 
       - name: Verify deployment

@@ -1,7 +1,43 @@
-# Production compose: live engine structure only.
+# Production compose: live engine + local PostgreSQL structure only.
 # Secrets and runtime settings are supplied by the private deployment .env.
 
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: cta-forge-postgres
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - cta_forge_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db-migrate:
+    image: ghcr.io/rocky-d/cta-forge/executor:latest
+    profiles: ["db-maintenance"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["uv", "run", "python", "-m", "executor.run_apply_live_persistence_migrations"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   executor-live:
     image: ghcr.io/rocky-d/cta-forge/executor:latest
     container_name: cta-forge-executor
@@ -17,3 +53,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  cta_forge_postgres_data:

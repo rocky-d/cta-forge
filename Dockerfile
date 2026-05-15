@@ -13,9 +13,10 @@ WORKDIR /app
 # Copy workspace config + lockfile first (layer cache)
 COPY pyproject.toml uv.lock ./
 
-# Copy all libs and services (uv workspace needs full structure)
+# Copy all libs, services, and deployment-owned DB migrations.
 COPY libs/ libs/
 COPY services/ services/
+COPY infra/db/ infra/db/
 
 # Sync all packages
 RUN uv sync --frozen --no-dev --all-packages
