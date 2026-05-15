@@ -155,6 +155,36 @@ Packaging note:
 
 - `run_import_live_persistence --write` requires `psycopg`; the executor package now declares `psycopg[binary]>=3.2.0` so the maintained import CLI can run DB writes in a project environment.
 
+## Planned import runner
+
+A review-first runner now wraps the canonical plan and existing single-journal importer:
+
+```bash
+uv run python -m executor.run_import_live_persistence_plan \
+  --root live-report \
+  --root backtest-results/openclaw-cleanup-20260512/workspace/artifacts \
+  --live-instance-id mainnet-pilot \
+  --run-id historical-import-plan-20260515
+```
+
+Dry-run result on 2026-05-15:
+
+- `write_requested`: false
+- `wrote`: false
+- journal directories: 7
+- import candidates: 1
+- requires review: 1
+- excluded exact duplicates: 1
+- excluded covered snapshots: 4
+- candidate rows: ticks 77, positions 282, targets 77, trades 18, signals 77, checkpoint 0
+
+The runner keeps production writes gated:
+
+- `--write` requires `--database-url`.
+- `--write` refuses plans with review items unless `--allow-review` is supplied after explicit approval.
+- `--write` currently requires exactly one import candidate, matching the current approved-candidate shape and avoiding accidental multi-artifact merges.
+- write mode always enables the existing post-write parity check.
+
 ## Next rehearsal gate
 
 Before any production DB import or runtime cutover:
