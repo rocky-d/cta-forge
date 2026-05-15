@@ -126,6 +126,26 @@ DB-derived report parity:
 - bars: 77
 - latest positions: 7
 
+Read-only file-vs-DB parity CLI:
+
+```bash
+uv run python -m executor.run_check_live_persistence_parity \
+  --journal-dir backtest-results/openclaw-cleanup-20260512/workspace/artifacts/cta-forge-open-study-20260507 \
+  --database-url postgresql:///cta_forge_plan_rehearsal \
+  --live-instance-id mainnet-pilot \
+  --run-id historical-import-plan-20260515
+```
+
+- result: `ok=true`
+- mismatch count: 0
+- DB/file counts matched: ticks 77, positions 282, targets 77, trades 18, signals 77
+- latest tick matched bar 77 at `2026-05-07T14:03:30.137784+00:00`
+
+Config preflight CLI smoke test:
+
+- unset environment -> safe `backend=file`
+- dual-mode env with `DATABASE_URL`, `LIVE_INSTANCE_ID`, and `RUN_ID` -> valid safe output without printing the database URL
+
 Public-safety note:
 
 - The importer writes public dashboard instance rows as `hidden` by default.
