@@ -83,3 +83,20 @@ def test_import_live_persistence_cli_write_requires_database_url(tmp_path) -> No
                 "--write",
             ]
         )
+
+
+def test_import_live_persistence_cli_parity_requires_write(tmp_path) -> None:
+    _write_fixture(tmp_path)
+
+    with pytest.raises(LivePersistenceImportError, match="parity-check.*write"):
+        main(
+            [
+                "--journal-dir",
+                str(tmp_path / "journal"),
+                "--live-instance-id",
+                "instance",
+                "--run-id",
+                "run",
+                "--parity-check",
+            ]
+        )

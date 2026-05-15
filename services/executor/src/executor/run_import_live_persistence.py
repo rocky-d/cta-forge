@@ -20,8 +20,10 @@ from .live_persistence_import import (
     build_live_persistence_import_rows,
     load_existing_live_persistence,
 )
+from .live_persistence_parity import compare_live_persistence_import_rows
 from .live_persistence_postgres import (
     LivePersistenceReferenceData,
+    load_live_import_rows,
     write_live_import_rows,
     write_live_reference_rows,
 )
@@ -41,9 +43,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     summary = _summary(rows, journal_dir=args.journal_dir, state_file=args.state_file)
+    if args.parity_check and not args.write:
+        raise LivePersistenceImportError("--parity-check requires --write")
     if args.write:
-        _write(args, rows)
+        parity = _write(args, rows)
         summary["wrote"] = True
+        if parity is not None:
+            summary["parity"] = parity
     else:
         summary["wrote"] = False
     json.dump(summary, sys.stdout, indent=2, sort_keys=True)
@@ -60,6 +66,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--live-instance-id", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--write", action="store_true")
+    parser.add_argument(
+        "--parity-check",
+        action="store_true",
+        help="After --write, read rows back from the same DB transaction and compare.",
+    )
     parser.add_argument("--database-url")
     parser.add_argument("--strategy-slug", default="cta-forge")
     parser.add_argument("--strategy-name", default="CTA Forge")
@@ -115,7 +126,9 @@ def _summary(
     }
 
 
-def _write(args: argparse.Namespace, rows: LivePersistenceImportRows) -> None:
+def _write(
+    args: argparse.Namespace, rows: LivePersistenceImportRows
+) -> dict[str, Any] | None:
     if not args.database_url:
         raise LivePersistenceImportError("--database-url is required with --write")
     reference = _reference_from_args(args, rows)
@@ -130,6 +143,19 @@ def _write(args: argparse.Namespace, rows: LivePersistenceImportRows) -> None:
         with conn.transaction():
             write_live_reference_rows(conn, reference)
             write_live_import_rows(conn, rows)
+            if not args.parity_check:
+                return None
+            report = compare_live_persistence_import_rows(
+                rows,
+                load_live_import_rows(conn, live_instance_id=args.live_instance_id),
+            )
+            if not report.ok:
+                details = "; ".join(report.mismatches[:3])
+                raise LivePersistenceImportError(
+                    f"post-import parity check failed: {details}"
+                )
+            return report.to_dict()
+    return None
 
 
 def _reference_from_args(

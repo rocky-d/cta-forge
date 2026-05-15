@@ -1,6 +1,6 @@
 # DBMS Persistence and Multi-Live Design — 2026-05-14
 
-Status: design note only; no implementation changes yet.
+Status: design and implementation trace. PostgreSQL schema/import/readback tooling exists, but cta-forge live runtime is still not wired to DB persistence.
 
 ## Intent
 
@@ -599,6 +599,7 @@ Progress trace:
 - 2026-05-14: Reserved Worker public instance ingest routes so default-instance snapshot/history/realtime writes also refresh strategy-level compatibility aliases, without changing live runtime behavior.
 - 2026-05-14: Added an injected-connection `PostgresLiveJournalStore` for DB-backed journal ticks/trades/signals/targets; still not wired into live runtime. Position writes clear existing rows for the affected tick before upsert to avoid stale DB positions on re-import.
 - 2026-05-14: Added optional `QD_PUBLIC_INSTANCE_SLUG` support in collector/realtime sidecars so existing strategy-level ingest endpoints can be rewritten to Worker instance-scoped ingest routes without payload contract changes.
+- 2026-05-15: Added DB readback helpers and Decimal-safe post-import parity reporting for normalized live persistence rows. The import CLI can now run `--write --parity-check` against an explicitly supplied test PostgreSQL URL, then fail closed if DB rows differ from JSONL/state input rows. No live runtime wiring.
 
 Scope:
 

@@ -633,6 +633,204 @@ def write_live_import_rows(conn: DbConnection, rows: LivePersistenceImportRows) 
         _write_signal(conn, row)
 
 
+def load_live_import_rows(
+    conn: DbConnection,
+    *,
+    live_instance_id: str,
+) -> LivePersistenceImportRows:
+    """Load schema-shaped operational rows for post-import parity checks."""
+
+    if not live_instance_id.strip():
+        raise LivePersistenceImportError("live_instance_id is required")
+    return LivePersistenceImportRows(
+        checkpoint=_load_checkpoint_row(conn, live_instance_id),
+        ticks=_load_tick_rows(conn, live_instance_id),
+        positions=_load_position_rows(conn, live_instance_id),
+        targets=_load_target_rows(conn, live_instance_id),
+        trades=_load_trade_rows(conn, live_instance_id),
+        signals=_load_signal_rows(conn, live_instance_id),
+    )
+
+
+def _load_checkpoint_row(
+    conn: DbConnection,
+    live_instance_id: str,
+) -> dict[str, Any] | None:
+    cursor = conn.execute(
+        """
+        select live_instance_id, run_id, bar_count, payload_json
+        from engine_checkpoints
+        where live_instance_id = %(live_instance_id)s
+        """,
+        {"live_instance_id": live_instance_id},
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    return {
+        "live_instance_id": _row_value(row, "live_instance_id", 0),
+        "run_id": _row_value(row, "run_id", 1),
+        "bar_count": _row_value(row, "bar_count", 2),
+        "payload_json": _json_object(_row_value(row, "payload_json", 3)),
+    }
+
+
+def _load_tick_rows(conn: DbConnection, live_instance_id: str) -> list[dict[str, Any]]:
+    cursor = conn.execute(
+        """
+        select live_instance_id, run_id, bar, ts, account_equity,
+               peak_equity, dd_pct, n_positions, summary_json
+        from live_ticks
+        where live_instance_id = %(live_instance_id)s
+        order by bar asc
+        """,
+        {"live_instance_id": live_instance_id},
+    )
+    return [
+        {
+            "live_instance_id": _row_value(row, "live_instance_id", 0),
+            "run_id": _row_value(row, "run_id", 1),
+            "bar": _row_value(row, "bar", 2),
+            "ts": _iso_value(_row_value(row, "ts", 3)),
+            "account_equity": _row_value(row, "account_equity", 4),
+            "peak_equity": _row_value(row, "peak_equity", 5),
+            "dd_pct": _row_value(row, "dd_pct", 6),
+            "n_positions": _row_value(row, "n_positions", 7),
+            "summary_json": _json_object(_row_value(row, "summary_json", 8)),
+        }
+        for row in cursor.fetchall()
+    ]
+
+
+def _load_position_rows(
+    conn: DbConnection,
+    live_instance_id: str,
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(
+        """
+        select t.bar as tick_bar, p.live_instance_id, p.symbol, p.side,
+               p.qty, p.entry_price, p.best_price, p.raw_json
+        from live_positions p
+        join live_ticks t on t.id = p.tick_id and t.live_instance_id = p.live_instance_id
+        where p.live_instance_id = %(live_instance_id)s
+        order by t.bar asc, p.symbol asc
+        """,
+        {"live_instance_id": live_instance_id},
+    )
+    return [
+        {
+            "tick_bar": _row_value(row, "tick_bar", 0),
+            "live_instance_id": _row_value(row, "live_instance_id", 1),
+            "symbol": _row_value(row, "symbol", 2),
+            "side": _row_value(row, "side", 3),
+            "qty": _row_value(row, "qty", 4),
+            "entry_price": _row_value(row, "entry_price", 5),
+            "best_price": _row_value(row, "best_price", 6),
+            "raw_json": _json_object(_row_value(row, "raw_json", 7)),
+        }
+        for row in cursor.fetchall()
+    ]
+
+
+def _load_target_rows(
+    conn: DbConnection,
+    live_instance_id: str,
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(
+        """
+        select live_instance_id, run_id, bar, ts, profile, target_ts,
+               staleness_seconds, target_gross, normalized_gross,
+               ignored_gross, ignored_gross_ratio, execution_coverage,
+               weights_json, ignored_weights_json, orders_json
+        from live_targets
+        where live_instance_id = %(live_instance_id)s
+        order by bar asc, ts asc, id asc
+        """,
+        {"live_instance_id": live_instance_id},
+    )
+    return [
+        {
+            "live_instance_id": _row_value(row, "live_instance_id", 0),
+            "run_id": _row_value(row, "run_id", 1),
+            "bar": _row_value(row, "bar", 2),
+            "ts": _iso_value(_row_value(row, "ts", 3)),
+            "profile": _row_value(row, "profile", 4),
+            "target_ts": _iso_value(_row_value(row, "target_ts", 5)),
+            "staleness_seconds": _row_value(row, "staleness_seconds", 6),
+            "target_gross": _row_value(row, "target_gross", 7),
+            "normalized_gross": _row_value(row, "normalized_gross", 8),
+            "ignored_gross": _row_value(row, "ignored_gross", 9),
+            "ignored_gross_ratio": _row_value(row, "ignored_gross_ratio", 10),
+            "execution_coverage": _row_value(row, "execution_coverage", 11),
+            "weights_json": _json_object(_row_value(row, "weights_json", 12)),
+            "ignored_weights_json": _json_object(
+                _row_value(row, "ignored_weights_json", 13)
+            ),
+            "orders_json": _json_array(_row_value(row, "orders_json", 14)),
+        }
+        for row in cursor.fetchall()
+    ]
+
+
+def _load_trade_rows(conn: DbConnection, live_instance_id: str) -> list[dict[str, Any]]:
+    cursor = conn.execute(
+        """
+        select live_instance_id, run_id, bar, ts, kind, symbol, side,
+               qty, price, reason, pnl, pnl_pct, held_bars,
+               exchange_order_id, raw_json
+        from live_trades
+        where live_instance_id = %(live_instance_id)s
+        order by ts asc, id asc
+        """,
+        {"live_instance_id": live_instance_id},
+    )
+    return [
+        {
+            "live_instance_id": _row_value(row, "live_instance_id", 0),
+            "run_id": _row_value(row, "run_id", 1),
+            "bar": _row_value(row, "bar", 2),
+            "ts": _iso_value(_row_value(row, "ts", 3)),
+            "kind": _row_value(row, "kind", 4),
+            "symbol": _row_value(row, "symbol", 5),
+            "side": _row_value(row, "side", 6),
+            "qty": _row_value(row, "qty", 7),
+            "price": _row_value(row, "price", 8),
+            "reason": _row_value(row, "reason", 9),
+            "pnl": _row_value(row, "pnl", 10),
+            "pnl_pct": _row_value(row, "pnl_pct", 11),
+            "held_bars": _row_value(row, "held_bars", 12),
+            "exchange_order_id": _row_value(row, "exchange_order_id", 13),
+            "raw_json": _json_object(_row_value(row, "raw_json", 14)),
+        }
+        for row in cursor.fetchall()
+    ]
+
+
+def _load_signal_rows(
+    conn: DbConnection,
+    live_instance_id: str,
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(
+        """
+        select live_instance_id, run_id, bar, ts, signals_json
+        from live_signals
+        where live_instance_id = %(live_instance_id)s
+        order by bar asc
+        """,
+        {"live_instance_id": live_instance_id},
+    )
+    return [
+        {
+            "live_instance_id": _row_value(row, "live_instance_id", 0),
+            "run_id": _row_value(row, "run_id", 1),
+            "bar": _row_value(row, "bar", 2),
+            "ts": _iso_value(_row_value(row, "ts", 3)),
+            "signals_json": _json_object(_row_value(row, "signals_json", 4)),
+        }
+        for row in cursor.fetchall()
+    ]
+
+
 def _write_public_dashboard_instance(
     conn: DbConnection,
     reference: LivePersistenceReferenceData,

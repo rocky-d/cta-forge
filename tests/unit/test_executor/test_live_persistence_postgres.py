@@ -13,10 +13,12 @@ from executor.live_persistence_import import (
     build_live_persistence_import_rows,
     load_existing_live_persistence,
 )
+from executor.live_persistence_parity import compare_live_persistence_import_rows
 from executor.live_persistence_postgres import (
     LivePersistenceReferenceData,
     PostgresLiveJournalStore,
     PostgresLiveStateStore,
+    load_live_import_rows,
     load_public_dashboard_instances,
     write_live_import_rows,
     write_live_reference_rows,
@@ -530,3 +532,91 @@ def test_write_live_reference_rows_requires_public_slug_when_public() -> None:
 
     with pytest.raises(LivePersistenceImportError, match="public_instance_slug"):
         write_live_reference_rows(conn, bad_reference)
+
+
+def test_load_live_import_rows_supports_post_import_parity(tmp_path) -> None:
+    expected = _rows(tmp_path)
+    assert expected.checkpoint is not None
+    conn = FakeConnection()
+    conn.next_row = {
+        "live_instance_id": expected.checkpoint["live_instance_id"],
+        "run_id": expected.checkpoint["run_id"],
+        "bar_count": expected.checkpoint["bar_count"],
+        "payload_json": _db_json(expected.checkpoint["payload_json"]),
+    }
+    conn.queued_rows = [
+        [],
+        [
+            {
+                **expected.ticks[0],
+                "ts": "2026-05-14T06:03:00+00:00",
+                "summary_json": _db_json(expected.ticks[0]["summary_json"]),
+            }
+        ],
+        [
+            {
+                **expected.positions[0],
+                "raw_json": _db_json(expected.positions[0]["raw_json"]),
+            }
+        ],
+        [
+            {
+                **expected.targets[0],
+                "ts": "2026-05-14T06:03:00+00:00",
+                "target_ts": "2026-05-14T06:00:00+00:00",
+                "weights_json": _db_json(expected.targets[0]["weights_json"]),
+                "ignored_weights_json": _db_json(
+                    expected.targets[0]["ignored_weights_json"]
+                ),
+                "orders_json": _db_json(expected.targets[0]["orders_json"]),
+            }
+        ],
+        [
+            {
+                **expected.trades[0],
+                "ts": "2026-05-14T06:03:01+00:00",
+                "raw_json": _db_json(expected.trades[0]["raw_json"]),
+            }
+        ],
+        [
+            {
+                **expected.signals[0],
+                "ts": "2026-05-14T06:03:00+00:00",
+                "signals_json": _db_json(expected.signals[0]["signals_json"]),
+            }
+        ],
+    ]
+
+    actual = load_live_import_rows(
+        conn,
+        live_instance_id="cta-forge-mainnet-pilot-01",
+    )
+    report = compare_live_persistence_import_rows(expected, actual)
+
+    assert report.ok is True
+    assert report.to_dict()["counts"]["ticks"] == {"expected": 1, "actual": 1}
+    assert all(
+        call.params == {"live_instance_id": "cta-forge-mainnet-pilot-01"}
+        for call in conn.calls
+    )
+
+
+def test_compare_live_persistence_import_rows_reports_mismatch(tmp_path) -> None:
+    expected = _rows(tmp_path)
+    actual = replace(expected, trades=[])
+
+    report = compare_live_persistence_import_rows(expected, actual)
+
+    assert report.ok is False
+    assert report.counts["trades"] == {"expected": 1, "actual": 0}
+    assert report.mismatches == ["trades: expected 1 rows, got 0"]
+
+
+def _db_json(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _db_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_db_json(item) for item in value]
+    return value
