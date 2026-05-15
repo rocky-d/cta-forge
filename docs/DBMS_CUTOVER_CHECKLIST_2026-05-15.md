@@ -60,13 +60,16 @@ The command emits a JSON manifest with:
 - equity/trade/signal/target row counts
 - first/latest tick summaries
 - latest target summary
+- per-file and combined content hashes
+- duplicate-content groups across archival copies
+- cross-directory bar overlaps that need canonical-source selection before DB import
 - candidate `engine-state.json` files
 - duplicate tick/signal bars that block the current PostgreSQL import shape
 - parse errors for malformed JSONL
 
 Use `--fail-on-blocked` in automation when all discovered directories are expected to be import-ready.
 
-First local inventory sample on 2026-05-15 over `live-report` plus recovered artifact roots found 7 journal directories: 6 ready and 1 blocked due duplicate bar `1` in `live-report` equity/signals.
+First local inventory sample on 2026-05-15 over `live-report` plus recovered artifact roots found 7 journal directories: 6 ready and 1 blocked due duplicate bar `1` in `live-report` equity/signals. The inventory also reports duplicate archival copies and overlapping bar ranges so final import can pick canonical segments instead of blindly re-importing every copied directory.
 
 ## Required decisions before production cutover
 

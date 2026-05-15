@@ -53,6 +53,19 @@ def test_scan_live_persistence_journal_dirs_reports_ready_and_blocked(tmp_path) 
         "equity": "102.2",
         "n_positions": 0,
     }
+    assert items["ready-journal"].bar_ranges["equity"] == {
+        "first": 1,
+        "latest": 2,
+        "records": 2,
+        "unique_bars": 2,
+    }
+    assert set(items["ready-journal"].content_hashes) == {
+        "equity",
+        "signals",
+        "targets",
+        "trades",
+    }
+    assert items["ready-journal"].combined_content_hash is not None
     assert items["ready-journal"].state_file_candidates == [
         tmp_path / "engine-state.json"
     ]
@@ -61,6 +74,26 @@ def test_scan_live_persistence_journal_dirs_reports_ready_and_blocked(tmp_path) 
         "equity": [1],
         "signals": [1],
     }
+    manifest = report.to_dict()
+    assert manifest["summary"]["bar_overlaps"] == 1
+    assert manifest["bar_overlaps"][0]["shared_equity_bars"] == {
+        "count": 1,
+        "sample": ["1"],
+    }
+
+
+def test_scan_live_persistence_journal_dirs_reports_duplicate_content(tmp_path) -> None:
+    _write_journal(tmp_path / "journal-a")
+    _write_journal(tmp_path / "journal-b")
+
+    manifest = scan_live_persistence_journal_dirs([tmp_path]).to_dict()
+
+    assert manifest["summary"]["duplicate_content_groups"] == 1
+    assert manifest["duplicate_content_groups"][0]["journal_dirs"] == [
+        str(tmp_path / "journal-a"),
+        str(tmp_path / "journal-b"),
+    ]
+    assert manifest["bar_overlaps"][0]["identical_content"] is True
 
 
 def test_scan_live_persistence_journal_dirs_reports_parse_errors(tmp_path) -> None:
@@ -85,7 +118,9 @@ def test_inventory_cli_prints_manifest(tmp_path, capsys) -> None:
     assert exit_code == 0
     assert payload["schema_version"] == "cta_forge.live_persistence_inventory.v1"
     assert payload["summary"] == {
+        "bar_overlaps": 0,
         "blocked": 0,
+        "duplicate_content_groups": 0,
         "journal_dirs": 1,
         "ready_for_import": 1,
     }
