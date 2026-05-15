@@ -71,6 +71,26 @@ Use `--fail-on-blocked` in automation when all discovered directories are expect
 
 First local inventory sample on 2026-05-15 over `live-report` plus recovered artifact roots found 7 journal directories: 6 ready and 1 blocked due duplicate bar `1` in `live-report` equity/signals. The inventory also reports duplicate archival copies and overlapping bar ranges so final import can pick canonical segments instead of blindly re-importing every copied directory.
 
+## Local canonical import-plan command
+
+After inventory, build a conservative canonical import plan:
+
+```bash
+uv run python -m executor.run_plan_live_persistence_import \
+  --root live-report \
+  --root backtest-results/openclaw-cleanup-20260512/workspace/artifacts
+```
+
+The plan classifies artifacts as:
+
+- `import_candidate`
+- `exclude_exact_duplicate`
+- `exclude_covered_snapshot`
+- `review_blocked`
+- `review_overlap_identity`
+
+Use `--fail-on-review` in automation when no blocked or ambiguous artifacts are expected. Current planning evidence lives in `docs/LIVE_PERSISTENCE_IMPORT_PLAN_2026-05-15.md`.
+
 ## Required decisions before production cutover
 
 1. Production PostgreSQL location
@@ -108,7 +128,8 @@ Before any production runtime wiring:
 - [ ] GitHub Lint/Test passes on pushed commit.
 - [ ] Production DB migration has been rehearsed on a clean test DB.
 - [ ] Local-data inventory manifest is generated and reviewed.
-- [ ] Every useful local journal/state artifact is classified as import-ready, blocked, or intentionally out of scope.
+- [ ] Canonical import plan is generated and reviewed.
+- [ ] Every useful local journal/state artifact is classified as import candidate, duplicate/covered exclusion, blocked, or intentionally out of scope.
 - [ ] Historical import from copied production journals passes `--write --parity-check` on test DB.
 - [ ] DB-derived live report equals JSONL-derived live report for the copied journals.
 - [ ] Duplicate-bar or other ambiguous historical records are either fixed by an approved migration rule or explicitly excluded with evidence.
