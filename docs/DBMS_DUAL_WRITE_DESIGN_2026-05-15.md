@@ -32,7 +32,11 @@ Required defaults:
 - unset -> `file`
 - invalid value -> fail startup/preflight before trading
 - production initial value -> `file`
+- `dual` requires `DATABASE_URL`, `LIVE_INSTANCE_ID`, and `RUN_ID`
+- `postgres` requires `DATABASE_URL`, `LIVE_INSTANCE_ID`, `RUN_ID`, and `ALLOW_POSTGRES_SOURCE_OF_TRUTH=true`
 - `postgres` mode is not allowed until after a separate approval checkpoint
+
+`services/executor/src/executor/live_persistence_runtime.py` implements this config parser/validator as prep only. It is not wired into live runtime yet.
 
 ## Ordering rule
 
