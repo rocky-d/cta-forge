@@ -23,6 +23,7 @@ from executor.live_persistence_postgres import (
     write_live_import_rows,
     write_live_reference_rows,
 )
+from executor.routes import _journal_to_report_format
 
 
 @dataclass
@@ -268,27 +269,44 @@ def test_postgres_live_journal_store_loads_journal_shapes() -> None:
                 "qty": Decimal("2.000000000000001"),
                 "entry_price": Decimal("9.91873"),
                 "best_price": Decimal("9.7069"),
-                "raw_json": {"side": "long", "source": "core"},
+                "raw_json": {
+                    "side": "long",
+                    "source": "core",
+                    "qty": "2.000000000000001",
+                },
             }
         ],
         [
             {
+                "ts": "2026-05-14T06:03:01+00:00",
+                "bar": 91,
+                "kind": "target_buy",
+                "symbol": "LINK",
+                "side": "long",
+                "qty": Decimal("2.000000000000001"),
+                "price": Decimal("9.7069"),
+                "reason": "target:v16a-mainnet-pilot",
+                "pnl": None,
+                "pnl_pct": None,
+                "held_bars": None,
+                "exchange_order_id": None,
                 "raw_json": {
                     "ts": "2026-05-14T06:03:01+00:00",
                     "bar": 91,
                     "kind": "target_buy",
                     "symbol": "LINK",
-                    "qty": 2.0,
-                    "price": 9.7069,
+                    "side": "long",
+                    "qty": "2.000000000000001",
+                    "price": "9.7069",
                     "reason": "target:v16a-mainnet-pilot",
-                }
+                },
             }
         ],
         [
             {
                 "ts": "2026-05-14T06:03:00+00:00",
                 "bar": 91,
-                "signals_json": {"LINK": 0.12345678901234566},
+                "signals_json": {"LINK": "0.12345678901234567"},
             }
         ],
         [
@@ -303,7 +321,7 @@ def test_postgres_live_journal_store_loads_journal_shapes() -> None:
                 "ignored_gross": Decimal("0"),
                 "ignored_gross_ratio": Decimal("0"),
                 "execution_coverage": Decimal("1"),
-                "weights_json": {"LINK": 0.18428112026966947},
+                "weights_json": {"LINK": "0.18428112026966947"},
                 "ignored_weights_json": {},
                 "orders_json": [],
             }
@@ -337,16 +355,99 @@ def test_postgres_live_journal_store_loads_journal_shapes() -> None:
         }
     ]
     assert trades[0]["kind"] == "target_buy"
+    assert trades[0]["qty"] == 2.000000000000001
+    assert trades[0]["price"] == 9.7069
     assert signals == [
         {
             "ts": "2026-05-14T06:03:00+00:00",
             "bar": 91,
-            "signals": {"LINK": 0.12345678901234566},
+            "signals": {"LINK": 0.12345678901234567},
         }
     ]
     assert targets[0]["profile"] == "v16a-mainnet-pilot"
     assert targets[0]["target_gross"] == 0.5461864655472283
     assert targets[0]["weights"] == {"LINK": 0.18428112026966947}
+
+
+def test_postgres_live_journal_store_matches_report_conversion_shape() -> None:
+    conn = FakeConnection()
+    conn.queued_rows = [
+        [
+            {
+                "id": 10_001,
+                "ts": "2026-05-14T06:03:00+00:00",
+                "bar": 1,
+                "account_equity": Decimal("100.0"),
+                "peak_equity": Decimal("100.0"),
+                "dd_pct": Decimal("0"),
+                "n_positions": 1,
+                "summary_json": {},
+            },
+            {
+                "id": 10_002,
+                "ts": "2026-05-14T07:03:00+00:00",
+                "bar": 2,
+                "account_equity": Decimal("102.0"),
+                "peak_equity": Decimal("102.0"),
+                "dd_pct": Decimal("0"),
+                "n_positions": 0,
+                "summary_json": {},
+            },
+        ],
+        [
+            {
+                "tick_id": 10_001,
+                "symbol": "BTC",
+                "side": "long",
+                "qty": Decimal("0.1"),
+                "entry_price": Decimal("50000"),
+                "best_price": Decimal("52000"),
+                "raw_json": {"side": "long", "qty": "0.1"},
+            }
+        ],
+        [
+            {
+                "ts": "2026-05-14T07:03:01+00:00",
+                "bar": 2,
+                "kind": "close",
+                "symbol": "BTC",
+                "side": "long",
+                "qty": Decimal("0.1"),
+                "price": Decimal("52000"),
+                "reason": "tp",
+                "pnl": Decimal("200"),
+                "pnl_pct": Decimal("4.0"),
+                "held_bars": 1,
+                "exchange_order_id": None,
+                "raw_json": {
+                    "ts": "2026-05-14T07:03:01+00:00",
+                    "bar": 2,
+                    "kind": "close",
+                    "symbol": "BTC",
+                    "side": "long",
+                    "qty": "0.1",
+                    "price": "52000",
+                    "reason": "tp",
+                    "entry_price": "50000",
+                    "pnl": "200",
+                    "pnl_pct": "4.0",
+                    "held_bars": 1,
+                },
+            }
+        ],
+    ]
+    store = PostgresLiveJournalStore(conn, live_instance_id="instance", run_id="run")
+
+    report = _journal_to_report_format(store)
+
+    assert report["bars"] == 2
+    assert report["equity_curve"] == [
+        ("2026-05-14T06:03:00+00:00", 100.0),
+        ("2026-05-14T07:03:00+00:00", 102.0),
+    ]
+    assert report["positions"] == {}
+    assert len(report["trades"]) == 1
+    assert report["trades"][0]["pnl"] == 200
 
 
 def test_postgres_live_state_store_saves_checkpoint_payload() -> None:

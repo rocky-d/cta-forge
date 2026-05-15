@@ -14,7 +14,7 @@ from core.metrics import calculate_live_metrics, calculate_metrics
 
 from .backtest import BacktestResult, calc_ulcer, run_full_backtest
 from .decision import V10GStrategyParams
-from .journal import TradeJournal
+from .journal import LiveJournalStore, TradeJournal
 from .live import V10G_PROFILE_SLUG, V16A_PROFILE_SLUG
 from .profiles.v16a_badscore_overlay import (
     V16A_MAINNET_PILOT_PROFILE,
@@ -201,7 +201,7 @@ async def run_backtest_sync(req: BacktestRequest) -> dict:
 
 
 def _journal_to_report_format(
-    journal: TradeJournal,
+    journal: LiveJournalStore,
 ) -> dict[str, Any]:
     """Convert journal JSONL data into report-service compatible format."""
     equity_records = journal.load_equity()

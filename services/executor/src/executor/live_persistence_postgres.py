@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Protocol, Sequence, cast
 
 from .live import LiveState
@@ -318,14 +318,14 @@ class PostgresLiveJournalStore:
             tick_id = _row_value(row, "tick_id", 0)
             symbol = str(_row_value(row, "symbol", 1))
             position = _json_object(_row_value(row, "raw_json", 6))
-            position.setdefault("side", _row_value(row, "side", 2))
-            position.setdefault("qty", _json_number(_row_value(row, "qty", 3)))
+            position["side"] = _row_value(row, "side", 2)
+            position["qty"] = _json_number(_row_value(row, "qty", 3))
             entry_price = _row_value(row, "entry_price", 4)
             best_price = _row_value(row, "best_price", 5)
             if entry_price is not None:
-                position.setdefault("entry", _json_number(entry_price))
+                position["entry"] = _json_number(entry_price)
             if best_price is not None:
-                position.setdefault("best", _json_number(best_price))
+                position["best"] = _json_number(best_price)
             positions_by_tick.setdefault(tick_id, {})[symbol] = position
 
         records: list[dict] = []
@@ -351,16 +351,45 @@ class PostgresLiveJournalStore:
 
         cursor = self._conn.execute(
             """
-            select raw_json
+            select ts, bar, kind, symbol, side, qty, price, reason,
+                   pnl, pnl_pct, held_bars, exchange_order_id, raw_json
             from live_trades
             where live_instance_id = %(live_instance_id)s
             order by ts asc, id asc
             """,
             {"live_instance_id": self._live_instance_id},
         )
-        return [
-            _json_object(_row_value(row, "raw_json", 0)) for row in cursor.fetchall()
-        ]
+        records: list[dict] = []
+        for row in cursor.fetchall():
+            raw = _json_object(_row_value(row, "raw_json", 12))
+            record = raw | {
+                "ts": _iso_value(_row_value(row, "ts", 0)),
+                "bar": _row_value(row, "bar", 1),
+                "kind": _row_value(row, "kind", 2),
+                "symbol": _row_value(row, "symbol", 3),
+                "qty": _json_number(_row_value(row, "qty", 5)),
+                "price": _json_number(_row_value(row, "price", 6)),
+                "reason": _row_value(row, "reason", 7),
+            }
+            side = _row_value(row, "side", 4)
+            if side:
+                record["side"] = side
+            pnl = _row_value(row, "pnl", 8)
+            pnl_pct = _row_value(row, "pnl_pct", 9)
+            held_bars = _row_value(row, "held_bars", 10)
+            exchange_order_id = _row_value(row, "exchange_order_id", 11)
+            if "entry_price" in record:
+                record["entry_price"] = _json_number(record["entry_price"])
+            if pnl is not None:
+                record["pnl"] = _json_number(pnl)
+            if pnl_pct is not None:
+                record["pnl_pct"] = _json_number(pnl_pct)
+            if held_bars is not None:
+                record["held_bars"] = held_bars
+            if exchange_order_id is not None:
+                record["exchange_order_id"] = exchange_order_id
+            records.append(record)
+        return records
 
     def load_signals(self) -> list[dict]:
         """Load signal records in file-journal-compatible shape."""
@@ -378,7 +407,7 @@ class PostgresLiveJournalStore:
             {
                 "ts": _iso_value(_row_value(row, "ts", 0)),
                 "bar": _row_value(row, "bar", 1),
-                "signals": _json_object(_row_value(row, "signals_json", 2)),
+                "signals": _json_number_object(_row_value(row, "signals_json", 2)),
             }
             for row in cursor.fetchall()
         ]
@@ -418,11 +447,11 @@ class PostgresLiveJournalStore:
                 "execution_coverage": _json_number(
                     _row_value(row, "execution_coverage", 9)
                 ),
-                "weights": _json_object(_row_value(row, "weights_json", 10)),
-                "ignored_weights": _json_object(
+                "weights": _json_number_object(_row_value(row, "weights_json", 10)),
+                "ignored_weights": _json_number_object(
                     _row_value(row, "ignored_weights_json", 11)
                 ),
-                "orders": _json_array(_row_value(row, "orders_json", 12)),
+                "orders": _json_number_array(_row_value(row, "orders_json", 12)),
             }
             for row in cursor.fetchall()
         ]
@@ -1151,9 +1180,30 @@ def _json_array(value: Any) -> list[Any]:
     return value
 
 
+def _json_number_object(value: Any) -> dict[str, Any]:
+    return {key: _json_number(item) for key, item in _json_object(value).items()}
+
+
+def _json_number_array(value: Any) -> list[Any]:
+    return [_json_number_tree(item) for item in _json_array(value)]
+
+
+def _json_number_tree(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_number_tree(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_number_tree(item) for item in value]
+    return _json_number(value)
+
+
 def _json_number(value: Any) -> Any:
     if isinstance(value, Decimal):
         return float(value)
+    if isinstance(value, str):
+        try:
+            return float(Decimal(value))
+        except (InvalidOperation, ValueError):
+            return value
     return value
 
 
