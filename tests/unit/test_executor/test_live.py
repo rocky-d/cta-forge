@@ -36,6 +36,7 @@ class FakeExchange:
         positions: list[Position] | None = None,
         open_orders: list[dict] | None = None,
         market_price: Decimal = Decimal("73000"),
+        market_prices: dict[str, Decimal] | None = None,
         filled_size: Decimal | None = None,
         order_success: bool = True,
     ) -> None:
@@ -46,6 +47,7 @@ class FakeExchange:
         self._positions = positions or []
         self._open_orders = open_orders or []
         self._market_price = market_price
+        self._market_prices = market_prices or {}
         self._filled_size = filled_size
         self._order_success = order_success
         self.closed_positions: list[str] = []
@@ -67,12 +69,13 @@ class FakeExchange:
         return None
 
     async def get_market_snapshot(self, symbol: str) -> MarketSnapshot:
+        market_price = self._market_prices.get(symbol, self._market_price)
         return MarketSnapshot(
             symbol=symbol,
-            mid_price=self._market_price,
-            best_bid=self._market_price - Decimal("1"),
-            best_ask=self._market_price + Decimal("1"),
-            mark_price=self._market_price,
+            mid_price=market_price,
+            best_bid=market_price - Decimal("1"),
+            best_ask=market_price + Decimal("1"),
+            mark_price=market_price,
             funding_rate=Decimal("0.0001"),
             timestamp_ms=1000000,
         )
@@ -170,6 +173,64 @@ def test_live_engine_records_runtime_identity_metadata(tmp_path) -> None:
     assert record["live_instance_id"] == "cta-forge-mainnet-pilot-01"
     assert record["run_id"] == "20260514T221212Z-deadbeef"
     assert record["public_instance_slug"] == "mainnet-pilot"
+
+
+@pytest.mark.asyncio
+async def test_live_engine_position_snapshot_includes_public_safe_weight() -> None:
+    """Actual journal positions include signed exposure weights for dashboards."""
+
+    exchange = FakeExchange(
+        market_prices={"BTC": Decimal("100000"), "ARB": Decimal("0.50")}
+    )
+    engine = LiveEngine(exchange, dry_run=True)
+    engine._state.positions = {
+        "BTC": PositionState(
+            "BTC", qty=0.001, entry_price=90000, entry_bar=1, best_price=100000
+        ),
+        "ARB": PositionState(
+            "ARB", qty=-200, entry_price=0.60, entry_bar=1, best_price=0.50
+        ),
+    }
+
+    snapshot = await engine._position_snapshot(equity=2000.0)
+
+    assert snapshot["BTC"] == {
+        "side": "long",
+        "qty": 0.001,
+        "entry": 90000.0,
+        "best": 100000.0,
+        "weight": 0.05,
+    }
+    assert snapshot["ARB"] == {
+        "side": "short",
+        "qty": 200.0,
+        "entry": 0.6,
+        "best": 0.5,
+        "weight": -0.05,
+    }
+
+
+@pytest.mark.asyncio
+async def test_live_engine_persists_position_weight_without_breaking_journal(
+    tmp_path,
+) -> None:
+    """Enriched position fields remain additive in the existing file journal."""
+
+    exchange = FakeExchange(market_prices={"SOL": Decimal("150")})
+    engine = LiveEngine(exchange, dry_run=True, journal_dir=str(tmp_path / "journal"))
+    engine._state.positions = {
+        "SOL": PositionState(
+            "SOL", qty=0.2, entry_price=140, entry_bar=1, best_price=150
+        )
+    }
+
+    positions = await engine._position_snapshot(equity=100.0)
+    engine._journal.record_tick(1, 100.0, 100.0, positions)
+
+    record = engine._journal.load_equity()[0]
+    assert record["positions"]["SOL"]["side"] == "long"
+    assert record["positions"]["SOL"]["qty"] == 0.2
+    assert record["positions"]["SOL"]["weight"] == 0.3
 
 
 @pytest.mark.asyncio

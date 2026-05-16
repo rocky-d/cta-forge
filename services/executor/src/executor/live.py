@@ -625,6 +625,33 @@ class LiveEngine:
             if last_equity is not None:
                 self._last_tick_equity = float(last_equity)
 
+    async def _position_snapshot(self, equity: float) -> dict[str, dict]:
+        """Build the actual-position journal snapshot for the current state.
+
+        The journal keeps private runtime fields for persistence/reconciliation,
+        plus a public-safe signed exposure weight used by dashboard collectors.
+        """
+        equity_value = float(equity)
+        positions: dict[str, dict] = {}
+        for sym, pos in self._state.positions.items():
+            side = "long" if pos.qty > 0 else "short"
+            record = {
+                "side": side,
+                "qty": abs(pos.qty),
+                "entry": pos.entry_price,
+                "best": pos.best_price,
+            }
+            try:
+                snap = await self._exchange.get_market_snapshot(sym)
+                price = float(snap.mark_price or snap.mid_price)
+            except Exception:
+                logger.warning("Failed to price position %s for public weight", sym)
+            else:
+                if equity_value > 0 and price > 0:
+                    record["weight"] = float(pos.qty * price / equity_value)
+            positions[sym] = record
+        return positions
+
     async def _tick(self) -> None:
         """One iteration of the trading loop."""
         logger.info("=== Tick #%d ===", self._state.bar_count + 1)
@@ -694,15 +721,7 @@ class LiveEngine:
         self._state.peak_equity = max(self._state.peak_equity, equity)
 
         # 6. Journal: record tick equity + signals
-        pos_snapshot = {
-            sym: {
-                "side": "long" if p.qty > 0 else "short",
-                "qty": abs(p.qty),
-                "entry": p.entry_price,
-                "best": p.best_price,
-            }
-            for sym, p in self._state.positions.items()
-        }
+        pos_snapshot = await self._position_snapshot(equity)
         self._journal.record_tick(
             bar=self._state.bar_count,
             equity=equity,
