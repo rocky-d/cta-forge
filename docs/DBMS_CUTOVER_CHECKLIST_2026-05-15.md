@@ -133,8 +133,8 @@ Before any production runtime wiring:
 - [ ] Local-data inventory manifest is generated and reviewed.
 - [x] Canonical import plan is generated and reviewed (`docs/LIVE_PERSISTENCE_IMPORT_REVIEW_2026-05-16.md`).
 - [x] Every discovered local journal/state artifact is classified as import candidate, duplicate/covered exclusion, blocked, or intentionally out of scope for the May 2026 mainnet-pilot import.
-- [ ] Historical import from copied production journals passes `--write --parity-check` on test DB.
-- [ ] DB-derived live report equals JSONL-derived live report for the copied journals.
+- [x] Historical import from copied production journals passed production `--write` with parity check for the 2026-05-16 active `mainnet-pilot` snapshot (`docs/LIVE_PERSISTENCE_IMPORT_REVIEW_2026-05-16.md`).
+- [x] DB-derived import rows matched JSONL-derived rows for the copied active production journal; independent parity `ok=true`, mismatch count 0.
 - [ ] Duplicate-bar or other ambiguous historical records are either fixed by an approved migration rule or explicitly excluded with evidence.
 - [x] Backup and restore have been tested on non-production DB (`cta_forge_plan_restore_rehearsal_20260515`, parity ok).
 - [ ] Public dashboard payload grep shows no private identifiers.

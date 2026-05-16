@@ -122,3 +122,64 @@ Use `--allow-review` only to acknowledge the documented decision above: import t
 ## Current recommendation
 
 Next safe step is a separate, explicit production DB import approval using the command shape above. This is a DB mutation, not an executor deployment, and should still be treated as its own approval boundary.
+
+## Production import record
+
+2026-05-16T07:56Z approval was granted for the production DB historical import.
+
+Before writing, the active EC2 journal was reviewed because it superseded the older local 77-tick snapshot used in the pre-approval review:
+
+- source snapshot: `/home/admin/ops/cta-forge/import-staging/mainnet-pilot-20260516T080417Z`
+- source copied from: `/home/admin/cta-forge/journal/mainnet-pilot`
+- import run id: `historical-import-mainnet-pilot-20260516-active`
+- pre-import backup: `/home/admin/ops/cta-forge/backups/cta_forge_live_pre_import_20260516T075902Z.dump`
+- dry-run output: `/home/admin/ops/cta-forge/import-staging/outputs/dryrun-historical-import-mainnet-pilot-20260516-active-20260516T080417Z.json`
+- write output: `/home/admin/ops/cta-forge/import-staging/outputs/write-historical-import-mainnet-pilot-20260516-active-20260516T080506Z.json`
+- independent parity output: `/home/admin/ops/cta-forge/import-staging/outputs/parity-historical-import-mainnet-pilot-20260516-active-20260516T080555Z.json`
+
+Production write result:
+
+- `write_requested`: `true`
+- `wrote`: `true`
+- journal dirs: 1
+- import candidates: 1
+- requires review: 0
+- ticks: 287
+- positions: 1578
+- targets: 287
+- trades: 35
+- signals: 287
+- checkpoint: 0
+- latest tick: bar 287 at `2026-05-16T08:03:31.868171+00:00`
+- latest target: bar 287, target timestamp `2026-05-16T07:00:00+00:00`, profile `v16a-mainnet-pilot`
+- latest trade in independent parity report: bar 280, `target_sell` `LINK`, `2026-05-16T02:03:35.346514+00:00`
+- write-time parity: `ok=true`, mismatch count 0
+- independent parity: `ok=true`, mismatch count 0
+
+Post-import database counts:
+
+- `live_ticks`: 287
+- `live_positions`: 1578
+- `live_targets`: 287
+- `live_trades`: 35
+- `live_signals`: 287
+- `engine_checkpoints`: 0
+- `live_instances`: 1
+- `live_runs`: 1
+- `public_dashboard_instances`: 1
+- non-hidden public dashboard rows: 0
+
+Runtime safety confirmation after import:
+
+- no executor deploy
+- no executor restart; `cta-forge-executor` still started at `2026-05-15T08:30:47.889243531Z`
+- postgres healthy; restart 0; OOM false
+- executor restart 0; OOM false
+- runtime remains `PERSISTENCE_BACKEND=file`
+- `DATABASE_URL` remains configured but not source-of-truth
+- no dual-write enabled
+- post-import strict mainnet preflight completed from the unchanged executor
+- executor risk log grep since `2026-05-16T08:00:00Z`: 0
+- postgres warning/error grep since `2026-05-16T08:00:00Z`: 0
+
+Important correction to the pre-approval recommendation: the approved local candidate was not imported directly because the active production journal contained a newer complete file-backed record. Importing the active 287-tick snapshot was safer and more complete than importing the stale 77-tick local snapshot.
