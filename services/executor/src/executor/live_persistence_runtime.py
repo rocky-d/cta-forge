@@ -16,6 +16,8 @@ from .live_persistence_dual import (
 )
 
 POSTGRES_SOURCE_OF_TRUTH_ALLOW_ENV = "ALLOW_POSTGRES_SOURCE_OF_TRUTH"
+SHADOW_WRITE_FAILURE_POLICY_ENV = "LIVE_PERSISTENCE_SHADOW_FAILURE_POLICY"
+LEGACY_SHADOW_WRITE_FAILURE_POLICY_ENV = "SHADOW_WRITE_FAILURE_POLICY"
 
 
 def _optional_env_text(value: str | None) -> str | None:
@@ -76,7 +78,8 @@ def load_live_persistence_runtime_config(
         env.get("RUN_ID")
     )
     shadow_failure_policy = _parse_shadow_failure_policy(
-        env.get("SHADOW_WRITE_FAILURE_POLICY")
+        env.get(SHADOW_WRITE_FAILURE_POLICY_ENV)
+        or env.get(LEGACY_SHADOW_WRITE_FAILURE_POLICY_ENV)
     )
     allow_postgres_source_of_truth = _is_truthy(
         env.get(POSTGRES_SOURCE_OF_TRUTH_ALLOW_ENV)
@@ -127,5 +130,5 @@ def _parse_shadow_failure_policy(value: str | None) -> ShadowWriteFailurePolicy:
         return "warn"
     if normalized == "raise":
         return "raise"
-    msg = "SHADOW_WRITE_FAILURE_POLICY must be one of: warn, raise"
+    msg = f"{SHADOW_WRITE_FAILURE_POLICY_ENV} must be one of: warn, raise"
     raise ValueError(msg)

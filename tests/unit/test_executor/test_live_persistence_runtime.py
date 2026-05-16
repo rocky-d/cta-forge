@@ -30,7 +30,7 @@ def test_persistence_runtime_config_loads_dual_mode() -> None:
             "DATABASE_URL": "postgresql://user:secret@example/db",
             "LIVE_INSTANCE_ID": " cta-forge-mainnet-pilot-01 ",
             "RUN_ID": " run-001 ",
-            "SHADOW_WRITE_FAILURE_POLICY": " raise ",
+            "LIVE_PERSISTENCE_SHADOW_FAILURE_POLICY": " raise ",
             "ALLOW_POSTGRES_SOURCE_OF_TRUTH": "false",
         }
     )
@@ -93,15 +93,29 @@ def test_postgres_mode_requires_source_of_truth_allow_flag() -> None:
     assert config.allow_postgres_source_of_truth is True
 
 
+def test_legacy_shadow_policy_env_is_still_accepted() -> None:
+    config = load_live_persistence_runtime_config(
+        {
+            "PERSISTENCE_BACKEND": "dual",
+            "DATABASE_URL": "postgresql:///cta",
+            "LIVE_INSTANCE_ID": "instance-1",
+            "RUN_ID": "run-1",
+            "SHADOW_WRITE_FAILURE_POLICY": "raise",
+        }
+    )
+
+    assert config.shadow_failure_policy == "raise"
+
+
 def test_invalid_shadow_policy_fails_closed() -> None:
-    with pytest.raises(ValueError, match="SHADOW_WRITE_FAILURE_POLICY"):
+    with pytest.raises(ValueError, match="LIVE_PERSISTENCE_SHADOW_FAILURE_POLICY"):
         load_live_persistence_runtime_config(
             {
                 "PERSISTENCE_BACKEND": "dual",
                 "DATABASE_URL": "postgresql:///cta",
                 "LIVE_INSTANCE_ID": "instance-1",
                 "RUN_ID": "run-1",
-                "SHADOW_WRITE_FAILURE_POLICY": "ignore",
+                "LIVE_PERSISTENCE_SHADOW_FAILURE_POLICY": "ignore",
             }
         )
 

@@ -12,12 +12,16 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence, cast
 
 from .live import LiveState
 from .live_persistence_import import (
+    LivePersistenceImportBatch,
     LivePersistenceImportError,
+    LivePersistenceImportKeys,
     LivePersistenceImportRows,
+    build_live_persistence_import_rows,
 )
 from .live_public_instances import PublicDashboardInstance
 from .state import decode_state_payload, encode_state_payload
@@ -90,15 +94,31 @@ class PostgresLiveStateStore:
         """Persist the latest DB checkpoint for this live instance."""
 
         payload = encode_state_payload(state)
+        self.save_file_payload(payload)
+
+    def save_file_payload(self, payload: Mapping[str, Any]) -> None:
+        """Persist an already-encoded file checkpoint payload exactly."""
+
+        bar_count = payload.get("bar_count")
+        if bar_count is None:
+            raise LivePersistenceImportError("checkpoint payload missing bar_count")
         _write_checkpoint(
             self._conn,
             {
                 "live_instance_id": self._live_instance_id,
                 "run_id": self._run_id,
-                "bar_count": state.bar_count,
-                "payload_json": payload,
+                "bar_count": bar_count,
+                "payload_json": dict(payload),
             },
         )
+
+    def save_file_payload_path(self, path: str | Path) -> None:
+        """Persist an already-written JSON checkpoint file exactly."""
+
+        payload = json.loads(Path(path).read_text())
+        if not isinstance(payload, dict):
+            raise LivePersistenceImportError("checkpoint payload must be object")
+        self.save_file_payload(payload)
 
 
 class PostgresLiveJournalStore:
@@ -286,6 +306,58 @@ class PostgresLiveJournalStore:
                 },
                 "orders_json": orders,
             },
+        )
+
+    def record_file_equity(self, record: Mapping[str, Any]) -> None:
+        """Record one exact file-backed equity journal row."""
+
+        rows = self._file_rows(equity=[dict(record)])
+        tick_ids = _write_ticks(self._conn, rows.ticks)
+        _write_positions(self._conn, rows.positions, tick_ids)
+
+    def record_file_trade(self, record: Mapping[str, Any]) -> None:
+        """Record one exact file-backed trade journal row."""
+
+        rows = self._file_rows(trades=[dict(record)])
+        for row in rows.trades:
+            _write_trade(self._conn, row)
+
+    def record_file_signals(self, record: Mapping[str, Any]) -> None:
+        """Record one exact file-backed signals journal row."""
+
+        rows = self._file_rows(signals=[dict(record)])
+        for row in rows.signals:
+            _write_signal(self._conn, row)
+
+    def record_file_target(self, record: Mapping[str, Any]) -> None:
+        """Record one exact file-backed target diagnostics journal row."""
+
+        rows = self._file_rows(targets=[dict(record)])
+        for row in rows.targets:
+            _write_target(self._conn, row)
+
+    def _file_rows(
+        self,
+        *,
+        equity: list[dict[str, Any]] | None = None,
+        trades: list[dict[str, Any]] | None = None,
+        signals: list[dict[str, Any]] | None = None,
+        targets: list[dict[str, Any]] | None = None,
+    ) -> LivePersistenceImportRows:
+        return build_live_persistence_import_rows(
+            LivePersistenceImportBatch(
+                journal_dir=Path("."),
+                state_file=None,
+                state=None,
+                equity=equity or [],
+                trades=trades or [],
+                signals=signals or [],
+                targets=targets or [],
+            ),
+            LivePersistenceImportKeys(
+                live_instance_id=self._live_instance_id,
+                run_id=self._run_id,
+            ),
         )
 
     def load_equity(self) -> list[dict]:

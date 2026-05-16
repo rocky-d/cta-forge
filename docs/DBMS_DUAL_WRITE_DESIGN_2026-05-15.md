@@ -141,6 +141,33 @@ Rollback for dual-write must be simple:
 4. verify next tick writes file-backed journals/checkpoint as before
 5. keep DB data for comparison; do not delete it during incident response
 
+## 2026-05-16 code-prep review
+
+After the production historical import, the next safe step was limited to code preparation for dual-write shadow mode. This does not authorize deployment, executor restart, or enabling `PERSISTENCE_BACKEND=dual` in production.
+
+Readiness review found the import/runtime base healthy:
+
+- production import completed with `wrote=true`
+- write-time and independent parity were `ok=true`, mismatch count 0
+- executor remained file-backed with restart 0 and no post-import risk logs
+- GitHub Lint/Test passed on the import evidence commit
+
+Two code-prep gaps were fixed before considering any runtime enablement:
+
+- the configured env name `LIVE_PERSISTENCE_SHADOW_FAILURE_POLICY` now matches runtime parsing, while the older `SHADOW_WRITE_FAILURE_POLICY` remains accepted as a compatibility alias
+- live runtime store wiring now supports `file` and file-first `dual` mode, but still fails closed for `postgres` source-of-truth mode
+
+The dual-mode runtime wiring mirrors exact file-backed journal/checkpoint records to PostgreSQL after primary file writes. This avoids false parity mismatches from independently generated DB timestamps or checkpoint `saved_at` values. File reads remain the only live read path in dual mode.
+
+Validation for this code-prep step:
+
+- full unit suite: `uv run pytest -q` -> 358 passed
+- lint: `uv run ruff check` -> passed
+- format: `uv run ruff format --check` -> passed
+- targeted type check for touched live-persistence files: `uv run ty check ...` -> passed
+
+Next runtime-impacting action, if approved separately, is a controlled production deploy/restart while keeping `PERSISTENCE_BACKEND=file`. Only after the new code is deployed and observed should `PERSISTENCE_BACKEND=dual` be enabled in a later controlled restart window.
+
 ## Hard stop
 
 Do not proceed to DB read/source-of-truth if any of these are true:

@@ -165,13 +165,15 @@ Before any production runtime wiring:
 
 Requires new code and separate approval. Design gate: `docs/DBMS_DUAL_WRITE_DESIGN_2026-05-15.md`.
 
-1. Add `PERSISTENCE_BACKEND=file|dual|postgres`, default `file`.
-2. In `dual`, live runtime writes file first and DB second, or uses an explicitly chosen safe ordering.
-3. Reads remain from file.
-4. DB failures must be visible and fail according to approved policy.
-5. Observe multiple ticks.
-6. Compare file and DB after each tick.
-7. Stop if any parity mismatch occurs.
+1. [x] Add `PERSISTENCE_BACKEND=file|dual|postgres`, default `file`.
+2. [x] In `dual`, live runtime writes file first and mirrors exact file records to DB second.
+3. [x] Reads remain from file in the prepared code path.
+4. [x] DB failures are visible and follow `LIVE_PERSISTENCE_SHADOW_FAILURE_POLICY=warn|raise`.
+5. [ ] Deploy/restart the prepared code while keeping production `PERSISTENCE_BACKEND=file`.
+6. [ ] Enable `PERSISTENCE_BACKEND=dual` only in a later approved restart window.
+7. [ ] Observe multiple ticks.
+8. [ ] Compare file and DB after each tick.
+9. [ ] Stop if any parity mismatch occurs.
 
 ### Phase 3 — DB read path for reports/dashboard only
 

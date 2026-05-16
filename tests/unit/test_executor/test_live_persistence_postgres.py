@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any, Mapping
@@ -244,6 +245,83 @@ def test_postgres_live_journal_store_records_trade_signals_and_target() -> None:
     assert target_call.params["execution_coverage"] == Decimal("0.5")
     assert target_call.params["weights_json"] == '{"LINK":0.3}'
     assert target_call.params["ignored_weights_json"] == '{"ETH":-0.2}'
+
+
+def test_postgres_live_journal_store_records_exact_file_rows() -> None:
+    conn = FakeConnection()
+    store = PostgresLiveJournalStore(conn, live_instance_id="instance", run_id="run")
+
+    store.record_file_equity(
+        {
+            "ts": "2026-05-16T08:03:31.123456+00:00",
+            "bar": 287,
+            "equity": 103.7,
+            "peak": 112.4,
+            "dd_pct": 7.7,
+            "n_positions": 1,
+            "positions": {
+                "BTC": {"side": "long", "qty": 0.1, "entry": 100.0, "best": 101.0}
+            },
+        }
+    )
+    store.record_file_trade(
+        {
+            "ts": "2026-05-16T08:03:32.123456+00:00",
+            "bar": 287,
+            "kind": "target_buy",
+            "symbol": "BTC",
+            "side": "long",
+            "qty": 0.1,
+            "price": 100.0,
+            "reason": "target:v16a-mainnet-pilot",
+        }
+    )
+    store.record_file_signals(
+        {
+            "ts": "2026-05-16T08:03:33.123456+00:00",
+            "bar": 287,
+            "signals": {"BTC": 0.25},
+        }
+    )
+    store.record_file_target(
+        {
+            "ts": "2026-05-16T08:03:34.123456+00:00",
+            "bar": 287,
+            "profile": "v16a-mainnet-pilot",
+            "target_ts": "2026-05-16T07:00:00+00:00",
+            "staleness_seconds": 200.0,
+            "target_gross": 0.5,
+            "normalized_gross": 0.5,
+            "ignored_gross": 0.0,
+            "ignored_gross_ratio": 0.0,
+            "execution_coverage": 1.0,
+            "weights": {"BTC": 0.5},
+            "ignored_weights": {},
+            "orders": [],
+        }
+    )
+
+    tick_call = next(
+        call for call in conn.calls if "insert into live_ticks" in call.sql
+    )
+    trade_call = next(
+        call for call in conn.calls if "insert into live_trades" in call.sql
+    )
+    signal_call = next(
+        call for call in conn.calls if "insert into live_signals" in call.sql
+    )
+    target_call = next(
+        call for call in conn.calls if "insert into live_targets" in call.sql
+    )
+
+    assert tick_call.params["ts"] == "2026-05-16T08:03:31.123456+00:00"
+    assert trade_call.params["ts"] == "2026-05-16T08:03:32.123456+00:00"
+    assert signal_call.params["ts"] == "2026-05-16T08:03:33.123456+00:00"
+    assert target_call.params["ts"] == "2026-05-16T08:03:34.123456+00:00"
+    assert (
+        json.loads(trade_call.params["raw_json"])["reason"]
+        == "target:v16a-mainnet-pilot"
+    )
 
 
 def test_postgres_live_journal_store_loads_journal_shapes() -> None:
