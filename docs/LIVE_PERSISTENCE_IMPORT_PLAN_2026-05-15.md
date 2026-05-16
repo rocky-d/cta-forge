@@ -194,6 +194,8 @@ Before any production DB import or runtime cutover:
 3. Preserve fresh-DB import evidence for approved artifacts.
 4. Keep runtime source as file until a separate explicit approval checkpoint.
 
+2026-05-16 review update: `docs/LIVE_PERSISTENCE_IMPORT_REVIEW_2026-05-16.md` records the current dry-run review. Recommendation is to import only `backtest-results/openclaw-cleanup-20260512/workspace/artifacts/cta-forge-open-study-20260507` into `mainnet-pilot`, leave root `live-report` out of this production import, and require a separate explicit production DB write approval before running `--write --allow-review`.
+
 ## Deployment record
 
 2026-05-15 planned import runner deployment:

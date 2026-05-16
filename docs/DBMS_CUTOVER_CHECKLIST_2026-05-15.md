@@ -131,8 +131,8 @@ Before any production runtime wiring:
 - [ ] GitHub Lint/Test passes on pushed commit.
 - [ ] Production DB migration has been rehearsed on a clean test DB.
 - [ ] Local-data inventory manifest is generated and reviewed.
-- [ ] Canonical import plan is generated and reviewed.
-- [ ] Every useful local journal/state artifact is classified as import candidate, duplicate/covered exclusion, blocked, or intentionally out of scope.
+- [x] Canonical import plan is generated and reviewed (`docs/LIVE_PERSISTENCE_IMPORT_REVIEW_2026-05-16.md`).
+- [x] Every discovered local journal/state artifact is classified as import candidate, duplicate/covered exclusion, blocked, or intentionally out of scope for the May 2026 mainnet-pilot import.
 - [ ] Historical import from copied production journals passes `--write --parity-check` on test DB.
 - [ ] DB-derived live report equals JSONL-derived live report for the copied journals.
 - [ ] Duplicate-bar or other ambiguous historical records are either fixed by an approved migration rule or explicitly excluded with evidence.
