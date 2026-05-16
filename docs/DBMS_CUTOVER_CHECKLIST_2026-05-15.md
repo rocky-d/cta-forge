@@ -169,7 +169,7 @@ Requires new code and separate approval. Design gate: `docs/DBMS_DUAL_WRITE_DESI
 2. [x] In `dual`, live runtime writes file first and mirrors exact file records to DB second.
 3. [x] Reads remain from file in the prepared code path.
 4. [x] DB failures are visible and follow `LIVE_PERSISTENCE_SHADOW_FAILURE_POLICY=warn|raise`.
-5. [ ] Deploy/restart the prepared code while keeping production `PERSISTENCE_BACKEND=file`.
+5. [x] Deploy/restart the prepared code while keeping production `PERSISTENCE_BACKEND=file`.
 6. [ ] Enable `PERSISTENCE_BACKEND=dual` only in a later approved restart window.
 7. [ ] Observe multiple ticks.
 8. [ ] Compare file and DB after each tick.
@@ -244,6 +244,42 @@ Stop and do not proceed to the next phase if any of these occur:
 - Do not store private keys in DB.
 - Keep public instance metadata separate from internal account/runtime identity.
 - Prefer one reversible phase at a time over a large storage cutover.
+
+## 2026-05-16 code-only dual-write preparation deployment
+
+After the production historical import, commit `4b3e892` was deployed with no runtime backend change.
+
+Deployment boundary:
+
+- GitHub Deploy run: `25958222641`
+- deployed commit: `4b3e892 feat(executor): prepare file-first live persistence dual write`
+- purpose: ship file-first dual-write preparation code only
+- production runtime mode remained `PERSISTENCE_BACKEND=file`
+- dual-write was not enabled
+- PostgreSQL source-of-truth was not enabled
+
+Pre-deploy check after the 09:00 UTC tick:
+
+- executor running since `2026-05-15T08:30:47.889243531Z`, restart 0, OOM false
+- postgres running and healthy, restart 0, OOM false
+- env guards included `HL_NETWORK=mainnet`, `DRY_RUN=false`, `STRATEGY_PROFILE=v16a-mainnet-pilot`, `PERSISTENCE_BACKEND=file`, `LIVE_INSTANCE_ID=mainnet-pilot`
+- active file journal latest: equity/signals/targets bar 288; trades 36 with latest bar 287 `target_sell` `ARB`
+- DB counts remained at imported bar 287: ticks 287, positions 1578, targets 287, trades 35, signals 287, checkpoints 0
+- executor risk log grep since `2026-05-16T09:00:00Z`: 0
+
+Immediate post-deploy check:
+
+- executor restarted at `2026-05-16T09:18:50.241877311Z`, restart 0, OOM false
+- postgres remained healthy, restart 0, OOM false
+- runtime guard still `PERSISTENCE_BACKEND=file`; `DATABASE_URL` configured only for prepared tooling
+- startup log printed live persistence config with `backend: file` and `allow_postgres_source_of_truth: false`
+- startup preflight passed and the engine waited for the 10:00 UTC candle
+- strict mainnet preflight after deploy passed: equity `103.883919`, available balance `80.857696`, open orders 0, positions ARB/BNB/BTC/DOGE/INJ/SEI/SOL, target status ok, target gross `0.8728350732337687`, target timestamp `2026-05-16T08:00:00+00:00`, target orders 0
+- file journal stayed at bar 288 until the next tick; DB counts stayed unchanged at the imported bar 287, as expected for file mode
+- executor startup/risk grep since container start: 0
+- postgres warning/error grep since deploy start: 0
+
+Next approval boundary: observe the first post-deploy tick, then separately approve enabling `PERSISTENCE_BACKEND=dual` in a controlled restart window if file-mode behavior remains clean.
 
 ## 2026-05-15 containerized PostgreSQL deployment note
 
