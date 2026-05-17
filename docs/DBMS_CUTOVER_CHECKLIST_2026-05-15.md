@@ -81,6 +81,7 @@ Recommended remaining order:
    - keep the dump path in the deployment/import evidence.
 3. Production DB catch-up import, journals only
    - import active `/app/journal/mainnet-pilot` into PostgreSQL with `--write` and built-in parity check;
+   - reuse the existing import run id `historical-import-mainnet-pilot-20260516-active` for this catch-up slice, because `live_trades` uniqueness includes `run_id` and a new import run id would duplicate old trade rows instead of simply adding the missing trades;
    - keep runtime mode `file`; no executor restart is required for this step;
    - expect journal parity to pass after catch-up, but checkpoint parity to remain intentionally absent until dual-write is enabled.
 4. Enable `PERSISTENCE_BACKEND=dual` in a controlled restart window
