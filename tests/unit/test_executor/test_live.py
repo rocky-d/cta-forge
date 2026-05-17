@@ -176,8 +176,8 @@ def test_live_engine_records_runtime_identity_metadata(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_live_engine_position_snapshot_includes_public_safe_weight() -> None:
-    """Actual journal positions include signed exposure weights for dashboards."""
+async def test_live_engine_position_snapshot_includes_exposure_weight() -> None:
+    """Actual journal positions include signed raw exposure weights for collectors."""
 
     exchange = FakeExchange(
         market_prices={"BTC": Decimal("100000"), "ARB": Decimal("0.50")}
@@ -199,19 +199,19 @@ async def test_live_engine_position_snapshot_includes_public_safe_weight() -> No
         "qty": 0.001,
         "entry": 90000.0,
         "best": 100000.0,
-        "weight": 0.05,
+        "exposure_weight": 0.05,
     }
     assert snapshot["ARB"] == {
         "side": "short",
         "qty": 200.0,
         "entry": 0.6,
         "best": 0.5,
-        "weight": -0.05,
+        "exposure_weight": -0.05,
     }
 
 
 @pytest.mark.asyncio
-async def test_live_engine_persists_position_weight_without_breaking_journal(
+async def test_live_engine_persists_position_exposure_weight_without_breaking_journal(
     tmp_path,
 ) -> None:
     """Enriched position fields remain additive in the existing file journal."""
@@ -230,7 +230,7 @@ async def test_live_engine_persists_position_weight_without_breaking_journal(
     record = engine._journal.load_equity()[0]
     assert record["positions"]["SOL"]["side"] == "long"
     assert record["positions"]["SOL"]["qty"] == 0.2
-    assert record["positions"]["SOL"]["weight"] == 0.3
+    assert record["positions"]["SOL"]["exposure_weight"] == 0.3
 
 
 @pytest.mark.asyncio

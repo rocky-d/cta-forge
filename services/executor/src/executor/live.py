@@ -629,7 +629,7 @@ class LiveEngine:
         """Build the actual-position journal snapshot for the current state.
 
         The journal keeps private runtime fields for persistence/reconciliation,
-        plus a public-safe signed exposure weight used by dashboard collectors.
+        plus a signed raw exposure weight used by dashboard collectors.
         """
         equity_value = float(equity)
         positions: dict[str, dict] = {}
@@ -648,7 +648,7 @@ class LiveEngine:
                 logger.warning("Failed to price position %s for public weight", sym)
             else:
                 if equity_value > 0 and price > 0:
-                    record["weight"] = float(pos.qty * price / equity_value)
+                    record["exposure_weight"] = float(pos.qty * price / equity_value)
             positions[sym] = record
         return positions
 
