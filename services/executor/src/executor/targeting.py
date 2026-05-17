@@ -158,14 +158,14 @@ def weights_to_orders(
         delta: float,
         *,
         reduce_only: bool,
-    ) -> None:
+    ) -> bool:
         delta_notional = delta * equity
         if not reduce_only and max_notional is not None and max_notional > 0:
             cap = float(max_notional)
             delta_notional = max(-cap, min(cap, delta_notional))
             delta = delta_notional / equity
         if abs(delta_notional) < min_notional:
-            return
+            return False
         side: Literal["buy", "sell"] = "buy" if delta_notional > 0 else "sell"
         orders.append(
             TargetOrder(
@@ -179,6 +179,7 @@ def weights_to_orders(
                 reduce_only=reduce_only,
             )
         )
+        return True
 
     for symbol in symbols:
         price = prices.get(symbol)
@@ -188,22 +189,60 @@ def weights_to_orders(
         target = float(target_weights.get(symbol, 0.0))
 
         if abs(current) > EPS and current * target < 0:
-            append_order(
-                symbol,
-                price,
-                current,
-                target,
-                -current,
-                reduce_only=True,
+            close_delta = -current
+            open_delta = target
+            full_delta = target - current
+            close_notional = abs(close_delta * equity)
+            open_notional = abs(open_delta * equity)
+            full_notional = abs(full_delta * equity)
+            close_tradable = close_notional >= min_notional
+            open_tradable = open_notional >= min_notional
+            split_would_skip_leg = not close_tradable or not open_tradable
+            full_exceeds_cap = (
+                max_notional is not None
+                and max_notional > 0
+                and full_notional > float(max_notional)
             )
-            append_order(
-                symbol,
-                price,
-                0.0,
-                target,
-                target,
-                reduce_only=False,
-            )
+
+            # A sign flip is usually split into reduce-only close then open, so
+            # large flips de-risk before adding opposite exposure.  However,
+            # Hyperliquid's per-order minimum can make one split leg invalid
+            # even when the net crossing order is valid.  In that case, send a
+            # single non-reduce crossing order; it nets against the current
+            # position and avoids permanent sub-minimum dust blocking flips.
+            if (
+                split_would_skip_leg
+                and full_notional >= min_notional
+                and (not full_exceeds_cap or not close_tradable)
+            ):
+                append_order(
+                    symbol,
+                    price,
+                    current,
+                    target,
+                    full_delta,
+                    reduce_only=False,
+                )
+                continue
+
+            if close_tradable:
+                append_order(
+                    symbol,
+                    price,
+                    current,
+                    target,
+                    close_delta,
+                    reduce_only=True,
+                )
+            if open_tradable:
+                append_order(
+                    symbol,
+                    price,
+                    0.0,
+                    target,
+                    open_delta,
+                    reduce_only=False,
+                )
             continue
 
         delta = target - current

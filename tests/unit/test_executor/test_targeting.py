@@ -113,6 +113,75 @@ def test_weights_to_orders_splits_short_to_long_sign_flip() -> None:
     assert orders[1].delta_weight == pytest.approx(0.3)
 
 
+def test_weights_to_orders_crosses_when_split_flip_legs_are_sub_minimum() -> None:
+    orders = weights_to_orders(
+        positions={"BTC": 0.00005},  # $5 long
+        prices={"BTC": 100_000.0},
+        equity=100.0,
+        target_weights={"BTC": -0.08},  # $8 short target, $13 net sell
+        min_notional=10.0,
+    )
+
+    assert len(orders) == 1
+    assert orders[0].reduce_only is False
+    assert orders[0].side == "sell"
+    assert orders[0].current_weight == pytest.approx(0.05)
+    assert orders[0].target_weight == pytest.approx(-0.08)
+    assert orders[0].delta_weight == pytest.approx(-0.13)
+    assert orders[0].delta_notional == pytest.approx(-13.0)
+
+
+def test_weights_to_orders_crosses_small_position_to_larger_opposite_target() -> None:
+    orders = weights_to_orders(
+        positions={"BTC": 0.00005},  # $5 long
+        prices={"BTC": 100_000.0},
+        equity=100.0,
+        target_weights={"BTC": -0.20},  # $20 short target, $25 net sell
+        min_notional=10.0,
+    )
+
+    assert len(orders) == 1
+    assert orders[0].reduce_only is False
+    assert orders[0].side == "sell"
+    assert orders[0].delta_weight == pytest.approx(-0.25)
+    assert orders[0].delta_notional == pytest.approx(-25.0)
+
+
+def test_weights_to_orders_crosses_large_position_to_sub_minimum_opposite_target() -> (
+    None
+):
+    orders = weights_to_orders(
+        positions={"BTC": 0.0005},  # $50 long
+        prices={"BTC": 100_000.0},
+        equity=100.0,
+        target_weights={"BTC": -0.08},  # $8 short target, $58 net sell
+        min_notional=10.0,
+    )
+
+    assert len(orders) == 1
+    assert orders[0].reduce_only is False
+    assert orders[0].side == "sell"
+    assert orders[0].delta_weight == pytest.approx(-0.58)
+    assert orders[0].delta_notional == pytest.approx(-58.0)
+
+
+def test_weights_to_orders_keeps_reduce_first_when_crossing_would_exceed_cap() -> None:
+    orders = weights_to_orders(
+        positions={"BTC": 0.0005},  # $50 long
+        prices={"BTC": 100_000.0},
+        equity=100.0,
+        target_weights={"BTC": -0.08},  # $58 net sell exceeds $50 cap
+        min_notional=10.0,
+        max_notional=50.0,
+    )
+
+    assert len(orders) == 1
+    assert orders[0].reduce_only is True
+    assert orders[0].side == "sell"
+    assert orders[0].delta_weight == pytest.approx(-0.5)
+    assert orders[0].delta_notional == pytest.approx(-50.0)
+
+
 def test_weights_to_orders_skips_symbols_without_valid_price() -> None:
     orders = weights_to_orders(
         positions={"BTC": 0.1, "ETH": 1.0},
