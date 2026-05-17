@@ -357,3 +357,28 @@ After the production catch-up import, a code-level precheck found one more requi
 Fix direction implemented in code prep: dual-mode store initialization now registers the current runtime run id in `live_runs` with non-secret runtime persistence metadata before constructing the PostgreSQL mirror stores. The existing `live_instance_id` must already exist from the approved import/cutover setup; if not, startup fails closed.
 
 This remains code preparation only. Production dual-write still requires a separate controlled restart/config-change approval.
+
+## 2026-05-17 code-only deploy after catch-up import
+
+Approved code-only deploy completed after the 08:00 UTC tick, with production runtime intentionally remaining file-backed.
+
+Pre-deploy post-tick gate at 2026-05-17T08:05Z:
+- Executor running since 2026-05-17T03:24:55Z, restart 0, OOM false; PostgreSQL healthy.
+- Runtime guards unchanged: `PERSISTENCE_BACKEND=file`, `LIVE_INSTANCE_ID=mainnet-pilot`, `HL_NETWORK=mainnet`, `DRY_RUN=false`, `STRATEGY_PROFILE=v16a-mainnet-pilot`, `ALLOW_MAINNET_PILOT_LIVE=true`.
+- File journal had advanced to bar 311; PostgreSQL remained at bar 310 from the approved catch-up snapshot, as expected while backend is file.
+- Read-only preflight: equity 102.654444, available 66.929782, positions 8, open_orders_count 0, target status ok, target_orders 0, target_ts 2026-05-17T07:00:00Z.
+
+Deploy evidence:
+- GitHub Actions deploy run `25985458594` completed successfully for commit `c5e363d`.
+- Jobs succeeded: `check-ci`, `build-and-push`, and `deploy`.
+- New executor container started at 2026-05-17T08:13:09Z with image id `sha256:4de64980669519737ed8bf68fe5c01ae13c13dbcd3f1f5a70be12b920aa4db8f`.
+
+Post-deploy gate at 2026-05-17T08:15-08:17Z:
+- Executor running, restart 0, OOM false; PostgreSQL healthy.
+- Runtime guards still file-backed and unchanged: `PERSISTENCE_BACKEND=file`, `HL_NETWORK=mainnet`, `DRY_RUN=false`, `STRATEGY_PROFILE=v16a-mainnet-pilot`, `ALLOW_MAINNET_PILOT_LIVE=true`.
+- Startup preflight passed, state restored bar #311 with 8 positions, and engine waited for the 09:00 UTC candle close.
+- Log scan found no error/exception/reject/insufficient/OOM/traceback lines; the only persistence match was the expected startup config line showing backend `file`.
+- File journal remained bar 311; PostgreSQL remained at ticks/targets/signals 310, positions 1758, trades 37, checkpoints 0, live_runs 1, as expected because dual-write is still disabled.
+- Read-only preflight: equity 102.876796, available 67.198736, positions 8, open_orders_count 0, target status ok, target_orders 0, target_ts 2026-05-17T07:00:00Z.
+
+This deploy only shipped the dual-write run-registration readiness fix. It did not enable dual-write, restart into PostgreSQL source-of-truth, or change the live persistence backend.
