@@ -382,3 +382,17 @@ Post-deploy gate at 2026-05-17T08:15-08:17Z:
 - Read-only preflight: equity 102.876796, available 67.198736, positions 8, open_orders_count 0, target status ok, target_orders 0, target_ts 2026-05-17T07:00:00Z.
 
 This deploy only shipped the dual-write run-registration readiness fix. It did not enable dual-write, restart into PostgreSQL source-of-truth, or change the live persistence backend.
+
+## 2026-05-17 second catch-up before dual-write
+
+A second approved journals-only production catch-up import was completed after the 12:00 UTC tick and before enabling dual-write.
+
+- Precheck at 2026-05-17T12:07Z: executor still running since 08:13:09Z, restart 0/OOM false, postgres healthy, backend still `PERSISTENCE_BACKEND=file`, no risk logs since 12:00 UTC, open orders 0, target status ok.
+- File journal had advanced to bar 315; PostgreSQL was still at bar 310 from the prior catch-up snapshot.
+- Took backup `/home/admin/ops/cta-forge/backups/cta_forge_live_pre_catchup_20260517T120815Z.dump` and staged snapshot `/home/admin/ops/cta-forge/import-staging/mainnet-pilot-catchup-20260517T120815Z`.
+- Ran journals-only import without state file/checkpoint import, reusing run id `historical-import-mainnet-pilot-20260516-active`.
+- Write succeeded with write-time parity ok and independent parity ok, mismatch count 0.
+- PostgreSQL after import: ticks/targets/signals bar 315, positions 1798 latest bar 315, trades 37 latest bar 291, checkpoints 0, live_runs 1.
+- Post-import safety: executor start unchanged, restart 0/OOM false, postgres healthy, backend still file, no risk logs since import, read-only mainnet preflight passed with target timestamp 2026-05-17T11:00:00Z and target orders 0.
+
+Next boundary remains a separate controlled `PERSISTENCE_BACKEND=dual` restart and observation window; PostgreSQL is caught up to bar 315 but is not source of truth.

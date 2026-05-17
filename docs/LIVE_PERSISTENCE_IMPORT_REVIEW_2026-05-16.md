@@ -257,3 +257,66 @@ Post-import runtime safety confirmation:
 - read-only mainnet preflight after import: equity `102.642868`, available `66.942649`, positions `8`, open orders `0`, target status `ok`, target timestamp `2026-05-17T06:00:00+00:00`, target orders `0`
 
 Next boundary: enabling `PERSISTENCE_BACKEND=dual` still requires a separate controlled restart window and precheck. PostgreSQL is now caught up to the selected file-backed snapshot, but it is still not the runtime source of truth.
+
+## 2026-05-17 second production catch-up import record
+
+Boss approved continuing with the next production PostgreSQL catch-up import after a post-12:00 UTC tick recheck.
+
+Purpose: catch PostgreSQL up from the previous catch-up snapshot at bar `310` to the current file-backed `mainnet-pilot` journal snapshot at bar `315`, while keeping runtime file-backed. This was a PostgreSQL mutation only; it did not deploy, restart, enable dual-write, or make PostgreSQL source of truth.
+
+Pre-import runtime state at `2026-05-17T12:07Z`:
+
+- `cta-forge-executor` running since `2026-05-17T08:13:09.43373792Z`, restart `0`, OOM `false`.
+- `cta-forge-postgres` healthy.
+- Runtime backend remained `PERSISTENCE_BACKEND=file`.
+- Active file journal snapshot:
+  - equity/signals/targets: `315` rows each;
+  - positions implied by import: `1798` rows;
+  - trades: `37` rows;
+  - latest tick: bar `315`, `2026-05-17T12:03:32.966156+00:00`;
+  - latest target: bar `315`, target timestamp `2026-05-17T11:00:00+00:00`.
+- Pre-import DB counts were ticks `310`, positions `1758`, targets `310`, trades `37`, signals `310`, checkpoints `0`.
+- Suspicious log scan since 12:00 UTC found no error/exception/reject/insufficient/OOM/traceback/shadow/persistence lines.
+- Read-only mainnet preflight before writing passed: equity about `102.805464`, available balance `67.153572`, open orders `0`, positions `8`, target status `ok`, target orders `0`, target timestamp `2026-05-17T11:00:00+00:00`.
+
+Evidence paths on EC2:
+
+- pre-catch-up backup: `/home/admin/ops/cta-forge/backups/cta_forge_live_pre_catchup_20260517T120815Z.dump`
+- staged snapshot: `/home/admin/ops/cta-forge/import-staging/mainnet-pilot-catchup-20260517T120815Z`
+- dry-run output: `/home/admin/ops/cta-forge/import-staging/outputs/dryrun-catchup-mainnet-pilot-20260517T120815Z.json`
+- write output: `/home/admin/ops/cta-forge/import-staging/outputs/write-catchup-mainnet-pilot-20260517T120815Z.json`
+- independent parity output: `/home/admin/ops/cta-forge/import-staging/outputs/parity-catchup-mainnet-pilot-20260517T120815Z.json`
+
+Catch-up details:
+
+- exact source path used for import: active `/app/journal/mainnet-pilot` after snapshotting `/home/admin/cta-forge/journal/mainnet-pilot`;
+- state file intentionally not imported, so checkpoint rows stayed `0` until dual-write naturally creates runtime checkpoints;
+- import run id reused: `historical-import-mainnet-pilot-20260516-active`.
+
+Write result:
+
+- `write_requested`: `true`
+- `wrote`: `true`
+- write-time parity: `ok=true`, mismatch count `0`
+- independent parity: `ok=true`, mismatch count `0`
+
+Post-import DB counts:
+
+- `live_ticks`: `315`, latest bar `315`
+- `live_positions`: `1798`, latest bar `315`
+- `live_targets`: `315`, latest bar `315`
+- `live_trades`: `37`, latest bar `291`
+- `live_signals`: `315`, latest bar `315`
+- `engine_checkpoints`: `0`
+
+Post-import runtime safety confirmation:
+
+- executor start time unchanged: `2026-05-17T08:13:09.43373792Z`
+- executor restart count still `0`
+- executor OOM still `false`
+- postgres health still `healthy`
+- backend still `PERSISTENCE_BACKEND=file`
+- no executor risk/error/reject/insufficient/OOM/traceback/shadow/persistence lines since the import window
+- read-only mainnet preflight after import passed: equity about `102.807200`, available balance `67.164503`, positions `8`, open orders `0`, target status `ok`, target timestamp `2026-05-17T11:00:00+00:00`, target orders `0`
+
+Next boundary: enabling `PERSISTENCE_BACKEND=dual` still requires a separate controlled restart window and post-start/tick observation. PostgreSQL is caught up to the selected file-backed snapshot, but remains not the runtime source of truth.
