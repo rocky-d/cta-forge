@@ -55,7 +55,7 @@ def load_existing_live_persistence(
     return LivePersistenceImportBatch(
         journal_dir=journal_path,
         state_file=state_path,
-        state=_load_json_object(state_path) if state_path is not None else None,
+        state=load_json_object(state_path) if state_path is not None else None,
         equity=load_jsonl_records(journal_path / JOURNAL_FILES["equity"]),
         trades=load_jsonl_records(journal_path / JOURNAL_FILES["trades"]),
         signals=load_jsonl_records(journal_path / JOURNAL_FILES["signals"]),
@@ -85,7 +85,10 @@ def load_jsonl_records(path: str | Path) -> list[dict[str, Any]]:
     return records
 
 
-def _load_json_object(path: Path) -> dict[str, Any] | None:
+def load_json_object(path: str | Path) -> dict[str, Any] | None:
+    """Load one JSON object using Decimal for JSON floats."""
+
+    path = Path(path)
     if not path.exists():
         return None
     record = _loads_json(path.read_text(), path, line_no=None)

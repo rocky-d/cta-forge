@@ -22,6 +22,7 @@ from .live_persistence_import import (
     LivePersistenceImportKeys,
     LivePersistenceImportRows,
     build_live_persistence_import_rows,
+    load_json_object,
 )
 from .live_public_instances import PublicDashboardInstance
 from .state import decode_state_payload, encode_state_payload
@@ -115,9 +116,9 @@ class PostgresLiveStateStore:
     def save_file_payload_path(self, path: str | Path) -> None:
         """Persist an already-written JSON checkpoint file exactly."""
 
-        payload = json.loads(Path(path).read_text())
-        if not isinstance(payload, dict):
-            raise LivePersistenceImportError("checkpoint payload must be object")
+        payload = load_json_object(path)
+        if payload is None:
+            raise LivePersistenceImportError("checkpoint payload file does not exist")
         self.save_file_payload(payload)
 
 

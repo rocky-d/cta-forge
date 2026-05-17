@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Protocol
 
@@ -239,19 +240,35 @@ class TradeJournal:
         """Load all equity snapshots from JSONL."""
         return self._read(self._equity_file)
 
+    def load_equity_decimal_safe(self) -> list[dict]:
+        """Load equity snapshots with Decimal-preserved JSON floats."""
+        return self._read(self._equity_file, parse_float=Decimal)
+
     def load_trades(self) -> list[dict]:
         """Load all trade records from JSONL."""
         return self._read(self._trades_file)
+
+    def load_trades_decimal_safe(self) -> list[dict]:
+        """Load trade records with Decimal-preserved JSON floats."""
+        return self._read(self._trades_file, parse_float=Decimal)
 
     def load_signals(self) -> list[dict]:
         """Load all signal records from JSONL."""
         return self._read(self._signals_file)
 
+    def load_signals_decimal_safe(self) -> list[dict]:
+        """Load signal records with Decimal-preserved JSON floats."""
+        return self._read(self._signals_file, parse_float=Decimal)
+
     def load_targets(self) -> list[dict]:
         """Load all target diagnostics from JSONL."""
         return self._read(self._targets_file)
 
-    def _read(self, path: Path) -> list[dict]:
+    def load_targets_decimal_safe(self) -> list[dict]:
+        """Load target diagnostics with Decimal-preserved JSON floats."""
+        return self._read(self._targets_file, parse_float=Decimal)
+
+    def _read(self, path: Path, *, parse_float=None) -> list[dict]:
         """Read all JSON records from a JSONL file."""
         if not path.exists():
             return []
@@ -262,7 +279,7 @@ class TradeJournal:
                 if not line:
                     continue
                 try:
-                    records.append(json.loads(line))
+                    records.append(json.loads(line, parse_float=parse_float))
                 except json.JSONDecodeError:
                     logger.warning("Skipping corrupt journal line %s:%d", path, line_no)
         return records

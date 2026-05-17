@@ -150,7 +150,9 @@ class FileFirstPostgresMirrorJournalStore:
         positions: dict[str, dict],
     ) -> None:
         self._primary.record_tick(bar, equity, peak_equity, positions)
-        record = self._latest_matching(self._primary.load_equity(), "equity", bar=bar)
+        record = self._latest_matching(
+            self._load_exact_file("equity"), "equity", bar=bar
+        )
         self._write_shadow("record_file_equity", record)
 
     def record_trade(
@@ -182,7 +184,7 @@ class FileFirstPostgresMirrorJournalStore:
             held_bars=held_bars,
         )
         record = self._latest_matching(
-            self._primary.load_trades(),
+            self._load_exact_file("trades"),
             "trade",
             bar=bar,
             kind=kind,
@@ -192,7 +194,9 @@ class FileFirstPostgresMirrorJournalStore:
 
     def record_signals(self, bar: int, signals: dict[str, float]) -> None:
         self._primary.record_signals(bar, signals)
-        record = self._latest_matching(self._primary.load_signals(), "signals", bar=bar)
+        record = self._latest_matching(
+            self._load_exact_file("signals"), "signals", bar=bar
+        )
         self._write_shadow("record_file_signals", record)
 
     def record_target(
@@ -220,7 +224,7 @@ class FileFirstPostgresMirrorJournalStore:
             ignored_weights=ignored_weights,
         )
         record = self._latest_matching(
-            self._primary.load_targets(),
+            self._load_exact_file("targets"),
             "target",
             bar=bar,
             profile=profile,
@@ -239,6 +243,15 @@ class FileFirstPostgresMirrorJournalStore:
 
     def load_targets(self) -> list[dict]:
         return self._primary.load_targets()
+
+    def _load_exact_file(self, stream: str) -> list[dict]:
+        loader_by_stream = {
+            "equity": self._primary.load_equity_decimal_safe,
+            "trades": self._primary.load_trades_decimal_safe,
+            "signals": self._primary.load_signals_decimal_safe,
+            "targets": self._primary.load_targets_decimal_safe,
+        }
+        return loader_by_stream[stream]()
 
     def _latest_matching(
         self,

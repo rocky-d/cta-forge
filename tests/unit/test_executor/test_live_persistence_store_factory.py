@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Mapping
 
 import pytest
@@ -93,8 +94,16 @@ def test_dual_mode_mirrors_exact_file_rows_to_postgres(tmp_path) -> None:
         connect_database=lambda _: conn,
     )
 
+    bundle.journal.record_tick(
+        7,
+        100.5,
+        101.25,
+        {"BTC": {"side": "long", "qty": 0.00009, "entry": 81465.9, "best": 81182.0}},
+    )
     bundle.journal.record_signals(7, {"BTC": 0.25})
-    bundle.state_store.save(LiveState(bar_count=7, initial_equity=100, peak_equity=101))
+    bundle.state_store.save(
+        LiveState(bar_count=7, initial_equity=100.5, peak_equity=101.25)
+    )
     bundle.close()
 
     run_call = next(call for call in conn.calls if "insert into live_runs" in call.sql)
@@ -104,6 +113,16 @@ def test_dual_mode_mirrors_exact_file_rows_to_postgres(tmp_path) -> None:
     assert runtime_config["backend"] == "dual"
     assert runtime_config["database_url_configured"] is True
 
+    tick_call = next(
+        call for call in conn.calls if "insert into live_ticks" in call.sql
+    )
+    position_call = next(
+        call for call in conn.calls if "insert into live_positions" in call.sql
+    )
+    assert tick_call.params["account_equity"] == Decimal("100.5")
+    assert '"qty":"0.00009"' in position_call.params["raw_json"]
+    assert '"entry":"81465.9"' in position_call.params["raw_json"]
+
     file_signal = json.loads((tmp_path / "journal" / "signals.jsonl").read_text())
     signal_call = next(
         call for call in conn.calls if "insert into live_signals" in call.sql
@@ -112,14 +131,18 @@ def test_dual_mode_mirrors_exact_file_rows_to_postgres(tmp_path) -> None:
     assert signal_call.params["run_id"] == "run-1"
     assert signal_call.params["bar"] == file_signal["bar"]
     assert signal_call.params["ts"] == file_signal["ts"]
-    assert json.loads(signal_call.params["signals_json"]) == file_signal["signals"]
+    assert json.loads(signal_call.params["signals_json"]) == {"BTC": "0.25"}
+    assert file_signal["signals"] == {"BTC": 0.25}
 
     file_state = json.loads((tmp_path / "state.json").read_text())
     checkpoint_call = next(
         call for call in conn.calls if "insert into engine_checkpoints" in call.sql
     )
     assert checkpoint_call.params["bar_count"] == 7
-    assert json.loads(checkpoint_call.params["payload_json"]) == file_state
+    checkpoint_payload = json.loads(checkpoint_call.params["payload_json"])
+    assert file_state["initial_equity"] == 100.5
+    assert checkpoint_payload["initial_equity"] == "100.5"
+    assert checkpoint_payload["peak_equity"] == "101.25"
     assert conn.closed is True
 
 
