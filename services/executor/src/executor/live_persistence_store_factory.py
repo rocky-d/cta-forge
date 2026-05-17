@@ -8,6 +8,7 @@ mode remains disabled for live runtime until a later approval gate.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -92,6 +93,7 @@ def build_live_persistence_stores(
 
     connector = connect_database or _connect_psycopg
     conn = connector(config.database_url)
+    _ensure_live_run(conn, config)
     db_journal = PostgresLiveJournalStore(
         conn,
         live_instance_id=config.live_instance_id,
@@ -304,6 +306,36 @@ class FileFirstPostgresMirrorStateStore:
 def _connect_psycopg(database_url: str) -> ClosableConnection:
     psycopg = import_module("psycopg")
     return cast(ClosableConnection, psycopg.connect(database_url, autocommit=True))
+
+
+def _ensure_live_run(
+    conn: DbConnection,
+    config: LivePersistenceRuntimeConfig,
+) -> None:
+    """Ensure the current runtime run id exists before shadow writes.
+
+    Journal and checkpoint tables reference ``live_runs``. Runtime-generated
+    ``RUN_ID`` values are intentionally unique per process, so dual mode must
+    register the run before the first mirrored write or PostgreSQL will reject
+    rows by foreign key. The live instance itself must already exist from the
+    approved historical import/cutover setup; otherwise this fails closed.
+    """
+
+    conn.execute(
+        """
+        insert into live_runs (run_id, live_instance_id, runtime_config_json)
+        values (%(run_id)s, %(live_instance_id)s, %(runtime_config_json)s::jsonb)
+        on conflict (run_id) do update set
+            live_instance_id = excluded.live_instance_id,
+            runtime_config_json = excluded.runtime_config_json,
+            status = 'running'
+        """,
+        {
+            "run_id": config.run_id,
+            "live_instance_id": config.live_instance_id,
+            "runtime_config_json": json.dumps(config.to_safe_dict()),
+        },
+    )
 
 
 def _validate_shadow_failure_policy(policy: str) -> ShadowWriteFailurePolicy:

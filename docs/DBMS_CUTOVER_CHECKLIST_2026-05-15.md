@@ -349,3 +349,11 @@ Boss clarified that production PostgreSQL should be deployed containerized on EC
 - private EC2 `.env` for current practical secrets;
 - GitHub Actions starts PostgreSQL, applies migrations with a one-shot `db-migrate` service, then recreates only the executor;
 - live runtime remains `PERSISTENCE_BACKEND=file` until a separate dual-write approval gate.
+
+## 2026-05-17 dual-write run registration precheck
+
+After the production catch-up import, a code-level precheck found one more required safety detail before enabling `PERSISTENCE_BACKEND=dual`: runtime-generated `RUN_ID` values must exist in `live_runs` before any shadow journal/checkpoint row is written. Otherwise PostgreSQL foreign keys can reject dual-mode writes even though the historical import rows are valid.
+
+Fix direction implemented in code prep: dual-mode store initialization now registers the current runtime run id in `live_runs` with non-secret runtime persistence metadata before constructing the PostgreSQL mirror stores. The existing `live_instance_id` must already exist from the approved import/cutover setup; if not, startup fails closed.
+
+This remains code preparation only. Production dual-write still requires a separate controlled restart/config-change approval.

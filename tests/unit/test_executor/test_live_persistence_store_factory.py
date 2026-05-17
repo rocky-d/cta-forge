@@ -97,6 +97,13 @@ def test_dual_mode_mirrors_exact_file_rows_to_postgres(tmp_path) -> None:
     bundle.state_store.save(LiveState(bar_count=7, initial_equity=100, peak_equity=101))
     bundle.close()
 
+    run_call = next(call for call in conn.calls if "insert into live_runs" in call.sql)
+    assert run_call.params["live_instance_id"] == "instance-1"
+    assert run_call.params["run_id"] == "run-1"
+    runtime_config = json.loads(run_call.params["runtime_config_json"])
+    assert runtime_config["backend"] == "dual"
+    assert runtime_config["database_url_configured"] is True
+
     file_signal = json.loads((tmp_path / "journal" / "signals.jsonl").read_text())
     signal_call = next(
         call for call in conn.calls if "insert into live_signals" in call.sql
