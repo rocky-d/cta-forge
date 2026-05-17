@@ -396,3 +396,17 @@ A second approved journals-only production catch-up import was completed after t
 - Post-import safety: executor start unchanged, restart 0/OOM false, postgres healthy, backend still file, no risk logs since import, read-only mainnet preflight passed with target timestamp 2026-05-17T11:00:00Z and target orders 0.
 
 Next boundary remains a separate controlled `PERSISTENCE_BACKEND=dual` restart and observation window; PostgreSQL is caught up to bar 315 but is not source of truth.
+
+## 2026-05-17 first dual-write tick and rollback
+
+Dual-write was enabled at 2026-05-17T12:33Z and observed through the first post-enable 13:00 UTC tick.
+
+- Startup was clean: executor started at 12:33:22Z, backend `PERSISTENCE_BACKEND=dual`, generated run id `20260517T123332Z-636613f8`, Postgres healthy, startup preflight passed, open orders 0.
+- First dual tick `#316` completed at 13:03Z: target produced 0 orders, state saved 8 positions, and executor waited for 14:00 UTC.
+- Safety checks after the tick: executor running, restart 0/OOM false, Postgres healthy, env still dual, no suspicious error/exception/reject/insufficient/OOM/traceback/shadow/persistence logs, open orders 0, read-only mainnet preflight passed.
+- DB shadow writes did occur: ticks/targets/signals advanced to bar 316, positions advanced to 1806 rows/latest bar 316, and `engine_checkpoints` gained checkpoint bar 316.
+- Strict parity did not meet the production gate. Counts and core fields matched when including the state file and ignoring mixed historical/runtime run ids, but raw JSON payloads differed in numeric representation for the first runtime-dual bar: file/import-normalized expected strings for some Decimal-like values, while runtime DB shadow writes stored JSON numbers. Checkpoint payload showed the same numeric string-vs-number pattern.
+- Because the gate was strict parity, the runtime was rolled back to file mode at 2026-05-17T13:07Z. Saved dual env snapshot `/home/admin/ops/cta-forge/config-backups/production.env.dual-before-rollback-20260517T130747Z`, changed `PERSISTENCE_BACKEND=dual` back to `file`, and restarted only `executor-live`.
+- Rollback validation: executor restarted at 13:07:48Z with restart 0/OOM false, Postgres remained healthy, backend `PERSISTENCE_BACKEND=file`, startup preflight passed, state restored bar 316 with 8 positions, no suspicious rollback logs beyond the expected persistence config line.
+
+Conclusion: dual-write DB plumbing worked operationally, but exact parity semantics are not production-clean. Before re-enabling dual, fix either runtime mirror serialization or parity normalization so raw JSON/ checkpoint numeric representation is deterministic and the first post-dual tick can pass strict parity.
