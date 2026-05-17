@@ -183,3 +183,77 @@ Runtime safety confirmation after import:
 - postgres warning/error grep since `2026-05-16T08:00:00Z`: 0
 
 Important correction to the pre-approval recommendation: the approved local candidate was not imported directly because the active production journal contained a newer complete file-backed record. Importing the active 287-tick snapshot was safer and more complete than importing the stale 77-tick local snapshot.
+
+## 2026-05-17 production catch-up import record
+
+Boss approved the production DB catch-up import at `2026-05-17T07:17Z`.
+
+Purpose: catch PostgreSQL up from the previous historical import at bar `287` to the current file-backed `mainnet-pilot` journal snapshot, while keeping runtime file-backed. This was a PostgreSQL mutation only; it did not deploy, restart, enable dual-write, or make PostgreSQL source of truth.
+
+Pre-import runtime state at `2026-05-17T07:20Z`:
+
+- `cta-forge-executor` running since `2026-05-17T03:24:55.564681861Z`, restart `0`, OOM `false`.
+- `cta-forge-postgres` healthy.
+- Runtime backend remained `PERSISTENCE_BACKEND=file`.
+- Active file journal snapshot:
+  - equity/signals/targets: `310` rows each;
+  - positions implied by import: `1758` rows;
+  - trades: `37` rows;
+  - latest tick: bar `310`, `2026-05-17T07:03:34.430302+00:00`;
+  - latest target: bar `310`, target timestamp `2026-05-17T06:00:00+00:00`;
+  - state file bar count: `310`.
+- Pre-import DB counts remained at the prior historical import: ticks `287`, positions `1578`, targets `287`, trades `35`, signals `287`, checkpoints `0`.
+
+Evidence paths on EC2:
+
+- pre-catch-up backup: `/home/admin/ops/cta-forge/backups/cta_forge_live_pre_catchup_20260517T072043Z.dump`
+- staged snapshot: `/home/admin/ops/cta-forge/import-staging/mainnet-pilot-catchup-20260517T072043Z`
+- dry-run output: `/home/admin/ops/cta-forge/import-staging/outputs/dryrun-catchup-mainnet-pilot-20260517T072043Z.json`
+- write output: `/home/admin/ops/cta-forge/import-staging/outputs/write-catchup-mainnet-pilot-20260517T072043Z.json`
+- independent parity output: `/home/admin/ops/cta-forge/import-staging/outputs/parity-catchup-mainnet-pilot-20260517T072043Z.json`
+
+Catch-up details:
+
+- exact source path used for planning/import: staged copy of `/home/admin/cta-forge/journal/mainnet-pilot`;
+- broad `/app/journal` was intentionally not used because it contains legacy/root and shadow diagnostic files;
+- import run id reused: `historical-import-mainnet-pilot-20260516-active`;
+- reason for reuse: `live_trades` uniqueness includes `run_id`, so a new import run id would duplicate old trade rows instead of only adding missing trades.
+
+Dry-run result:
+
+- import candidates: `1`
+- requires review: `0`
+- ticks: `310`
+- positions: `1758`
+- targets: `310`
+- trades: `37`
+- signals: `310`
+- checkpoint: `0`
+
+Write result:
+
+- `write_requested`: `true`
+- `wrote`: `true`
+- write-time parity: `ok=true`, mismatch count `0`
+- independent parity against the staged journal snapshot: `ok=true`, mismatch count `0`
+
+Post-import DB counts:
+
+- `live_ticks`: `310`, latest bar `310`
+- `live_positions`: `1758`
+- `live_targets`: `310`, latest bar `310`
+- `live_trades`: `37`, latest bar `291`
+- `live_signals`: `310`, latest bar `310`
+- `engine_checkpoints`: `0`
+
+Post-import runtime safety confirmation:
+
+- executor start time unchanged: `2026-05-17T03:24:55.564681861Z`
+- executor restart count still `0`
+- executor OOM still `false`
+- postgres health still `healthy`
+- backend still `PERSISTENCE_BACKEND=file`
+- no executor risk/error/reject/insufficient/OOM/traceback lines since the import window
+- read-only mainnet preflight after import: equity `102.642868`, available `66.942649`, positions `8`, open orders `0`, target status `ok`, target timestamp `2026-05-17T06:00:00+00:00`, target orders `0`
+
+Next boundary: enabling `PERSISTENCE_BACKEND=dual` still requires a separate controlled restart window and precheck. PostgreSQL is now caught up to the selected file-backed snapshot, but it is still not the runtime source of truth.
