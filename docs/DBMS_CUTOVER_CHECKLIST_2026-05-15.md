@@ -47,6 +47,64 @@ As of 2026-05-15:
 - PostgreSQL backup/restore runbook and local restore rehearsal evidence exist in `docs/DBMS_BACKUP_RESTORE_RUNBOOK_2026-05-15.md`.
 - Live runtime remains file-backed; no DB runtime wiring exists yet.
 
+## 2026-05-17 current phase and remaining priority
+
+Current stage: PostgreSQL infrastructure and historical journal import are proven, and file-first dual-write code is deployed, but production runtime still runs in `PERSISTENCE_BACKEND=file` mode. The next work should stay in a shadow-validation lane until explicitly approved otherwise.
+
+Read-only production snapshot at `2026-05-17T05:32Z`:
+
+- executor container running; postgres container healthy;
+- non-secret runtime guard still `PERSISTENCE_BACKEND=file`, `LIVE_INSTANCE_ID=mainnet-pilot`, `HL_NETWORK=mainnet`, `DRY_RUN=false`, `STRATEGY_PROFILE=v16a-mainnet-pilot`;
+- active file journal latest bar `308`, latest tick `2026-05-17T05:03:34Z`;
+- PostgreSQL latest imported bar `287`, from the approved `2026-05-16` historical import;
+- current file-vs-DB gap is expected because dual-write is not enabled yet: ticks/signals/targets `+21`, positions `+164`, trades `+2`;
+- DB checkpoint rows are `0`; file checkpoint exists at bar `308`. This is expected before dual-write checkpoint mirroring starts.
+
+Dry-run import planning against the active instance path `/app/journal/mainnet-pilot` found exactly one import candidate with no review blockers:
+
+- ticks `308`
+- positions `1742`
+- targets `308`
+- trades `37`
+- signals `308`
+- latest target timestamp `2026-05-17T04:00:00Z`
+
+Do not use broad root `/app/journal` for the next production catch-up import without review: it also contains legacy/root and shadow diagnostic files, and the planner classifies that broader scan as requiring review. Use the exact active instance path for the mainnet-pilot catch-up slice.
+
+Recommended remaining order:
+
+1. Read-only precheck and freeze point
+   - verify executor/postgres health, runtime guards, open orders, latest file bars, and DB counts;
+   - choose a post-tick quiet window for any write/restart action.
+2. DB backup before production mutation
+   - run `pg_dump` for `cta_forge_live` before any catch-up import;
+   - keep the dump path in the deployment/import evidence.
+3. Production DB catch-up import, journals only
+   - import active `/app/journal/mainnet-pilot` into PostgreSQL with `--write` and built-in parity check;
+   - keep runtime mode `file`; no executor restart is required for this step;
+   - expect journal parity to pass after catch-up, but checkpoint parity to remain intentionally absent until dual-write is enabled.
+4. Enable `PERSISTENCE_BACKEND=dual` in a controlled restart window
+   - file remains source of truth;
+   - PostgreSQL mirrors exact file rows/checkpoints after file writes;
+   - keep `LIVE_PERSISTENCE_SHADOW_FAILURE_POLICY=warn` for the first observation window unless a stricter fail-closed policy is separately approved.
+5. Observe several ticks in dual mode
+   - check container restart/OOM state, risk logs, latest tick completion, open orders, and file-vs-DB parity after each tick;
+   - stop immediately on any parity mismatch or shadow DB write failure.
+6. Trial DB read path for reports/dashboard only
+   - compare DB-derived latest/history payloads against the existing public API contract;
+   - grep public payloads for private identifiers before exposing anything;
+   - trading runtime still reads file state in this phase.
+7. Separate middleware lifecycle from routine executor deploy
+   - track with `rocky-d/cta-forge#1`;
+   - split DB infra/migration operations from ordinary executor deploys before the DB becomes a long-term critical runtime dependency.
+8. DB checkpoint source-of-truth cutover
+   - highest-risk storage phase;
+   - only after dual-write parity is stable and rollback is rehearsed;
+   - requires separate explicit approval.
+9. True multi-live activation
+   - define the next `LIVE_INSTANCE_ID`, account identity, risk caps, public slug policy, dashboard routing, and deployment isolation;
+   - do not start a second real live instance until DB identity/isolation and dashboard/report semantics are proven with `mainnet-pilot`.
+
 ## Local inventory command
 
 Use the inventory command before any full historical DB import:
