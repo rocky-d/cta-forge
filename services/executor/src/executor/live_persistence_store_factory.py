@@ -3,7 +3,7 @@
 This module is the narrow wiring boundary between ``run_live`` and the
 file/PostgreSQL persistence implementations.  It intentionally keeps the safe
 production default as file-backed persistence, and PostgreSQL source-of-truth
-mode remains disabled for live runtime until a later approval gate.
+mode is guarded by an explicit runtime allow flag.
 """
 
 from __future__ import annotations
@@ -61,35 +61,29 @@ def build_live_persistence_stores(
 
     ``file`` is the safe default and does not import or connect to psycopg.
     ``dual`` keeps file reads/writes primary and mirrors writes to PostgreSQL.
-    ``postgres`` intentionally fails closed here; making DB the live source of
-    truth is a later cutover phase, not part of shadow-mode wiring.
+    ``postgres`` uses PostgreSQL for live journal and checkpoint reads/writes,
+    but only after ``load_live_persistence_runtime_config`` has accepted the
+    explicit source-of-truth allow flag.
     """
 
-    file_journal = TradeJournal(
-        journal_dir,
-        live_instance_id=config.live_instance_id,
-        run_id=config.run_id,
-        public_instance_slug=public_instance_slug,
-    )
-    file_state = JsonFileLiveStateStore(state_file)
-
     if config.backend == "file":
+        file_journal = TradeJournal(
+            journal_dir,
+            live_instance_id=config.live_instance_id,
+            run_id=config.run_id,
+            public_instance_slug=public_instance_slug,
+        )
+        file_state = JsonFileLiveStateStore(state_file)
         return LivePersistenceStoreBundle(
             journal=file_journal,
             state_store=file_state,
             close=_noop,
         )
 
-    if config.backend == "postgres":
-        msg = "PERSISTENCE_BACKEND=postgres is not wired into live runtime yet"
-        raise ValueError(msg)
-
-    if config.database_url is None:
-        raise ValueError("PERSISTENCE_BACKEND=dual requires DATABASE_URL")
-    if config.live_instance_id is None:
-        raise ValueError("PERSISTENCE_BACKEND=dual requires LIVE_INSTANCE_ID")
-    if config.run_id is None:
-        raise ValueError("PERSISTENCE_BACKEND=dual requires RUN_ID")
+    _validate_database_config(config)
+    assert config.database_url is not None
+    assert config.live_instance_id is not None
+    assert config.run_id is not None
 
     connector = connect_database or _connect_psycopg
     conn = connector(config.database_url)
@@ -104,6 +98,20 @@ def build_live_persistence_stores(
         live_instance_id=config.live_instance_id,
         run_id=config.run_id,
     )
+    if config.backend == "postgres":
+        return LivePersistenceStoreBundle(
+            journal=db_journal,
+            state_store=db_state,
+            close=conn.close,
+        )
+
+    file_journal = TradeJournal(
+        journal_dir,
+        live_instance_id=config.live_instance_id,
+        run_id=config.run_id,
+        public_instance_slug=public_instance_slug,
+    )
+    file_state = JsonFileLiveStateStore(state_file)
     return LivePersistenceStoreBundle(
         journal=FileFirstPostgresMirrorJournalStore(
             file_journal,
@@ -349,6 +357,21 @@ def _ensure_live_run(
             "runtime_config_json": json.dumps(config.to_safe_dict()),
         },
     )
+
+
+def _validate_database_config(config: LivePersistenceRuntimeConfig) -> None:
+    if config.database_url is None:
+        raise ValueError(f"PERSISTENCE_BACKEND={config.backend} requires DATABASE_URL")
+    if config.live_instance_id is None:
+        raise ValueError(
+            f"PERSISTENCE_BACKEND={config.backend} requires LIVE_INSTANCE_ID"
+        )
+    if config.run_id is None:
+        raise ValueError(f"PERSISTENCE_BACKEND={config.backend} requires RUN_ID")
+    if config.backend == "postgres" and not config.allow_postgres_source_of_truth:
+        raise ValueError(
+            "PERSISTENCE_BACKEND=postgres requires ALLOW_POSTGRES_SOURCE_OF_TRUTH=true"
+        )
 
 
 def _validate_shadow_failure_policy(policy: str) -> ShadowWriteFailurePolicy:

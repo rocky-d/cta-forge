@@ -146,7 +146,26 @@ def test_dual_mode_mirrors_exact_file_rows_to_postgres(tmp_path) -> None:
     assert conn.closed is True
 
 
-def test_postgres_mode_fails_closed_for_live_runtime(tmp_path) -> None:
+def test_postgres_mode_requires_source_of_truth_allow_flag(tmp_path) -> None:
+    config = LivePersistenceRuntimeConfig(
+        backend="postgres",
+        database_url="postgresql://example.invalid/cta",
+        live_instance_id="instance-1",
+        run_id="run-1",
+        allow_postgres_source_of_truth=False,
+    )
+
+    with pytest.raises(ValueError, match="ALLOW_POSTGRES_SOURCE_OF_TRUTH=true"):
+        build_live_persistence_stores(
+            config,
+            journal_dir=str(tmp_path / "journal"),
+            state_file=str(tmp_path / "state.json"),
+            public_instance_slug=None,
+        )
+
+
+def test_postgres_mode_builds_postgres_stores_without_file_writes(tmp_path) -> None:
+    conn = FakeConnection()
     config = LivePersistenceRuntimeConfig(
         backend="postgres",
         database_url="postgresql://example.invalid/cta",
@@ -155,10 +174,38 @@ def test_postgres_mode_fails_closed_for_live_runtime(tmp_path) -> None:
         allow_postgres_source_of_truth=True,
     )
 
-    with pytest.raises(ValueError, match="not wired into live runtime"):
-        build_live_persistence_stores(
-            config,
-            journal_dir=str(tmp_path / "journal"),
-            state_file=str(tmp_path / "state.json"),
-            public_instance_slug=None,
-        )
+    bundle = build_live_persistence_stores(
+        config,
+        journal_dir=str(tmp_path / "journal"),
+        state_file=str(tmp_path / "state.json"),
+        public_instance_slug="mainnet-pilot",
+        connect_database=lambda _: conn,
+    )
+
+    bundle.journal.record_signals(8, {"BTC": 0.5})
+    bundle.state_store.save(
+        LiveState(bar_count=8, initial_equity=101.0, peak_equity=102.0)
+    )
+    bundle.close()
+
+    run_call = next(call for call in conn.calls if "insert into live_runs" in call.sql)
+    runtime_config = json.loads(run_call.params["runtime_config_json"])
+    assert runtime_config["backend"] == "postgres"
+    assert runtime_config["allow_postgres_source_of_truth"] is True
+
+    signal_call = next(
+        call for call in conn.calls if "insert into live_signals" in call.sql
+    )
+    assert signal_call.params["live_instance_id"] == "instance-1"
+    assert signal_call.params["run_id"] == "run-1"
+    assert signal_call.params["bar"] == 8
+
+    checkpoint_call = next(
+        call for call in conn.calls if "insert into engine_checkpoints" in call.sql
+    )
+    assert checkpoint_call.params["bar_count"] == 8
+    checkpoint_payload = json.loads(checkpoint_call.params["payload_json"])
+    assert checkpoint_payload["initial_equity"] == 101.0
+    assert not (tmp_path / "state.json").exists()
+    assert not (tmp_path / "journal" / "signals.jsonl").exists()
+    assert conn.closed is True
