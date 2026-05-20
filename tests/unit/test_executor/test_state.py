@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+import pytest
+
 from executor.live import LivePosition, LiveState
 from executor.state import (
     JsonFileLiveStateStore,
@@ -157,6 +159,46 @@ def test_state_payload_codec_preserves_existing_checkpoint_shape() -> None:
     assert decoded.bar_count == state.bar_count
     assert decoded.last_tick_equity == state.last_tick_equity
     assert decoded.positions["BTC"].size == Decimal("0.000123456789")
+
+
+def test_decode_state_payload_normalizes_numeric_strings() -> None:
+    payload = {
+        "version": 1,
+        "bar_count": "376",
+        "initial_equity": "99.7",
+        "peak_equity": "112.438665",
+        "dd_breaker_active": False,
+        "last_signals": {},
+        "recent_returns": ["0.01"],
+        "last_tick_equity": "107.808437",
+        "positions": {
+            "BTC": {
+                "symbol": "BTC",
+                "side": "long",
+                "entry_price": "81465.9",
+                "entry_bar": "28",
+                "size": "0.00009",
+                "trailing_stop": "81182.0",
+                "highest_pnl": "0.0",
+                "bars_held": "348",
+            }
+        },
+    }
+
+    decoded = decode_state_payload(payload)
+
+    assert decoded is not None
+    assert decoded.bar_count == 376
+    assert decoded.initial_equity == pytest.approx(99.7)
+    assert decoded.peak_equity == pytest.approx(112.438665)
+    assert decoded.last_tick_equity == pytest.approx(107.808437)
+    assert decoded.recent_returns == [pytest.approx(0.01)]
+    position = decoded.positions["BTC"]
+    assert position.entry_price == pytest.approx(81465.9)
+    assert position.entry_bar == 28
+    assert position.trailing_stop == pytest.approx(81182.0)
+    assert position.highest_pnl == pytest.approx(0.0)
+    assert position.bars_held == 348
 
 
 def test_decode_state_payload_rejects_wrong_version() -> None:

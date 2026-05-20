@@ -103,9 +103,9 @@ def decode_state_payload(data: dict[str, Any]) -> LiveState | None:
         return None
 
     state = LiveState(
-        bar_count=data["bar_count"],
-        initial_equity=data["initial_equity"],
-        peak_equity=data["peak_equity"],
+        bar_count=int(data["bar_count"]),
+        initial_equity=float(data["initial_equity"]),
+        peak_equity=float(data["peak_equity"]),
         dd_breaker_active=data.get("dd_breaker_active", False),
         last_signals=data.get("last_signals", {}),
         recent_returns=[float(x) for x in data.get("recent_returns", [])[-120:]],
@@ -120,12 +120,12 @@ def decode_state_payload(data: dict[str, Any]) -> LiveState | None:
         state.positions[sym] = LivePosition(
             symbol=pos_data["symbol"],
             side=pos_data["side"],
-            entry_price=pos_data["entry_price"],
-            entry_bar=pos_data["entry_bar"],
+            entry_price=float(pos_data["entry_price"]),
+            entry_bar=int(pos_data["entry_bar"]),
             size=Decimal(pos_data["size"]),
-            trailing_stop=pos_data["trailing_stop"],
-            highest_pnl=pos_data.get("highest_pnl", 0.0),
-            bars_held=pos_data.get("bars_held", 0),
+            trailing_stop=float(pos_data["trailing_stop"]),
+            highest_pnl=float(pos_data.get("highest_pnl", 0.0)),
+            bars_held=int(pos_data.get("bars_held", 0)),
         )
     return state
 
