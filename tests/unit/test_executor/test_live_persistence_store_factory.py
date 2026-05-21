@@ -29,10 +29,18 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def __init__(self, *, lock_acquired: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        lock_acquired: bool = True,
+        instance_status: str | None = "active",
+        account_status: str = "active",
+    ) -> None:
         self.calls: list[RecordedExecute] = []
         self.closed = False
         self.lock_acquired = lock_acquired
+        self.instance_status = instance_status
+        self.account_status = account_status
 
     def execute(
         self, query: str, params: Mapping[str, Any] | None = None
@@ -40,6 +48,10 @@ class FakeConnection:
         bound = params or {}
         self.calls.append(RecordedExecute(query, bound))
         lowered = query.lower()
+        if "from live_instances" in lowered:
+            if self.instance_status is None:
+                return FakeCursor()
+            return FakeCursor((self.instance_status, self.account_status))
         if "pg_try_advisory_lock" in lowered:
             return FakeCursor((self.lock_acquired,))
         if "pg_advisory_unlock" in lowered:
@@ -149,6 +161,69 @@ def test_dual_mode_mirrors_exact_file_rows_to_postgres(tmp_path) -> None:
     assert file_state["initial_equity"] == 100.5
     assert checkpoint_payload["initial_equity"] == "100.5"
     assert checkpoint_payload["peak_equity"] == "101.25"
+    assert conn.closed is True
+
+
+def test_db_mode_fails_closed_when_live_instance_is_missing(tmp_path) -> None:
+    conn = FakeConnection(instance_status=None)
+    config = LivePersistenceRuntimeConfig(
+        backend="dual",
+        database_url="postgresql://example.invalid/cta",
+        live_instance_id="instance-1",
+        run_id="run-1",
+    )
+
+    with pytest.raises(ValueError, match="identity is missing"):
+        build_live_persistence_stores(
+            config,
+            journal_dir=str(tmp_path / "journal"),
+            state_file=str(tmp_path / "state.json"),
+            public_instance_slug=None,
+            connect_database=lambda _: conn,
+        )
+
+    assert conn.closed is True
+
+
+def test_db_mode_fails_closed_when_live_instance_is_not_active(tmp_path) -> None:
+    conn = FakeConnection(instance_status="paused")
+    config = LivePersistenceRuntimeConfig(
+        backend="dual",
+        database_url="postgresql://example.invalid/cta",
+        live_instance_id="instance-1",
+        run_id="run-1",
+    )
+
+    with pytest.raises(ValueError, match="must be active"):
+        build_live_persistence_stores(
+            config,
+            journal_dir=str(tmp_path / "journal"),
+            state_file=str(tmp_path / "state.json"),
+            public_instance_slug=None,
+            connect_database=lambda _: conn,
+        )
+
+    assert conn.closed is True
+
+
+def test_db_mode_fails_closed_when_exchange_account_is_not_active(tmp_path) -> None:
+    conn = FakeConnection(account_status="paused")
+    config = LivePersistenceRuntimeConfig(
+        backend="dual",
+        database_url="postgresql://example.invalid/cta",
+        live_instance_id="instance-1",
+        run_id="run-1",
+    )
+
+    with pytest.raises(ValueError, match="account must be active"):
+        build_live_persistence_stores(
+            config,
+            journal_dir=str(tmp_path / "journal"),
+            state_file=str(tmp_path / "state.json"),
+            public_instance_slug=None,
+            connect_database=lambda _: conn,
+        )
+
     assert conn.closed is True
 
 

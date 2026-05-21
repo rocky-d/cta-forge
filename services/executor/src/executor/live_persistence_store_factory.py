@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 from .journal import LiveJournalStore, TradeJournal
 from .live_persistence_dual import ShadowWriteFailurePolicy
@@ -89,6 +89,7 @@ def build_live_persistence_stores(
     connector = connect_database or _connect_psycopg
     conn = connector(config.database_url)
     try:
+        _ensure_live_instance_active(conn, config)
         lock_status = acquire_live_runtime_lock(
             conn,
             live_instance_id=config.live_instance_id,
@@ -343,6 +344,45 @@ def _connect_psycopg(database_url: str) -> ClosableConnection:
     return cast(ClosableConnection, psycopg.connect(database_url, autocommit=True))
 
 
+def _ensure_live_instance_active(
+    conn: DbConnection,
+    config: LivePersistenceRuntimeConfig,
+) -> None:
+    """Fail closed unless the DB identity row is ready to run.
+
+    This is intentionally a narrow status gate, not a dynamic config system.
+    Secrets and risk caps remain in private env/hard-code guards.
+    """
+
+    cursor = conn.execute(
+        """
+        select li.status, ea.status
+        from live_instances li
+        join exchange_accounts ea on ea.account_id = li.account_id
+        where li.live_instance_id = %(live_instance_id)s
+        """,
+        {"live_instance_id": config.live_instance_id},
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise ValueError(
+            "DB live instance identity is missing for "
+            f"LIVE_INSTANCE_ID={config.live_instance_id}"
+        )
+    instance_status = _row_value(row, "status", 0)
+    account_status = _row_value(row, "account_status", 1)
+    if instance_status != "active":
+        raise ValueError(
+            "DB live instance must be active before runtime start: "
+            f"LIVE_INSTANCE_ID={config.live_instance_id}, status={instance_status}"
+        )
+    if account_status != "active":
+        raise ValueError(
+            "DB exchange account must be active before runtime start: "
+            f"LIVE_INSTANCE_ID={config.live_instance_id}, account_status={account_status}"
+        )
+
+
 def _ensure_live_run(
     conn: DbConnection,
     config: LivePersistenceRuntimeConfig,
@@ -371,6 +411,18 @@ def _ensure_live_run(
             "runtime_config_json": json.dumps(config.to_safe_dict()),
         },
     )
+
+
+def _row_value(
+    row: Sequence[Any] | Mapping[str, Any],
+    key: str,
+    index: int,
+) -> Any:
+    if isinstance(row, Mapping):
+        mapping = cast(Mapping[str, Any], row)
+        return mapping[key]
+    sequence = cast(Sequence[Any], row)
+    return sequence[index]
 
 
 def _validate_database_config(config: LivePersistenceRuntimeConfig) -> None:

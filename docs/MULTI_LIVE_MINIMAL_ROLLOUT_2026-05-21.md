@@ -70,7 +70,7 @@ uv run python -m executor.run_bootstrap_live_instance \
   --public-status hidden
 ```
 
-Real write requires `DATABASE_URL` and should be done only after confirming the private env values.
+Real write requires `DATABASE_URL` and should be done only after confirming the private env values. Keep the row `paused` while preparing secrets; switch it to `active` only for an approved dry-run/runtime start. DB-backed runtime now fails closed unless both the `live_instances` row and its `exchange_accounts` row are `active`.
 
 ## 400 USDT guard
 
@@ -90,7 +90,8 @@ Keep `DRY_RUN=true` until the second instance has passed isolated preflight and 
 1. Build and test code locally.
 2. Copy `infra/env.mainnet-400-01.example` to a private `.env.mainnet-400-01` on the trading host.
 3. Bootstrap DB rows with status `paused` and dashboard `hidden`.
-4. Run read-only preflight with `REQUIRE_LIVE_INSTANCE_LOCK_AVAILABLE=true`.
-5. Start `executor-mainnet-400-01` under the `mainnet-400-01` compose profile with `DRY_RUN=true`.
-6. Observe 1–2 hourly ticks and verify DB rows are separated by `LIVE_INSTANCE_ID`.
-7. Only after explicit approval: create/fund wallet, set live env flags, and promote from dry-run.
+4. After private env review, activate the DB instance/account rows for the dry-run window.
+5. Run read-only preflight with `REQUIRE_LIVE_INSTANCE_LOCK_AVAILABLE=true`.
+6. Start `executor-mainnet-400-01` under the `mainnet-400-01` compose profile with `DRY_RUN=true`.
+7. Observe 1–2 hourly ticks and verify DB rows are separated by `LIVE_INSTANCE_ID`.
+8. Only after explicit approval: create/fund wallet, set live env flags, and promote from dry-run.
