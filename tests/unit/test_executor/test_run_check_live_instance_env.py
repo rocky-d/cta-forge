@@ -60,11 +60,35 @@ def test_check_live_instance_env_rejects_non_dry_run_without_approval_flag() -> 
     assert dry_run_check["ok"] is False
 
     approved_code, approved_payload, _ = _run(
-        _mainnet_400_env(DRY_RUN="false"),
+        _mainnet_400_env(DRY_RUN="false", ALLOW_MAINNET_400_LIVE="true"),
         "--allow-non-dry-run",
     )
     assert approved_code == 0
     assert approved_payload["status"] == "ok"
+
+    still_blocked_code, still_blocked_payload, _ = _run(
+        _mainnet_400_env(DRY_RUN="false", ALLOW_MAINNET_400_LIVE="false"),
+        "--allow-non-dry-run",
+    )
+    assert still_blocked_code == 2
+    live_flag_check = next(
+        check
+        for check in still_blocked_payload["checks"]
+        if check["name"] == "allow_mainnet_400_live"
+    )
+    assert live_flag_check["ok"] is False
+
+
+def test_check_live_instance_env_rejects_enabled_live_flag_during_prep() -> None:
+    code, payload, _ = _run(_mainnet_400_env(ALLOW_MAINNET_400_LIVE="true"))
+
+    assert code == 2
+    live_flag_check = next(
+        check
+        for check in payload["checks"]
+        if check["name"] == "allow_mainnet_400_live"
+    )
+    assert live_flag_check["ok"] is False
 
 
 def test_check_live_instance_env_rejects_bad_caps_and_paths() -> None:

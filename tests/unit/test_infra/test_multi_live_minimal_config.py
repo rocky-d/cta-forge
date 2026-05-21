@@ -70,4 +70,16 @@ def test_second_live_env_example_keeps_secret_values_blank() -> None:
     ]:
         assert env[key] == ""
 
-    assert "<password>" in env["DATABASE_URL"]
+    assert "REPLACE_ME" in env["DATABASE_URL"]
+
+
+def test_second_live_env_example_is_plain_shell_compatible() -> None:
+    for raw_line in ENV_EXAMPLE.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        assert key.isidentifier()
+        assert " " not in value
+        assert "<" not in value
+        assert ">" not in value

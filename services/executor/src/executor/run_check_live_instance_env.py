@@ -91,7 +91,13 @@ def validate_live_instance_env(
         ),
     ]
     if instance_id == MAINNET_400_LIVE_INSTANCE_ID:
-        checks.extend(_validate_mainnet_400_env(env, require_secrets=require_secrets))
+        checks.extend(
+            _validate_mainnet_400_env(
+                env,
+                allow_non_dry_run=allow_non_dry_run,
+                require_secrets=require_secrets,
+            )
+        )
     else:
         checks.append(
             CheckResult(
@@ -106,6 +112,7 @@ def validate_live_instance_env(
 def _validate_mainnet_400_env(
     env: Mapping[str, str],
     *,
+    allow_non_dry_run: bool,
     require_secrets: bool,
 ) -> list[CheckResult]:
     return [
@@ -122,7 +129,11 @@ def _validate_mainnet_400_env(
             env.get("STRATEGY_PROFILE"),
             {V16A_MAINNET_PILOT_PROFILE.slug, V16A_PROFILE_SLUG},
         ),
-        _check_false("allow_mainnet_400_live", env.get(ALLOW_MAINNET_400_LIVE_ENV)),
+        _check_live_allow_flag(
+            "allow_mainnet_400_live",
+            env.get(ALLOW_MAINNET_400_LIVE_ENV),
+            allow_non_dry_run=allow_non_dry_run,
+        ),
         _check_status_default("live_instance_status", env.get("LIVE_INSTANCE_STATUS")),
         _check_equals(
             "public_instance_status", env.get("PUBLIC_INSTANCE_STATUS"), "hidden"
@@ -207,9 +218,27 @@ def _check_truthy(name: str, value: str | None) -> CheckResult:
     return CheckResult(name, ok, "enabled" if ok else "must be enabled")
 
 
-def _check_false(name: str, value: str | None) -> CheckResult:
-    ok = not _is_truthy(value)
-    return CheckResult(name, ok, "disabled" if ok else "must remain disabled for prep")
+def _check_live_allow_flag(
+    name: str,
+    value: str | None,
+    *,
+    allow_non_dry_run: bool,
+) -> CheckResult:
+    enabled = _is_truthy(value)
+    ok = enabled if allow_non_dry_run else not enabled
+    if allow_non_dry_run:
+        message = (
+            "enabled for approved live promotion"
+            if ok
+            else "must be enabled for live promotion"
+        )
+    else:
+        message = (
+            "disabled for prep/dry-run"
+            if ok
+            else "must remain disabled for prep/dry-run"
+        )
+    return CheckResult(name, ok, message)
 
 
 def _check_status_default(name: str, value: str | None) -> CheckResult:
