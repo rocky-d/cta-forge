@@ -97,7 +97,13 @@ uv run python -m executor.run_check_live_instance_env
 
 4. Bootstrap DB rows with status `paused` and dashboard `hidden`.
 5. After private env review, activate the DB instance/account rows for the dry-run window.
-6. Run read-only exchange/DB-lock preflight with `REQUIRE_LIVE_INSTANCE_LOCK_AVAILABLE=true`.
-7. Start `executor-mainnet-400-01` under the `mainnet-400-01` compose profile with `DRY_RUN=true`.
-8. Observe 1–2 hourly ticks and verify DB rows are separated by `LIVE_INSTANCE_ID`.
-9. Only after explicit approval: create/fund wallet, set live env flags, and promote from dry-run.
+6. Run the DB-only readiness guard:
+
+```bash
+uv run python -m executor.run_check_live_instance_db --require-active --require-lock-available
+```
+
+7. Run read-only exchange/DB-lock preflight with `REQUIRE_LIVE_INSTANCE_LOCK_AVAILABLE=true`.
+8. Start `executor-mainnet-400-01` under the `mainnet-400-01` compose profile with `DRY_RUN=true`.
+9. Observe 1–2 hourly ticks and verify DB rows are separated by `LIVE_INSTANCE_ID`.
+10. Only after explicit approval: create/fund wallet, set live env flags, and promote from dry-run.
