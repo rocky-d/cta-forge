@@ -54,5 +54,25 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  executor-mainnet-400-01:
+    image: ghcr.io/rocky-d/cta-forge/executor:latest
+    container_name: cta-forge-executor-mainnet-400-01
+    restart: unless-stopped
+    profiles: ["mainnet-400-01"]
+    command: ["uv", "run", "python", "-m", "executor.run_live"]
+    env_file: .env.mainnet-400-01
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data-mainnet-400-01:/app/data
+      - ./state-mainnet-400-01:/app/state
+      - ./journal-mainnet-400-01:/app/journal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   cta_forge_postgres_data:

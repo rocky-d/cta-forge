@@ -29,16 +29,22 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def __init__(self) -> None:
+    def __init__(self, *, lock_acquired: bool = True) -> None:
         self.calls: list[RecordedExecute] = []
         self.closed = False
+        self.lock_acquired = lock_acquired
 
     def execute(
         self, query: str, params: Mapping[str, Any] | None = None
     ) -> FakeCursor:
         bound = params or {}
         self.calls.append(RecordedExecute(query, bound))
-        if "returning id, bar" in query.lower():
+        lowered = query.lower()
+        if "pg_try_advisory_lock" in lowered:
+            return FakeCursor((self.lock_acquired,))
+        if "pg_advisory_unlock" in lowered:
+            return FakeCursor((True,))
+        if "returning id, bar" in lowered:
             bar = int(bound["bar"])
             return FakeCursor((10_000 + bar, bar))
         return FakeCursor()
@@ -143,6 +149,27 @@ def test_dual_mode_mirrors_exact_file_rows_to_postgres(tmp_path) -> None:
     assert file_state["initial_equity"] == 100.5
     assert checkpoint_payload["initial_equity"] == "100.5"
     assert checkpoint_payload["peak_equity"] == "101.25"
+    assert conn.closed is True
+
+
+def test_db_mode_fails_closed_when_runtime_lock_is_held(tmp_path) -> None:
+    conn = FakeConnection(lock_acquired=False)
+    config = LivePersistenceRuntimeConfig(
+        backend="dual",
+        database_url="postgresql://example.invalid/cta",
+        live_instance_id="instance-1",
+        run_id="run-1",
+    )
+
+    with pytest.raises(ValueError, match="runtime lock is already held"):
+        build_live_persistence_stores(
+            config,
+            journal_dir=str(tmp_path / "journal"),
+            state_file=str(tmp_path / "state.json"),
+            public_instance_slug=None,
+            connect_database=lambda _: conn,
+        )
+
     assert conn.closed is True
 
 

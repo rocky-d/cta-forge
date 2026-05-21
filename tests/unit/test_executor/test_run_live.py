@@ -10,6 +10,7 @@ import pytest
 from executor.profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
 from executor.run_mainnet_preflight import _check_runtime_paths, _report_has_errors
 from executor.run_live import (
+    MAINNET_400_LIVE_INSTANCE_ID,
     _is_truthy,
     _load_runtime_identity,
     _parse_hl_network,
@@ -117,6 +118,51 @@ def test_validate_mainnet_pilot_allows_explicit_live_flag() -> None:
         strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
         allow_mainnet_pilot_live=True,
     )
+
+
+def test_validate_mainnet_400_requires_dedicated_live_flag_and_caps() -> None:
+    with pytest.raises(ValueError, match="ALLOW_MAINNET_400_LIVE=true"):
+        _validate_v16a_live_mode(
+            dry_run=False,
+            testnet=False,
+            strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+            allow_mainnet_pilot_live=True,
+            allow_mainnet_400_live=False,
+            live_instance_id=MAINNET_400_LIVE_INSTANCE_ID,
+            enforce_pilot_caps=True,
+            max_equity=450,
+            max_order_notional=50,
+            target_gross_cap=4.0,
+            leverage=5,
+        )
+
+    _validate_v16a_live_mode(
+        dry_run=False,
+        testnet=False,
+        strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+        allow_mainnet_pilot_live=False,
+        allow_mainnet_400_live=True,
+        live_instance_id=MAINNET_400_LIVE_INSTANCE_ID,
+        enforce_pilot_caps=True,
+        max_equity=450,
+        max_order_notional=50,
+        target_gross_cap=4.0,
+        leverage=5,
+    )
+
+    with pytest.raises(ValueError, match="MAX_EQUITY"):
+        _validate_v16a_live_mode(
+            dry_run=False,
+            testnet=False,
+            strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
+            allow_mainnet_400_live=True,
+            live_instance_id=MAINNET_400_LIVE_INSTANCE_ID,
+            enforce_pilot_caps=True,
+            max_equity=501,
+            max_order_notional=50,
+            target_gross_cap=4.0,
+            leverage=5,
+        )
 
 
 def test_validate_mainnet_pilot_enforced_caps() -> None:

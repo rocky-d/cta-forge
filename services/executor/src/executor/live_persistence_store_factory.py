@@ -24,6 +24,7 @@ from .live_persistence_postgres import (
     PostgresLiveStateStore,
 )
 from .live_persistence_runtime import LivePersistenceRuntimeConfig
+from .live_runtime_lock import acquire_live_runtime_lock
 from .state import JsonFileLiveStateStore, LiveStateStore
 
 logger = logging.getLogger(__name__)
@@ -87,7 +88,20 @@ def build_live_persistence_stores(
 
     connector = connect_database or _connect_psycopg
     conn = connector(config.database_url)
-    _ensure_live_run(conn, config)
+    try:
+        lock_status = acquire_live_runtime_lock(
+            conn,
+            live_instance_id=config.live_instance_id,
+        )
+        if not lock_status.acquired:
+            raise ValueError(
+                "live runtime lock is already held for "
+                f"LIVE_INSTANCE_ID={config.live_instance_id}"
+            )
+        _ensure_live_run(conn, config)
+    except Exception:
+        conn.close()
+        raise
     db_journal = PostgresLiveJournalStore(
         conn,
         live_instance_id=config.live_instance_id,

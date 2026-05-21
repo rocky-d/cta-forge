@@ -69,7 +69,57 @@ MAINNET_PILOT_MAX_EQUITY = 200.0
 MAINNET_PILOT_MAX_ORDER_NOTIONAL = 50.0
 MAINNET_PILOT_MAX_TARGET_GROSS_CAP = 4.0
 MAINNET_PILOT_MAX_LEVERAGE = 5
+MAINNET_400_MAX_EQUITY = 500.0
+MAINNET_400_MAX_ORDER_NOTIONAL = 50.0
+MAINNET_400_MAX_TARGET_GROSS_CAP = 4.0
+MAINNET_400_MAX_LEVERAGE = 5
+MAINNET_400_LIVE_INSTANCE_ID = "mainnet-400-01"
 ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV = "ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS"
+ALLOW_MAINNET_400_LIVE_ENV = "ALLOW_MAINNET_400_LIVE"
+
+
+def _validate_mainnet_caps(
+    *,
+    label: str,
+    max_equity: float | None,
+    max_order_notional: float | None,
+    target_gross_cap: float,
+    leverage: int,
+    max_allowed_equity: float,
+    max_allowed_order_notional: float,
+    max_allowed_target_gross_cap: float,
+    max_allowed_leverage: int,
+    allow_uncapped_orders: bool = False,
+) -> None:
+    """Require explicit bounded risk caps for guarded mainnet live modes."""
+    if max_equity is None or max_equity > max_allowed_equity:
+        msg = f"{label} live requires MAX_EQUITY <= {max_allowed_equity:g}"
+        raise ValueError(msg)
+    if max_order_notional is None:
+        if not allow_uncapped_orders:
+            msg = (
+                f"{label} live requires "
+                f"MAX_ORDER_NOTIONAL <= {max_allowed_order_notional:g} "
+                f"unless {ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV}=true"
+            )
+            raise ValueError(msg)
+    elif max_order_notional > max_allowed_order_notional:
+        msg = (
+            f"{label} live requires "
+            f"MAX_ORDER_NOTIONAL <= {max_allowed_order_notional:g}; "
+            "use an empty MAX_ORDER_NOTIONAL with "
+            f"{ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV}=true for no-max mode"
+        )
+        raise ValueError(msg)
+    if target_gross_cap > max_allowed_target_gross_cap:
+        msg = (
+            f"{label} live requires "
+            f"TARGET_GROSS_CAP <= {max_allowed_target_gross_cap:g}"
+        )
+        raise ValueError(msg)
+    if leverage > max_allowed_leverage:
+        msg = f"{label} live requires HL_LEVERAGE <= {max_allowed_leverage}"
+        raise ValueError(msg)
 
 
 def _validate_mainnet_pilot_caps(
@@ -80,35 +130,42 @@ def _validate_mainnet_pilot_caps(
     leverage: int,
     allow_uncapped_orders: bool = False,
 ) -> None:
-    """Require explicit bounded risk caps for mainnet pilot live mode."""
-    if max_equity is None or max_equity > MAINNET_PILOT_MAX_EQUITY:
-        msg = f"mainnet pilot live requires MAX_EQUITY <= {MAINNET_PILOT_MAX_EQUITY:g}"
-        raise ValueError(msg)
-    if max_order_notional is None:
-        if not allow_uncapped_orders:
-            msg = (
-                "mainnet pilot live requires "
-                f"MAX_ORDER_NOTIONAL <= {MAINNET_PILOT_MAX_ORDER_NOTIONAL:g} "
-                f"unless {ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV}=true"
-            )
-            raise ValueError(msg)
-    elif max_order_notional > MAINNET_PILOT_MAX_ORDER_NOTIONAL:
-        msg = (
-            "mainnet pilot live requires "
-            f"MAX_ORDER_NOTIONAL <= {MAINNET_PILOT_MAX_ORDER_NOTIONAL:g}; "
-            "use an empty MAX_ORDER_NOTIONAL with "
-            f"{ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV}=true for no-max mode"
-        )
-        raise ValueError(msg)
-    if target_gross_cap > MAINNET_PILOT_MAX_TARGET_GROSS_CAP:
-        msg = (
-            "mainnet pilot live requires "
-            f"TARGET_GROSS_CAP <= {MAINNET_PILOT_MAX_TARGET_GROSS_CAP:g}"
-        )
-        raise ValueError(msg)
-    if leverage > MAINNET_PILOT_MAX_LEVERAGE:
-        msg = f"mainnet pilot live requires HL_LEVERAGE <= {MAINNET_PILOT_MAX_LEVERAGE}"
-        raise ValueError(msg)
+    """Require explicit bounded risk caps for the existing mainnet pilot."""
+    _validate_mainnet_caps(
+        label="mainnet pilot",
+        max_equity=max_equity,
+        max_order_notional=max_order_notional,
+        target_gross_cap=target_gross_cap,
+        leverage=leverage,
+        max_allowed_equity=MAINNET_PILOT_MAX_EQUITY,
+        max_allowed_order_notional=MAINNET_PILOT_MAX_ORDER_NOTIONAL,
+        max_allowed_target_gross_cap=MAINNET_PILOT_MAX_TARGET_GROSS_CAP,
+        max_allowed_leverage=MAINNET_PILOT_MAX_LEVERAGE,
+        allow_uncapped_orders=allow_uncapped_orders,
+    )
+
+
+def _validate_mainnet_400_caps(
+    *,
+    max_equity: float | None,
+    max_order_notional: float | None,
+    target_gross_cap: float,
+    leverage: int,
+    allow_uncapped_orders: bool = False,
+) -> None:
+    """Require explicit bounded risk caps for the planned 400 USDT instance."""
+    _validate_mainnet_caps(
+        label=MAINNET_400_LIVE_INSTANCE_ID,
+        max_equity=max_equity,
+        max_order_notional=max_order_notional,
+        target_gross_cap=target_gross_cap,
+        leverage=leverage,
+        max_allowed_equity=MAINNET_400_MAX_EQUITY,
+        max_allowed_order_notional=MAINNET_400_MAX_ORDER_NOTIONAL,
+        max_allowed_target_gross_cap=MAINNET_400_MAX_TARGET_GROSS_CAP,
+        max_allowed_leverage=MAINNET_400_MAX_LEVERAGE,
+        allow_uncapped_orders=allow_uncapped_orders,
+    )
 
 
 def _validate_v16a_live_mode(
@@ -118,6 +175,8 @@ def _validate_v16a_live_mode(
     strategy_profile: str = V16A_PROFILE_SLUG,
     allow_testnet_live: bool = False,
     allow_mainnet_pilot_live: bool = False,
+    allow_mainnet_400_live: bool = False,
+    live_instance_id: str | None = None,
     enforce_pilot_caps: bool = False,
     max_equity: float | None = None,
     max_order_notional: float | None = None,
@@ -132,6 +191,19 @@ def _validate_v16a_live_mode(
         if testnet:
             msg = f"{V16A_MAINNET_PILOT_PROFILE.slug} requires HL_NETWORK=mainnet"
             raise ValueError(msg)
+        if live_instance_id == MAINNET_400_LIVE_INSTANCE_ID:
+            if not allow_mainnet_400_live:
+                msg = f"{MAINNET_400_LIVE_INSTANCE_ID} requires {ALLOW_MAINNET_400_LIVE_ENV}=true"
+                raise ValueError(msg)
+            if enforce_pilot_caps:
+                _validate_mainnet_400_caps(
+                    max_equity=max_equity,
+                    max_order_notional=max_order_notional,
+                    target_gross_cap=target_gross_cap,
+                    leverage=leverage,
+                    allow_uncapped_orders=allow_uncapped_orders,
+                )
+            return
         if not allow_mainnet_pilot_live:
             msg = f"{V16A_MAINNET_PILOT_PROFILE.slug} requires ALLOW_MAINNET_PILOT_LIVE=true"
             raise ValueError(msg)
@@ -275,6 +347,7 @@ def main() -> None:
     )
     allow_v16a_testnet_live = _is_truthy(os.environ.get("ALLOW_V16A_TESTNET_LIVE"))
     allow_mainnet_pilot_live = _is_truthy(os.environ.get("ALLOW_MAINNET_PILOT_LIVE"))
+    allow_mainnet_400_live = _is_truthy(os.environ.get(ALLOW_MAINNET_400_LIVE_ENV))
     allow_uncapped_orders = _is_truthy(
         os.environ.get(ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV)
     )
@@ -296,6 +369,8 @@ def main() -> None:
                 strategy_profile=strategy_profile,
                 allow_testnet_live=allow_v16a_testnet_live,
                 allow_mainnet_pilot_live=allow_mainnet_pilot_live,
+                allow_mainnet_400_live=allow_mainnet_400_live,
+                live_instance_id=identity.live_instance_id,
                 enforce_pilot_caps=True,
                 max_equity=max_equity,
                 max_order_notional=max_order_notional,

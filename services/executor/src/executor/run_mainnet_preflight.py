@@ -13,14 +13,16 @@ import logging
 import math
 import os
 import sys
-from pathlib import Path
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 from core.constants import V10G_SYMBOLS
 from exchange.hyperliquid import HyperliquidAdapter
 
+from .live_runtime_lock import DbConnection, probe_live_runtime_lock
 from .live_target import normalize_target_weights
 from .profiles.v16a_badscore_overlay import (
     V16A_MAINNET_PILOT_PROFILE,
@@ -29,9 +31,11 @@ from .profiles.v16a_badscore_overlay import (
 )
 from .run_live import (
     ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
+    MAINNET_400_LIVE_INSTANCE_ID,
     _is_truthy,
     _parse_optional_float,
     _parse_symbols,
+    _validate_mainnet_400_caps,
     _validate_mainnet_pilot_caps,
 )
 from .targeting import weights_to_orders
@@ -72,13 +76,23 @@ async def _build_report() -> dict[str, Any]:
     allow_uncapped_orders = _is_truthy(
         os.environ.get(ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV)
     )
-    _validate_mainnet_pilot_caps(
-        max_equity=max_equity,
-        max_order_notional=max_order_notional,
-        target_gross_cap=target_gross_cap,
-        leverage=leverage,
-        allow_uncapped_orders=allow_uncapped_orders,
-    )
+    live_instance_id = os.environ.get("LIVE_INSTANCE_ID", "").strip()
+    if live_instance_id == MAINNET_400_LIVE_INSTANCE_ID:
+        _validate_mainnet_400_caps(
+            max_equity=max_equity,
+            max_order_notional=max_order_notional,
+            target_gross_cap=target_gross_cap,
+            leverage=leverage,
+            allow_uncapped_orders=allow_uncapped_orders,
+        )
+    else:
+        _validate_mainnet_pilot_caps(
+            max_equity=max_equity,
+            max_order_notional=max_order_notional,
+            target_gross_cap=target_gross_cap,
+            leverage=leverage,
+            allow_uncapped_orders=allow_uncapped_orders,
+        )
 
     adapter = HyperliquidAdapter(pk, addr, testnet=False)
     try:
@@ -121,6 +135,7 @@ async def _build_report() -> dict[str, Any]:
             symbol_rows.append(row)
 
         path_report = _check_runtime_paths(state_file, journal_dir)
+        runtime_lock_report = _check_runtime_lock(os.environ)
 
         target_report: dict[str, Any] = {"status": "not_computed"}
         try:
@@ -191,11 +206,51 @@ async def _build_report() -> dict[str, Any]:
             },
             "open_orders": open_orders,
             "paths": path_report,
+            "runtime_lock": runtime_lock_report,
             "symbols": symbol_rows,
             "target": target_report,
         }
     finally:
         await adapter.close()
+
+
+def _check_runtime_lock(env: Mapping[str, str]) -> dict[str, Any]:
+    """Probe DB runtime lock availability when DB identity is configured."""
+
+    database_url = (env.get("DATABASE_URL") or "").strip()
+    live_instance_id = (env.get("LIVE_INSTANCE_ID") or "").strip()
+    require_available = _is_truthy(env.get("REQUIRE_LIVE_INSTANCE_LOCK_AVAILABLE"))
+    if not database_url or not live_instance_id:
+        status = {
+            "status": "skipped",
+            "database_url_configured": bool(database_url),
+            "live_instance_id_configured": bool(live_instance_id),
+        }
+        if require_available:
+            status["status"] = "error"
+            status["error"] = (
+                "REQUIRE_LIVE_INSTANCE_LOCK_AVAILABLE=true requires "
+                "DATABASE_URL and LIVE_INSTANCE_ID"
+            )
+        return status
+
+    try:
+        import psycopg
+
+        with psycopg.connect(database_url, autocommit=True) as conn:
+            lock_status = probe_live_runtime_lock(
+                cast(DbConnection, conn),
+                live_instance_id=live_instance_id,
+            )
+    except Exception as exc:  # pragma: no cover - deployment environment dependent
+        return {"status": "error", "error": str(exc)}
+
+    if lock_status.acquired:
+        return {"status": "available", **lock_status.to_safe_dict()}
+    status = {"status": "held", **lock_status.to_safe_dict()}
+    if require_available:
+        status["error"] = "live runtime lock is already held"
+    return status
 
 
 def _check_runtime_paths(state_file: Path, journal_dir: Path) -> dict[str, Any]:
@@ -225,6 +280,9 @@ def _report_has_errors(report: dict[str, Any]) -> bool:
     if report.get("status") == "error":
         return True
     if report.get("paths", {}).get("status") != "ok":
+        return True
+    runtime_lock_status = report.get("runtime_lock", {}).get("status")
+    if runtime_lock_status == "error":
         return True
     if report.get("target", {}).get("status") != "ok":
         return True
