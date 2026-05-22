@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 
 import pytest
 
 from executor.profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
-from executor.run_mainnet_preflight import _check_runtime_paths, _report_has_errors
+from executor.run_mainnet_preflight import (
+    _check_db_account_address,
+    _check_runtime_paths,
+    _report_has_errors,
+)
 from executor.run_live import (
     MAINNET_400_LIVE_INSTANCE_ID,
     _is_truthy,
@@ -308,6 +313,105 @@ def test_suppress_secret_bearing_http_logs() -> None:
     assert logging.getLogger("httpcore").level == logging.WARNING
 
 
+class _FakeCursor:
+    def __init__(self, row):
+        self._row = row
+
+    def fetchone(self):
+        return self._row
+
+
+class _FakePsycopgConnection:
+    def __init__(self, row):
+        self._row = row
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def execute(self, query, params):
+        assert "exchange_accounts" in query
+        assert params == {"live_instance_id": "mainnet-400-01"}
+        return _FakeCursor(self._row)
+
+
+class _FakePsycopgModule:
+    def __init__(self, row):
+        self._row = row
+
+    def connect(self, database_url: str, *, autocommit: bool):
+        assert database_url == "postgresql://example"
+        assert autocommit is True
+        return _FakePsycopgConnection(self._row)
+
+
+def test_mainnet_preflight_db_account_address_check(monkeypatch) -> None:
+    env = {
+        "DATABASE_URL": "postgresql://example",
+        "LIVE_INSTANCE_ID": "mainnet-400-01",
+        "REQUIRE_DB_ACCOUNT_ADDRESS_MATCH": "true",
+    }
+    account_address = "0xABCDEF123456"
+    address_hash = "45107193b3b08e16213c698ba02c3518cb52f00391ea66ae79fac88732c4176d"
+    monkeypatch.setitem(
+        sys.modules,
+        "psycopg",
+        _FakePsycopgModule(("hl-mainnet-400-01", address_hash, "0xABCDEF12")),
+    )
+
+    report = _check_db_account_address(env, account_address=account_address)
+
+    assert report == {
+        "status": "match",
+        "live_instance_id": "mainnet-400-01",
+        "account_id": "hl-mainnet-400-01",
+        "db_address_prefix": "0xABCDEF12",
+        "env_address_prefix": "0xABCDEF12",
+        "required": True,
+    }
+
+
+def test_mainnet_preflight_db_account_address_mismatch_fails(monkeypatch) -> None:
+    monkeypatch.setitem(
+        sys.modules,
+        "psycopg",
+        _FakePsycopgModule(("hl-mainnet-400-01", "wrong-hash", "0x11111111")),
+    )
+
+    report = _check_db_account_address(
+        {
+            "DATABASE_URL": "postgresql://example",
+            "LIVE_INSTANCE_ID": "mainnet-400-01",
+        },
+        account_address="0xABCDEF123456",
+    )
+
+    assert report["status"] == "error"
+    assert "does not match" in report["error"]
+
+
+def test_mainnet_preflight_db_account_address_can_require_metadata(monkeypatch) -> None:
+    monkeypatch.setitem(
+        sys.modules,
+        "psycopg",
+        _FakePsycopgModule(("hl-mainnet-400-01", None, None)),
+    )
+
+    report = _check_db_account_address(
+        {
+            "DATABASE_URL": "postgresql://example",
+            "LIVE_INSTANCE_ID": "mainnet-400-01",
+            "REQUIRE_DB_ACCOUNT_ADDRESS_MATCH": "true",
+        },
+        account_address="0xABCDEF123456",
+    )
+
+    assert report["status"] == "error"
+    assert "address hash is missing" in report["error"]
+
+
 def test_mainnet_preflight_report_fails_on_target_or_path_errors(tmp_path) -> None:
     good = {
         "paths": {"status": "ok"},
@@ -321,6 +425,9 @@ def test_mainnet_preflight_report_fails_on_target_or_path_errors(tmp_path) -> No
 
     path_error = good | {"paths": {"status": "error", "error": "readonly"}}
     assert _report_has_errors(path_error) is True
+
+    db_account_error = good | {"db_account": {"status": "error"}}
+    assert _report_has_errors(db_account_error) is True
 
     missing_symbol = good | {"symbols": [{"symbol": "BTC", "exists": False}]}
     assert _report_has_errors(missing_symbol) is True

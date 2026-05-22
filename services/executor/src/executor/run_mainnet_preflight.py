@@ -29,6 +29,7 @@ from .profiles.v16a_badscore_overlay import (
     V16aOnlineTargetStrategy,
     validate_core_phase_hours,
 )
+from .run_bootstrap_live_instance import _address_hash
 from .run_live import (
     ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
     MAINNET_400_LIVE_INSTANCE_ID,
@@ -136,6 +137,7 @@ async def _build_report() -> dict[str, Any]:
 
         path_report = _check_runtime_paths(state_file, journal_dir)
         runtime_lock_report = _check_runtime_lock(os.environ)
+        db_account_report = _check_db_account_address(os.environ, account_address=addr)
 
         target_report: dict[str, Any] = {"status": "not_computed"}
         try:
@@ -207,6 +209,7 @@ async def _build_report() -> dict[str, Any]:
             "open_orders": open_orders,
             "paths": path_report,
             "runtime_lock": runtime_lock_report,
+            "db_account": db_account_report,
             "symbols": symbol_rows,
             "target": target_report,
         }
@@ -253,6 +256,87 @@ def _check_runtime_lock(env: Mapping[str, str]) -> dict[str, Any]:
     return status
 
 
+def _check_db_account_address(
+    env: Mapping[str, str],
+    *,
+    account_address: str,
+) -> dict[str, Any]:
+    """Verify DB account metadata matches the active Hyperliquid address.
+
+    The DB stores only a SHA-256 hash and short prefix of the address. This check
+    catches a stale or wrong wallet in the private runtime env before live
+    promotion, without logging the full address or any secret.
+    """
+
+    database_url = (env.get("DATABASE_URL") or "").strip()
+    live_instance_id = (env.get("LIVE_INSTANCE_ID") or "").strip()
+    require_match = _is_truthy(env.get("REQUIRE_DB_ACCOUNT_ADDRESS_MATCH"))
+    if not database_url or not live_instance_id:
+        status = {
+            "status": "skipped",
+            "database_url_configured": bool(database_url),
+            "live_instance_id_configured": bool(live_instance_id),
+            "required": require_match,
+        }
+        if require_match:
+            status["status"] = "error"
+            status["error"] = (
+                "REQUIRE_DB_ACCOUNT_ADDRESS_MATCH=true requires DATABASE_URL "
+                "and LIVE_INSTANCE_ID"
+            )
+        return status
+
+    try:
+        import psycopg
+
+        with psycopg.connect(database_url, autocommit=True) as conn:
+            row = conn.execute(
+                """
+                select ea.account_id, ea.address_hash, ea.address_prefix
+                from live_instances li
+                join exchange_accounts ea on ea.account_id = li.account_id
+                where li.live_instance_id = %(live_instance_id)s
+                """,
+                {"live_instance_id": live_instance_id},
+            ).fetchone()
+    except Exception as exc:  # pragma: no cover - deployment environment dependent
+        return {"status": "error", "required": require_match, "error": str(exc)}
+
+    env_address_prefix = account_address[:10]
+    if row is None:
+        status = {
+            "status": "missing_instance",
+            "live_instance_id": live_instance_id,
+            "env_address_prefix": env_address_prefix,
+            "required": require_match,
+        }
+        if require_match:
+            status["status"] = "error"
+            status["error"] = "live instance account row is missing"
+        return status
+
+    account_id, db_address_hash, db_address_prefix = row
+    report = {
+        "status": "match",
+        "live_instance_id": live_instance_id,
+        "account_id": str(account_id),
+        "db_address_prefix": db_address_prefix,
+        "env_address_prefix": env_address_prefix,
+        "required": require_match,
+    }
+    expected_hash = _address_hash(account_address)
+    if not db_address_hash:
+        report["status"] = "missing_metadata"
+        if require_match:
+            report["status"] = "error"
+            report["error"] = "DB account address hash is missing"
+        return report
+    if db_address_hash != expected_hash:
+        report["status"] = "error"
+        report["error"] = "DB account address hash does not match HL_ACCOUNT_ADDRESS"
+    return report
+
+
 def _check_runtime_paths(state_file: Path, journal_dir: Path) -> dict[str, Any]:
     """Verify runtime persistence paths are writable without changing state."""
     checks: dict[str, Any] = {
@@ -283,6 +367,8 @@ def _report_has_errors(report: dict[str, Any]) -> bool:
         return True
     runtime_lock_status = report.get("runtime_lock", {}).get("status")
     if runtime_lock_status == "error":
+        return True
+    if report.get("db_account", {}).get("status") == "error":
         return True
     if report.get("target", {}).get("status") != "ok":
         return True

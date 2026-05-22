@@ -139,10 +139,11 @@ Before any funding or non-dry-run start:
    - `DRY_RUN=true`
    - `ALLOW_MAINNET_400_LIVE=false`
    - `ALLOW_MAINNET_PILOT_LIVE=false`
-5. Run env guard, DB readiness, and read-only mainnet preflight with the new account.
-6. Start/observe at least one more dry-run tick on the dedicated account.
-7. Confirm no unmanaged positions, no open orders, and DB rows still advance only under `LIVE_INSTANCE_ID=mainnet-400-01`.
-8. Only then ask for explicit approval to set:
+5. Bootstrap/update the non-secret DB account metadata with the dedicated address so only its hash and short prefix are stored.
+6. Run env guard, DB readiness, and read-only mainnet preflight with `REQUIRE_DB_ACCOUNT_ADDRESS_MATCH=true`; this fails closed if private `HL_ACCOUNT_ADDRESS` does not match the DB account metadata.
+7. Start/observe at least one more dry-run tick on the dedicated account.
+8. Confirm no unmanaged positions, no open orders, and DB rows still advance only under `LIVE_INSTANCE_ID=mainnet-400-01`.
+9. Only then ask for explicit approval to set:
    - `DRY_RUN=false`
    - `ALLOW_MAINNET_400_LIVE=true`
 
