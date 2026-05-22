@@ -109,6 +109,20 @@ uv run python -m executor.run_check_live_instance_db --require-active --require-
 10. Continue a longer dry-run soak if desired; the 2026-05-22 00:00 UTC check reached `mainnet-400-01` tick 11 with DB separation intact and no real-order terms in logs.
 11. Only after explicit approval: create/fund wallet, set live env flags, and promote from dry-run.
 
+## Multi-instance DB status check
+
+Use the read-only status CLI to summarize all live instances without ad-hoc SQL:
+
+```bash
+uv run python -m executor.run_live_instances_status \
+  --require-active \
+  --require-progress \
+  --expect-instance mainnet-pilot \
+  --expect-instance mainnet-400-01
+```
+
+It reports non-secret DB metadata for each instance, including active/paused status, public dashboard status, latest checkpoint bar, latest tick bar, latest target gross, and the latest run status. Use this before and after multi-instance changes to confirm `LIVE_INSTANCE_ID` separation.
+
 ## Pre-live wallet/account gate
 
 Do not promote `mainnet-400-01` from dry-run while it still reuses the existing mainnet-pilot Hyperliquid address. Dry-run observation can reuse the address because it does not place orders, but real live trading must use an isolated wallet/account.
