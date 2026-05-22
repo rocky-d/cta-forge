@@ -106,4 +106,30 @@ uv run python -m executor.run_check_live_instance_db --require-active --require-
 7. Run read-only exchange/DB-lock preflight with `REQUIRE_LIVE_INSTANCE_LOCK_AVAILABLE=true`.
 8. Start `executor-mainnet-400-01` under the `mainnet-400-01` compose profile with `DRY_RUN=true`.
 9. Observe 1–2 hourly ticks and verify DB rows are separated by `LIVE_INSTANCE_ID`.
-10. Only after explicit approval: create/fund wallet, set live env flags, and promote from dry-run.
+10. Continue a longer dry-run soak if desired; the 2026-05-22 00:00 UTC check reached `mainnet-400-01` tick 11 with DB separation intact and no real-order terms in logs.
+11. Only after explicit approval: create/fund wallet, set live env flags, and promote from dry-run.
+
+## Pre-live wallet/account gate
+
+Do not promote `mainnet-400-01` from dry-run while it still reuses the existing mainnet-pilot Hyperliquid address. Dry-run observation can reuse the address because it does not place orders, but real live trading must use an isolated wallet/account.
+
+Before any funding or non-dry-run start:
+
+1. Create or select a dedicated Hyperliquid account/address for `mainnet-400-01`.
+2. Put only the approved pilot amount on that account; planned amount is 400 USDT.
+3. Update the private host env only, not git:
+   - `HL_PRIVATE_KEY`
+   - `HL_ACCOUNT_ADDRESS`
+   - notification targets if desired
+4. Keep all live gates false while validating the new account:
+   - `DRY_RUN=true`
+   - `ALLOW_MAINNET_400_LIVE=false`
+   - `ALLOW_MAINNET_PILOT_LIVE=false`
+5. Run env guard, DB readiness, and read-only mainnet preflight with the new account.
+6. Start/observe at least one more dry-run tick on the dedicated account.
+7. Confirm no unmanaged positions, no open orders, and DB rows still advance only under `LIVE_INSTANCE_ID=mainnet-400-01`.
+8. Only then ask for explicit approval to set:
+   - `DRY_RUN=false`
+   - `ALLOW_MAINNET_400_LIVE=true`
+
+Keep `MAX_EQUITY<=500`, `MAX_ORDER_NOTIONAL<=50`, `TARGET_GROSS_CAP<=4`, and `HL_LEVERAGE<=5` unless a new review deliberately changes the 400 USDT pilot envelope.
