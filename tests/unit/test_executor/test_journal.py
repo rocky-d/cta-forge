@@ -183,3 +183,100 @@ class TestJournalToReportFormat:
             assert len(result["trades"]) == 1  # only closed trade has pnl
             assert result["bars"] == 2
             assert result["positions"] == {"BTC": {"side": "long"}}
+
+    def test_single_tick_cross_journal_bar_consistency(self) -> None:
+        """A single tick writes the same bar to equity, trade, signal, and target."""
+        with tempfile.TemporaryDirectory() as d:
+            j = TradeJournal(d)
+            bar = 42
+
+            j.record_tick(bar, 10_000.0, 10_100.0, {"BTC": {"side": "long"}})
+            j.record_trade(bar, "target_buy", "ETH", 0.5, 2_000.0, "target:v16a",
+                           side="long", exchange_order_id="0xabc")
+            j.record_signals(bar, {"BTC": 0.3, "ETH": 0.1})
+            j.record_target(
+                bar=bar,
+                profile="v16a",
+                target_ts="2026-01-01T00:00:00Z",
+                staleness_seconds=30.0,
+                target_gross=0.15,
+                normalized_gross=0.15,
+                weights={"BTC": 0.05, "ETH": 0.10},
+                orders=[{"symbol": "ETH", "side": "buy", "qty": 0.5}],
+                submitted_orders=[{"symbol": "ETH", "side": "buy", "qty": 0.5}],
+                filled_trades=[
+                    {"symbol": "ETH", "side": "buy", "qty": 0.5, "fill_price": 2000.0}
+                ],
+                failed_orders=[],
+            )
+
+            assert j.load_equity()[-1]["bar"] == bar
+            assert j.load_trades()[-1]["bar"] == bar
+            assert j.load_signals()[-1]["bar"] == bar
+            assert j.load_targets()[-1]["bar"] == bar
+
+            bars = {
+                j.load_equity()[-1]["bar"],
+                j.load_trades()[-1]["bar"],
+                j.load_signals()[-1]["bar"],
+                j.load_targets()[-1]["bar"],
+            }
+            assert bars == {bar}, (
+                f"All journal records in one tick must share bar={bar}, got {bars}"
+            )
+
+    def test_target_execution_buckets_are_explicit(self) -> None:
+        """Targets.jsonl must separate planned/submitted/filled/failed explicitly."""
+        with tempfile.TemporaryDirectory() as d:
+            j = TradeJournal(d)
+            planned = [
+                {"symbol": "ADA", "side": "sell", "qty": 10.0},
+                {"symbol": "ETH", "side": "buy", "qty": 0.1},
+            ]
+            submitted = [
+                {"symbol": "ADA", "side": "sell", "qty": 10.0, "status": "submitted"},
+            ]
+            filled = [
+                {
+                    "symbol": "ADA", "side": "sell", "qty": 10.0,
+                    "fill_price": 0.35, "status": "filled",
+                },
+            ]
+            failed = [
+                {
+                    "symbol": "ETH", "side": "buy", "qty": 0.1,
+                    "status": "skipped", "reason": "missing_price",
+                },
+            ]
+
+            j.record_target(
+                bar=5,
+                profile="v16a",
+                target_ts="2026-01-01T00:00:00Z",
+                staleness_seconds=15.0,
+                target_gross=0.12,
+                normalized_gross=0.08,
+                weights={"ADA": 0.08},
+                orders=planned,
+                submitted_orders=submitted,
+                filled_trades=filled,
+                failed_orders=failed,
+            )
+
+            target = j.load_targets()[-1]
+            assert target["bar"] == 5
+            assert target["orders"] == planned
+            assert target["planned_orders"] == planned
+            assert target["submitted_orders"] == submitted
+            assert target["filled_trades"] == filled
+            assert target["failed_orders"] == failed
+
+            reader_facing = (
+                len(target["planned_orders"]),
+                len(target["submitted_orders"]),
+                len(target["filled_trades"]),
+                len(target["failed_orders"]),
+            )
+            assert reader_facing == (2, 1, 1, 1), (
+                f"Expected (2p, 1s, 1f, 1x) got {reader_facing}"
+            )

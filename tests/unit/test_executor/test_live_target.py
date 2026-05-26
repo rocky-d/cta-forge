@@ -456,3 +456,58 @@ async def test_execute_target_portfolio_ignores_unmanaged_positions(tmp_path) ->
     assert orders == []
     assert exchange.orders == []
     assert state.positions == {}
+
+
+@pytest.mark.asyncio
+async def test_apply_target_fill_bar_matches_journal_trade_bar(tmp_path) -> None:
+    """The bar passed to apply_target_fill must match the bar in the trade record."""
+    state = EngineState(bar_count=7)
+    journal = TradeJournal(tmp_path)
+
+    order = _order(side="buy", qty=0.5)
+    ok = await execute_target_order(
+        exchange=cast(ExchangeAdapter, FilledSizeExchange(0.5)),
+        journal=journal,
+        state=state,
+        profile="test-profile",
+        dry_run=False,
+        order=order,
+        price=50_000.0,
+        bar=8,
+    )
+
+    assert ok is not None
+    trade = journal.load_trades()[-1]
+    assert trade["bar"] == 8
+    pos = state.positions["BTC"]
+    assert pos.entry_bar == 8
+
+    target = TradeJournal(tmp_path).load_targets()
+    assert len(target) == 0, "execute_target_order does not call record_target"
+
+
+@pytest.mark.asyncio
+async def test_dry_run_journals_without_exchange_placement(tmp_path) -> None:
+    """Dry-run target orders write trade journal but skip exchange placement."""
+    state = EngineState(bar_count=3)
+    journal = TradeJournal(tmp_path)
+
+    ok = await execute_target_order(
+        exchange=cast(ExchangeAdapter, FilledSizeExchange(0.5)),
+        journal=journal,
+        state=state,
+        profile="test-profile",
+        dry_run=True,
+        order=_order(side="buy", qty=0.5),
+        price=50_000.0,
+        bar=4,
+    )
+
+    assert ok is not None
+    trade = journal.load_trades()[-1]
+    assert trade["bar"] == 4
+    assert trade["kind"] == "target_buy"
+    assert trade["qty"] == 0.5
+    assert trade["price"] == 50_000.0
+    assert trade["reason"] == "target:test-profile"
+    assert "exchange_order_id" not in trade
