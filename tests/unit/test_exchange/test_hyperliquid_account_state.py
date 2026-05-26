@@ -34,12 +34,22 @@ def make_adapter(info: FakeInfo) -> HyperliquidAdapter:
     adapter = HyperliquidAdapter.__new__(HyperliquidAdapter)
     adapter._info = info
     adapter._address = "0xabc"
+    adapter._sz_decimals = {}
 
     async def fake_run_sync(func: Any, *args: Any, timeout: float = 15.0) -> Any:
         return func(*args)
 
     adapter._run_sync = fake_run_sync  # type: ignore[method-assign]
     return adapter
+
+
+def test_format_size_rounds_down_to_asset_precision() -> None:
+    adapter = HyperliquidAdapter.__new__(HyperliquidAdapter)
+    adapter._sz_decimals = {"NEAR": 1, "PURR": 0}
+
+    assert adapter._format_size(Decimal("13.85980505146829"), "NEAR") == 13.8
+    assert adapter._format_size(Decimal("2.9"), "PURR") == 2.0
+    assert adapter._format_size(Decimal("0.009"), "BTC") == 0.0
 
 
 async def test_unified_account_uses_spot_balance_and_unrealized_pnl() -> None:

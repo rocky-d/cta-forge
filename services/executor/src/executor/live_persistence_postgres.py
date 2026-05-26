@@ -195,6 +195,7 @@ class PostgresLiveJournalStore:
         pnl: float = 0.0,
         pnl_pct: float = 0.0,
         held_bars: int = 0,
+        exchange_order_id: str | None = None,
     ) -> None:
         """Record a trade action."""
 
@@ -208,6 +209,8 @@ class PostgresLiveJournalStore:
             "price": float(price),
             "reason": reason,
         }
+        if exchange_order_id:
+            record["exchange_order_id"] = exchange_order_id
         if kind in ("close", "partial_close", "flatten_all"):
             record.update(
                 {
@@ -239,7 +242,7 @@ class PostgresLiveJournalStore:
                 "held_bars": held_bars
                 if kind in ("close", "partial_close", "flatten_all")
                 else None,
-                "exchange_order_id": None,
+                "exchange_order_id": exchange_order_id,
                 "raw_json": record,
             },
         )

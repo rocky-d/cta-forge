@@ -604,8 +604,14 @@ async def test_target_tick_splits_sign_flip_reduce_first(tmp_path) -> None:
         ("BTC", False, Decimal("0.04"), False),
     ]
     assert engine._state.positions["BTC"].qty == pytest.approx(-0.04)
+    assert engine._state.positions["BTC"].entry_bar == 1
+    trades = engine._journal.load_trades()
+    equity_records = engine._journal.load_equity()
     targets = engine._journal.load_targets()
+    assert [trade["bar"] for trade in trades] == [1, 1]
+    assert equity_records[-1]["bar"] == 1
     assert len(targets) == 1
+    assert targets[0]["bar"] == 1
     assert targets[0]["profile"] == "test-target"
     assert targets[0]["normalized_gross"] == pytest.approx(0.2)
     assert targets[0]["ignored_weights"] == {}
@@ -648,6 +654,8 @@ async def test_target_mode_max_drawdown_flattens_without_new_exposure(tmp_path) 
     assert exchange.orders == [("BTC", False, Decimal("0.1"), True)]
     assert engine._state.positions == {}
     assert engine._state.dd_breaker_active is True
+    assert engine._journal.load_trades()[-1]["bar"] == 1
+    assert engine._journal.load_equity()[-1]["bar"] == 1
 
 
 @pytest.mark.asyncio

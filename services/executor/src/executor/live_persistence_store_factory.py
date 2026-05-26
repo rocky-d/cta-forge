@@ -192,6 +192,7 @@ class FileFirstPostgresMirrorJournalStore:
         pnl: float = 0.0,
         pnl_pct: float = 0.0,
         held_bars: int = 0,
+        exchange_order_id: str | None = None,
     ) -> None:
         self._primary.record_trade(
             bar,
@@ -205,6 +206,7 @@ class FileFirstPostgresMirrorJournalStore:
             pnl=pnl,
             pnl_pct=pnl_pct,
             held_bars=held_bars,
+            exchange_order_id=exchange_order_id,
         )
         record = self._latest_matching(
             self._load_exact_file("trades"),

@@ -64,14 +64,27 @@ def sync_target_state_from_account(
         size = float(pos.size)
         if abs(size) <= 1e-12:
             continue
+        entry_price = float(pos.entry_price)
         existing = state.positions.get(pos.symbol)
+        if (
+            existing is not None
+            and abs(existing.qty - size) <= 1e-12
+            and abs(existing.entry_price - entry_price) <= 1e-9
+        ):
+            entry_bar = existing.entry_bar
+            best_price = existing.best_price
+            partial_taken = existing.partial_taken
+        else:
+            entry_bar = state.bar_count
+            best_price = entry_price
+            partial_taken = False
         next_positions[pos.symbol] = PositionState(
             symbol=pos.symbol,
             qty=size,
-            entry_price=float(pos.entry_price),
-            entry_bar=existing.entry_bar if existing else state.bar_count,
-            best_price=existing.best_price if existing else float(pos.entry_price),
-            partial_taken=existing.partial_taken if existing else False,
+            entry_price=entry_price,
+            entry_bar=entry_bar,
+            best_price=best_price,
+            partial_taken=partial_taken,
         )
     state.positions = next_positions
 
@@ -102,13 +115,14 @@ def record_target_diagnostics(
     target: PortfolioTarget,
     target_weights: dict[str, float],
     orders: list[TargetOrder],
+    bar: int,
     ignored_weights: dict[str, float] | None = None,
 ) -> None:
     """Persist target portfolio diagnostics for shadow validation."""
     normalized_gross = sum(abs(weight) for weight in target_weights.values())
     staleness = (now - target.timestamp).total_seconds()
     journal.record_target(
-        bar=state.bar_count + 1,
+        bar=bar,
         profile=profile,
         target_ts=target.timestamp.isoformat(),
         staleness_seconds=staleness,
@@ -141,7 +155,8 @@ async def execute_target_order(
     dry_run: bool,
     order: TargetOrder,
     price: float,
-) -> bool:
+    bar: int,
+) -> TargetOrder | None:
     """Execute one target reconciliation order and update local state."""
     is_buy = order.side == "buy"
     size = Decimal(str(order.qty))
@@ -175,10 +190,10 @@ async def execute_target_order(
         )
         if not result.success:
             logger.error("Failed target order %s: %s", order.symbol, result.message)
-            return False
+            return None
         if result.filled_size <= 0:
             logger.error("Target order %s reported no fill: %s", order.symbol, result)
-            return False
+            return None
         fill_qty = float(result.filled_size)
         if result.avg_price > 0:
             fill_price = result.avg_price
@@ -193,21 +208,25 @@ async def execute_target_order(
         delta_notional=(fill_qty * fill_price) * (1 if is_buy else -1),
         reduce_only=order.reduce_only,
     )
-    apply_target_fill(state, filled_order, fill_price)
+    apply_target_fill(state, filled_order, fill_price, bar=bar)
     journal.record_trade(
-        bar=state.bar_count,
+        bar=bar,
         kind="target_buy" if is_buy else "target_sell",
         symbol=order.symbol,
         qty=fill_qty,
         price=fill_price,
         reason=f"target:{profile}",
         side="long" if is_buy else "short",
+        exchange_order_id=None if dry_run else result.order_id,
     )
-    return True
+    return filled_order
 
 
-def apply_target_fill(state: EngineState, order: TargetOrder, price: float) -> None:
+def apply_target_fill(
+    state: EngineState, order: TargetOrder, price: float, *, bar: int | None = None
+) -> None:
     """Apply a successfully executed target order to local engine state."""
+    record_bar = state.bar_count if bar is None else bar
     signed_qty = order.qty if order.side == "buy" else -order.qty
     current = state.positions.get(order.symbol)
     old_qty = current.qty if current is not None else 0.0
@@ -219,7 +238,7 @@ def apply_target_fill(state: EngineState, order: TargetOrder, price: float) -> N
 
     if current is None or old_qty * new_qty <= 0:
         entry_price = price
-        entry_bar = state.bar_count
+        entry_bar = record_bar
         best_price = price
         partial_taken = False
     elif abs(new_qty) > abs(old_qty):
@@ -259,8 +278,9 @@ async def execute_target_portfolio(
     dry_run: bool,
     min_order_notional: float,
     max_order_notional: float | None = None,
+    bar: int | None = None,
 ) -> list[TargetOrder]:
-    """Reconcile a target-weight strategy into market-order deltas."""
+    """Reconcile a target-weight strategy into filled market-order deltas."""
     if target_strategy is None:
         return []
 
@@ -294,6 +314,7 @@ async def execute_target_portfolio(
         min_notional=min_order_notional,
         max_notional=max_order_notional,
     )
+    record_bar = state.bar_count + 1 if bar is None else bar
     record_target_diagnostics(
         journal,
         state=state,
@@ -302,14 +323,16 @@ async def execute_target_portfolio(
         target=target,
         target_weights=target_weights,
         orders=orders,
+        bar=record_bar,
         ignored_weights=ignored_weights,
     )
 
+    filled_orders: list[TargetOrder] = []
     for order in orders:
         price = prices.get(order.symbol)
         if price is None:
             continue
-        ok = await execute_target_order(
+        filled_order = await execute_target_order(
             exchange=exchange,
             journal=journal,
             state=state,
@@ -317,10 +340,12 @@ async def execute_target_portfolio(
             dry_run=dry_run,
             order=order,
             price=price,
+            bar=record_bar,
         )
-        if not ok:
+        if filled_order is None:
             logger.error("Stopping target order batch after failed %s", order.symbol)
             break
+        filled_orders.append(filled_order)
 
     logger.info(
         "Target profile %s produced %d order(s), gross=%.3f",
@@ -328,4 +353,4 @@ async def execute_target_portfolio(
         len(orders),
         target.gross,
     )
-    return orders
+    return filled_orders

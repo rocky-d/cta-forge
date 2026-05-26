@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from typing import Any
 
 import eth_account
@@ -147,10 +147,10 @@ class HyperliquidAdapter:
         return s
 
     def _format_size(self, size: Decimal, symbol: str) -> float:
-        """Round size to asset's szDecimals."""
+        """Format size without exceeding the caller's requested absolute size."""
         sz_dec = self._sz_decimals.get(symbol, 2)
         quant = Decimal(10) ** -sz_dec
-        return float(size.quantize(quant))
+        return float(size.quantize(quant, rounding=ROUND_DOWN))
 
     # ── ExchangeAdapter implementation ───────────────────────────────
 
@@ -286,6 +286,12 @@ class HyperliquidAdapter:
     ) -> OrderResult:
         await self._ensure_metadata(symbol)
         sz = self._format_size(size, symbol)
+        if sz <= 0:
+            return OrderResult(
+                order_id="",
+                success=False,
+                message=f"formatted order size is zero for {symbol}",
+            )
 
         # IOC at 0.5% slippage
         snapshot = await self.get_market_snapshot(symbol)
@@ -330,6 +336,12 @@ class HyperliquidAdapter:
     ) -> OrderResult:
         await self._ensure_metadata(symbol)
         sz = self._format_size(size, symbol)
+        if sz <= 0:
+            return OrderResult(
+                order_id="",
+                success=False,
+                message=f"formatted order size is zero for {symbol}",
+            )
         px_str = self._format_price(price)
 
         tif = "Alo" if post_only else "Gtc"

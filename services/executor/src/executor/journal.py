@@ -53,6 +53,7 @@ class LiveJournalStore(Protocol):
         pnl: float = 0.0,
         pnl_pct: float = 0.0,
         held_bars: int = 0,
+        exchange_order_id: str | None = None,
     ) -> None:
         """Record a trade action."""
         ...
@@ -160,6 +161,7 @@ class TradeJournal:
         pnl: float = 0.0,
         pnl_pct: float = 0.0,
         held_bars: int = 0,
+        exchange_order_id: str | None = None,
     ) -> None:
         """Record a trade action (open, close, partial close, flatten)."""
         record = {
@@ -172,6 +174,8 @@ class TradeJournal:
             "price": float(price),
             "reason": reason,
         }
+        if exchange_order_id:
+            record["exchange_order_id"] = exchange_order_id
         # Only include PnL fields for closes
         if kind in ("close", "partial_close", "flatten_all"):
             record["entry_price"] = float(entry_price)

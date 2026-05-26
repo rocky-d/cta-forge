@@ -65,8 +65,8 @@ def test_sync_target_state_from_account_preserves_existing_position_metadata() -
         positions=[
             Position(
                 symbol="BTC",
-                size=Decimal("0.2"),
-                entry_price=Decimal("51000"),
+                size=Decimal("0.1"),
+                entry_price=Decimal("50000"),
                 unrealized_pnl=Decimal("0"),
                 leverage=1,
             ),
@@ -83,8 +83,8 @@ def test_sync_target_state_from_account_preserves_existing_position_metadata() -
     sync_target_state_from_account(state, account)
 
     btc = state.positions["BTC"]
-    assert btc.qty == pytest.approx(0.2)
-    assert btc.entry_price == pytest.approx(51_000.0)
+    assert btc.qty == pytest.approx(0.1)
+    assert btc.entry_price == pytest.approx(50_000.0)
     assert btc.entry_bar == 3
     assert btc.best_price == pytest.approx(55_000.0)
     assert btc.partial_taken is True
@@ -176,13 +176,16 @@ async def test_execute_target_order_uses_actual_partial_fill_size(tmp_path) -> N
         dry_run=False,
         order=_order(side="sell", qty=0.10, reduce_only=True),
         price=50_500.0,
+        bar=4,
     )
 
-    assert ok is True
+    assert ok is not None
     assert state.positions["BTC"].qty == pytest.approx(0.06)
     trade = journal.load_trades()[-1]
+    assert trade["bar"] == 4
     assert trade["qty"] == pytest.approx(0.04)
     assert trade["price"] == pytest.approx(51_000.0)
+    assert trade["exchange_order_id"] == "filled"
 
 
 @pytest.mark.asyncio
@@ -200,13 +203,48 @@ async def test_execute_target_order_records_exchange_rounded_fill_size(
         dry_run=False,
         order=_order(symbol="NEAR", side="buy", qty=13.85980505146829),
         price=2.0777,
+        bar=4,
     )
 
-    assert ok is True
+    assert ok is not None
     assert state.positions["NEAR"].qty == pytest.approx(13.9)
+    assert state.positions["NEAR"].entry_bar == 4
     trade = journal.load_trades()[-1]
     assert trade["qty"] == pytest.approx(13.9)
     assert trade["price"] == pytest.approx(2.0777)
+
+
+def test_sync_target_state_resets_price_fields_when_exchange_position_changes() -> None:
+    state = EngineState(bar_count=10)
+    state.positions["NEAR"] = PositionState(
+        symbol="NEAR",
+        qty=13.9,
+        entry_price=2.0,
+        entry_bar=7,
+        best_price=2.4,
+    )
+    account = AccountState(
+        equity=Decimal("10000"),
+        available_balance=Decimal("10000"),
+        total_margin_used=Decimal("0"),
+        positions=[
+            Position(
+                symbol="NEAR",
+                size=Decimal("6.6"),
+                entry_price=Decimal("2.1"),
+                unrealized_pnl=Decimal("0"),
+                leverage=1,
+            )
+        ],
+    )
+
+    sync_target_state_from_account(state, account, {"NEAR"})
+
+    position = state.positions["NEAR"]
+    assert position.qty == pytest.approx(6.6)
+    assert position.entry_price == pytest.approx(2.1)
+    assert position.entry_bar == 10
+    assert position.best_price == pytest.approx(2.1)
 
 
 def test_sync_target_state_can_filter_to_managed_symbols() -> None:
@@ -311,10 +349,14 @@ async def test_execute_target_portfolio_stops_after_failed_order(tmp_path) -> No
         profile="test-profile",
         dry_run=False,
         min_order_notional=10.0,
+        bar=4,
     )
 
-    assert [order.symbol for order in orders] == ["BTC", "ETH"]
+    assert orders == []
     assert [order[0] for order in exchange.orders] == ["BTC"]
+    target = TradeJournal(tmp_path).load_targets()[-1]
+    assert target["bar"] == 4
+    assert [order["symbol"] for order in target["orders"]] == ["BTC", "ETH"]
 
 
 @pytest.mark.asyncio
@@ -347,6 +389,7 @@ async def test_execute_target_portfolio_ignores_unmanaged_positions(tmp_path) ->
         profile="test-profile",
         dry_run=False,
         min_order_notional=10.0,
+        bar=4,
     )
 
     assert orders == []

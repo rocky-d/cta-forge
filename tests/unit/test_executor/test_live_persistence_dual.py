@@ -49,6 +49,7 @@ class RecordingJournal:
         pnl: float = 0.0,
         pnl_pct: float = 0.0,
         held_bars: int = 0,
+        exchange_order_id: str | None = None,
     ) -> None:
         self._record(
             "record_trade",
@@ -63,6 +64,7 @@ class RecordingJournal:
             pnl=pnl,
             pnl_pct=pnl_pct,
             held_bars=held_bars,
+            exchange_order_id=exchange_order_id,
         )
 
     def record_signals(self, bar: int, signals: dict[str, float]) -> None:
