@@ -275,7 +275,11 @@ def _target_row(
         ),
         "weights_json": _required(record, "weights", "target"),
         "ignored_weights_json": record.get("ignored_weights", {}),
-        "orders_json": record.get("orders", []),
+        "orders_json": record.get("orders", record.get("planned_orders", [])),
+        "planned_orders_json": record.get("planned_orders", record.get("orders", [])),
+        "submitted_orders_json": record.get("submitted_orders", []),
+        "filled_trades_json": record.get("filled_trades", []),
+        "failed_orders_json": record.get("failed_orders", []),
     }
 
 

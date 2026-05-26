@@ -10,9 +10,10 @@ fills to engine state.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .decision import EngineState, PositionState
 from .journal import LiveJournalStore
@@ -27,6 +28,15 @@ if TYPE_CHECKING:
     from exchange.adapter import AccountState, ExchangeAdapter
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TargetExecution:
+    """Actual result of a submitted target-order fill."""
+
+    order: TargetOrder
+    fill_price: float
+    exchange_order_id: str | None
 
 
 def normalize_live_symbol(symbol: str) -> str:
@@ -106,6 +116,22 @@ async def fetch_target_prices(
     return prices
 
 
+def target_order_record(order: TargetOrder, **extra: Any) -> dict[str, Any]:
+    """Return a JSON-safe target-order audit record."""
+    record: dict[str, Any] = {
+        "symbol": order.symbol,
+        "side": order.side,
+        "qty": float(order.qty),
+        "current_weight": float(order.current_weight),
+        "target_weight": float(order.target_weight),
+        "delta_weight": float(order.delta_weight),
+        "delta_notional": float(order.delta_notional),
+        "reduce_only": order.reduce_only,
+    }
+    record.update(extra)
+    return record
+
+
 def record_target_diagnostics(
     journal: LiveJournalStore,
     *,
@@ -114,13 +140,17 @@ def record_target_diagnostics(
     now: datetime,
     target: PortfolioTarget,
     target_weights: dict[str, float],
-    orders: list[TargetOrder],
+    planned_orders: list[TargetOrder],
     bar: int,
     ignored_weights: dict[str, float] | None = None,
+    submitted_orders: list[dict[str, Any]] | None = None,
+    filled_trades: list[dict[str, Any]] | None = None,
+    failed_orders: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Persist target portfolio diagnostics for shadow validation."""
+    """Persist target portfolio diagnostics with explicit execution buckets."""
     normalized_gross = sum(abs(weight) for weight in target_weights.values())
     staleness = (now - target.timestamp).total_seconds()
+    planned_records = [target_order_record(order) for order in planned_orders]
     journal.record_target(
         bar=bar,
         profile=profile,
@@ -129,20 +159,11 @@ def record_target_diagnostics(
         target_gross=target.gross,
         normalized_gross=normalized_gross,
         weights=target_weights,
-        orders=[
-            {
-                "symbol": order.symbol,
-                "side": order.side,
-                "qty": float(order.qty),
-                "current_weight": float(order.current_weight),
-                "target_weight": float(order.target_weight),
-                "delta_weight": float(order.delta_weight),
-                "delta_notional": float(order.delta_notional),
-                "reduce_only": order.reduce_only,
-            }
-            for order in orders
-        ],
+        orders=planned_records,
         ignored_weights=ignored_weights,
+        submitted_orders=submitted_orders,
+        filled_trades=filled_trades,
+        failed_orders=failed_orders,
     )
 
 
@@ -156,7 +177,7 @@ async def execute_target_order(
     order: TargetOrder,
     price: float,
     bar: int,
-) -> TargetOrder | None:
+) -> TargetExecution | None:
     """Execute one target reconciliation order and update local state."""
     is_buy = order.side == "buy"
     size = Decimal(str(order.qty))
@@ -172,6 +193,7 @@ async def execute_target_order(
 
     fill_price = price
     fill_qty = order.qty
+    exchange_order_id: str | None = None
     if dry_run:
         logger.info(
             "[DRY RUN] Would target-order %s %s %.6f @ ~%.2f reduce_only=%s",
@@ -197,6 +219,7 @@ async def execute_target_order(
         fill_qty = float(result.filled_size)
         if result.avg_price > 0:
             fill_price = result.avg_price
+        exchange_order_id = result.order_id
 
     filled_order = TargetOrder(
         symbol=order.symbol,
@@ -217,9 +240,13 @@ async def execute_target_order(
         price=fill_price,
         reason=f"target:{profile}",
         side="long" if is_buy else "short",
-        exchange_order_id=None if dry_run else result.order_id,
+        exchange_order_id=exchange_order_id,
     )
-    return filled_order
+    return TargetExecution(
+        order=filled_order,
+        fill_price=fill_price,
+        exchange_order_id=exchange_order_id,
+    )
 
 
 def apply_target_fill(
@@ -315,24 +342,20 @@ async def execute_target_portfolio(
         max_notional=max_order_notional,
     )
     record_bar = state.bar_count + 1 if bar is None else bar
-    record_target_diagnostics(
-        journal,
-        state=state,
-        profile=profile,
-        now=now,
-        target=target,
-        target_weights=target_weights,
-        orders=orders,
-        bar=record_bar,
-        ignored_weights=ignored_weights,
-    )
-
     filled_orders: list[TargetOrder] = []
+    submitted_orders: list[dict[str, Any]] = []
+    filled_trade_records: list[dict[str, Any]] = []
+    failed_orders: list[dict[str, Any]] = []
     for order in orders:
         price = prices.get(order.symbol)
         if price is None:
+            failed_orders.append(
+                target_order_record(order, status="skipped", reason="missing_price")
+            )
             continue
-        filled_order = await execute_target_order(
+        if not dry_run:
+            submitted_orders.append(target_order_record(order, status="submitted"))
+        execution = await execute_target_order(
             exchange=exchange,
             journal=journal,
             state=state,
@@ -342,10 +365,41 @@ async def execute_target_portfolio(
             price=price,
             bar=record_bar,
         )
-        if filled_order is None:
+        if execution is None:
+            failed_orders.append(
+                target_order_record(
+                    order,
+                    status="failed",
+                    reason="rejected_or_unfilled",
+                )
+            )
             logger.error("Stopping target order batch after failed %s", order.symbol)
             break
-        filled_orders.append(filled_order)
+        filled_orders.append(execution.order)
+        filled_trade_records.append(
+            target_order_record(
+                execution.order,
+                status="filled",
+                fill_price=execution.fill_price,
+                exchange_order_id=execution.exchange_order_id,
+                execution_source="trade_journal",
+            )
+        )
+
+    record_target_diagnostics(
+        journal,
+        state=state,
+        profile=profile,
+        now=now,
+        target=target,
+        target_weights=target_weights,
+        planned_orders=orders,
+        bar=record_bar,
+        ignored_weights=ignored_weights,
+        submitted_orders=submitted_orders,
+        filled_trades=filled_trade_records,
+        failed_orders=failed_orders,
+    )
 
     logger.info(
         "Target profile %s produced %d order(s), gross=%.3f",

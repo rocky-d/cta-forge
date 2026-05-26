@@ -20,7 +20,10 @@ def test_apply_migrations_dry_run_outputs_safe_summary() -> None:
     payload = json.loads(stdout.getvalue())
     assert payload["database_url_configured"] is True
     assert payload["dry_run"] is True
-    assert payload["migrations"] == ["001_live_persistence.sql"]
+    assert payload["migrations"] == [
+        "001_live_persistence.sql",
+        "002_live_target_execution_buckets.sql",
+    ]
     assert "secret" not in stdout.getvalue()
     assert "postgresql://" not in stdout.getvalue()
     assert stderr.getvalue() == ""

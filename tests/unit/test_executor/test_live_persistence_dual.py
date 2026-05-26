@@ -82,6 +82,9 @@ class RecordingJournal:
         weights: dict[str, float],
         orders: list[dict],
         ignored_weights: dict[str, float] | None = None,
+        submitted_orders: list[dict] | None = None,
+        filled_trades: list[dict] | None = None,
+        failed_orders: list[dict] | None = None,
     ) -> None:
         self._record(
             "record_target",
@@ -94,6 +97,9 @@ class RecordingJournal:
             weights=weights,
             orders=orders,
             ignored_weights=ignored_weights,
+            submitted_orders=submitted_orders,
+            filled_trades=filled_trades,
+            failed_orders=failed_orders,
         )
 
     def load_equity(self) -> list[dict]:

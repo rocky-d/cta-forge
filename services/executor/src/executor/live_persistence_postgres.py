@@ -273,6 +273,9 @@ class PostgresLiveJournalStore:
         weights: dict[str, float],
         orders: list[dict],
         ignored_weights: dict[str, float] | None = None,
+        submitted_orders: list[dict] | None = None,
+        filled_trades: list[dict] | None = None,
+        failed_orders: list[dict] | None = None,
     ) -> None:
         """Record target-weight diagnostics."""
 
@@ -309,6 +312,10 @@ class PostgresLiveJournalStore:
                     if abs(value) > 1e-12
                 },
                 "orders_json": orders,
+                "planned_orders_json": orders,
+                "submitted_orders_json": submitted_orders or [],
+                "filled_trades_json": filled_trades or [],
+                "failed_orders_json": failed_orders or [],
             },
         )
 
@@ -496,7 +503,8 @@ class PostgresLiveJournalStore:
             select ts, bar, profile, target_ts, staleness_seconds,
                    target_gross, normalized_gross, ignored_gross,
                    ignored_gross_ratio, execution_coverage, weights_json,
-                   ignored_weights_json, orders_json
+                   ignored_weights_json, orders_json, planned_orders_json,
+                   submitted_orders_json, filled_trades_json, failed_orders_json
             from live_targets
             where live_instance_id = %(live_instance_id)s
             order by bar asc, ts asc, id asc
@@ -528,6 +536,23 @@ class PostgresLiveJournalStore:
                     _row_value(row, "ignored_weights_json", 11)
                 ),
                 "orders": _json_number_array(_row_value(row, "orders_json", 12)),
+                "planned_orders": _json_array(
+                    _row_value_optional(
+                        row,
+                        "planned_orders_json",
+                        13,
+                        _row_value(row, "orders_json", 12),
+                    )
+                ),
+                "submitted_orders": _json_array(
+                    _row_value_optional(row, "submitted_orders_json", 14, [])
+                ),
+                "filled_trades": _json_array(
+                    _row_value_optional(row, "filled_trades_json", 15, [])
+                ),
+                "failed_orders": _json_array(
+                    _row_value_optional(row, "failed_orders_json", 16, [])
+                ),
             }
             for row in cursor.fetchall()
         ]
@@ -866,7 +891,9 @@ def _load_target_rows(
         select live_instance_id, run_id, bar, ts, profile, target_ts,
                staleness_seconds, target_gross, normalized_gross,
                ignored_gross, ignored_gross_ratio, execution_coverage,
-               weights_json, ignored_weights_json, orders_json
+               weights_json, ignored_weights_json, orders_json,
+               planned_orders_json, submitted_orders_json, filled_trades_json,
+               failed_orders_json
         from live_targets
         where live_instance_id = %(live_instance_id)s
         order by bar asc, ts asc, id asc
@@ -892,6 +919,20 @@ def _load_target_rows(
                 _row_value(row, "ignored_weights_json", 13)
             ),
             "orders_json": _json_array(_row_value(row, "orders_json", 14)),
+            "planned_orders_json": _json_array(
+                _row_value_optional(
+                    row, "planned_orders_json", 15, _row_value(row, "orders_json", 14)
+                )
+            ),
+            "submitted_orders_json": _json_array(
+                _row_value_optional(row, "submitted_orders_json", 16, [])
+            ),
+            "filled_trades_json": _json_array(
+                _row_value_optional(row, "filled_trades_json", 17, [])
+            ),
+            "failed_orders_json": _json_array(
+                _row_value_optional(row, "failed_orders_json", 18, [])
+            ),
         }
         for row in cursor.fetchall()
     ]
@@ -1097,14 +1138,17 @@ def _write_target(conn: DbConnection, row: dict[str, Any]) -> None:
             live_instance_id, run_id, bar, ts, profile, target_ts,
             staleness_seconds, target_gross, normalized_gross, ignored_gross,
             ignored_gross_ratio, execution_coverage, weights_json,
-            ignored_weights_json, orders_json
+            ignored_weights_json, orders_json, planned_orders_json,
+            submitted_orders_json, filled_trades_json, failed_orders_json
         )
         values (
             %(live_instance_id)s, %(run_id)s, %(bar)s, %(ts)s, %(profile)s,
             %(target_ts)s, %(staleness_seconds)s, %(target_gross)s,
             %(normalized_gross)s, %(ignored_gross)s, %(ignored_gross_ratio)s,
             %(execution_coverage)s, %(weights_json)s::jsonb,
-            %(ignored_weights_json)s::jsonb, %(orders_json)s::jsonb
+            %(ignored_weights_json)s::jsonb, %(orders_json)s::jsonb,
+            %(planned_orders_json)s::jsonb, %(submitted_orders_json)s::jsonb,
+            %(filled_trades_json)s::jsonb, %(failed_orders_json)s::jsonb
         )
         on conflict (live_instance_id, bar, profile, target_ts) do update set
             run_id = excluded.run_id,
@@ -1117,13 +1161,23 @@ def _write_target(conn: DbConnection, row: dict[str, Any]) -> None:
             execution_coverage = excluded.execution_coverage,
             weights_json = excluded.weights_json,
             ignored_weights_json = excluded.ignored_weights_json,
-            orders_json = excluded.orders_json
+            orders_json = excluded.orders_json,
+            planned_orders_json = excluded.planned_orders_json,
+            submitted_orders_json = excluded.submitted_orders_json,
+            filled_trades_json = excluded.filled_trades_json,
+            failed_orders_json = excluded.failed_orders_json
         """,
         {
             **row,
             "weights_json": _jsonb(row["weights_json"]),
             "ignored_weights_json": _jsonb(row["ignored_weights_json"]),
             "orders_json": _jsonb(row["orders_json"]),
+            "planned_orders_json": _jsonb(
+                row.get("planned_orders_json", row["orders_json"])
+            ),
+            "submitted_orders_json": _jsonb(row.get("submitted_orders_json", [])),
+            "filled_trades_json": _jsonb(row.get("filled_trades_json", [])),
+            "failed_orders_json": _jsonb(row.get("failed_orders_json", [])),
         },
     )
 
@@ -1314,6 +1368,18 @@ def _row_value(
     if isinstance(row, Mapping):
         return cast(Mapping[str, Any], row)[key]
     return cast(Sequence[Any], row)[index]
+
+
+def _row_value_optional(
+    row: Sequence[Any] | Mapping[str, Any],
+    key: str,
+    index: int,
+    default: Any,
+) -> Any:
+    if isinstance(row, Mapping):
+        return cast(Mapping[str, Any], row).get(key, default)
+    seq = cast(Sequence[Any], row)
+    return seq[index] if index < len(seq) else default
 
 
 def _row_values(row: Sequence[Any] | Mapping[str, Any], *keys: str) -> tuple[Any, ...]:

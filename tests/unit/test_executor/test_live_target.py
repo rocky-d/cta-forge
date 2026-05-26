@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
 from executor.decision import EngineState, PositionState
@@ -16,7 +16,13 @@ from executor.live_target import (
     sync_target_state_from_account,
 )
 from executor.targeting import PortfolioTarget, StrategyProfile, TargetOrder
-from exchange.adapter import AccountState, MarketSnapshot, OrderResult, Position
+from exchange.adapter import (
+    AccountState,
+    ExchangeAdapter,
+    MarketSnapshot,
+    OrderResult,
+    Position,
+)
 
 
 def _order(
@@ -169,7 +175,7 @@ async def test_execute_target_order_uses_actual_partial_fill_size(tmp_path) -> N
     journal = TradeJournal(tmp_path)
 
     ok = await execute_target_order(
-        exchange=FilledSizeExchange(0.04),
+        exchange=cast(ExchangeAdapter, FilledSizeExchange(0.04)),
         journal=journal,
         state=state,
         profile="test-profile",
@@ -196,7 +202,7 @@ async def test_execute_target_order_records_exchange_rounded_fill_size(
     journal = TradeJournal(tmp_path)
 
     ok = await execute_target_order(
-        exchange=FilledSizeExchange(13.9, avg_price=2.0777),
+        exchange=cast(ExchangeAdapter, FilledSizeExchange(13.9, avg_price=2.0777)),
         journal=journal,
         state=state,
         profile="test-profile",
@@ -339,7 +345,7 @@ async def test_execute_target_portfolio_stops_after_failed_order(tmp_path) -> No
     exchange = FailingThenRecordingExchange()
 
     orders = await execute_target_portfolio(
-        exchange=exchange,
+        exchange=cast(ExchangeAdapter, exchange),
         journal=TradeJournal(tmp_path),
         state=state,
         account=account,
@@ -356,7 +362,62 @@ async def test_execute_target_portfolio_stops_after_failed_order(tmp_path) -> No
     assert [order[0] for order in exchange.orders] == ["BTC"]
     target = TradeJournal(tmp_path).load_targets()[-1]
     assert target["bar"] == 4
-    assert [order["symbol"] for order in target["orders"]] == ["BTC", "ETH"]
+    assert [order["symbol"] for order in target["planned_orders"]] == ["BTC", "ETH"]
+    assert [order["symbol"] for order in target["submitted_orders"]] == ["BTC"]
+    assert target["filled_trades"] == []
+    assert target["failed_orders"] == [
+        {
+            "symbol": "BTC",
+            "side": "sell",
+            "qty": pytest.approx(0.1),
+            "current_weight": pytest.approx(0.5),
+            "target_weight": pytest.approx(0.0),
+            "delta_weight": pytest.approx(-0.5),
+            "delta_notional": pytest.approx(-5000.0),
+            "reduce_only": True,
+            "status": "failed",
+            "reason": "rejected_or_unfilled",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_target_portfolio_records_target_and_fills_on_same_bar(
+    tmp_path,
+) -> None:
+    state = EngineState(bar_count=3)
+    account = AccountState(
+        equity=Decimal("10000"),
+        available_balance=Decimal("10000"),
+        total_margin_used=Decimal("0"),
+        positions=[],
+    )
+    exchange = FailingThenRecordingExchange()
+    journal = TradeJournal(tmp_path)
+
+    orders = await execute_target_portfolio(
+        exchange=cast(ExchangeAdapter, exchange),
+        journal=journal,
+        state=state,
+        account=account,
+        equity=10_000.0,
+        target_strategy=StaticTargetStrategy(),
+        symbols=["ETH"],
+        profile="test-profile",
+        dry_run=False,
+        min_order_notional=10.0,
+        bar=4,
+    )
+
+    assert [order.symbol for order in orders] == ["ETH"]
+    target = journal.load_targets()[-1]
+    trade = journal.load_trades()[-1]
+    assert target["bar"] == trade["bar"] == 4
+    assert [order["symbol"] for order in target["planned_orders"]] == ["ETH"]
+    assert [order["symbol"] for order in target["submitted_orders"]] == ["ETH"]
+    assert [order["symbol"] for order in target["filled_trades"]] == ["ETH"]
+    assert target["failed_orders"] == []
+    assert trade["exchange_order_id"] == "ok"
 
 
 @pytest.mark.asyncio
@@ -379,7 +440,7 @@ async def test_execute_target_portfolio_ignores_unmanaged_positions(tmp_path) ->
     exchange = FailingThenRecordingExchange()
 
     orders = await execute_target_portfolio(
-        exchange=exchange,
+        exchange=cast(ExchangeAdapter, exchange),
         journal=TradeJournal(tmp_path),
         state=state,
         account=account,

@@ -7,7 +7,8 @@ Files written (inside the configured directory):
   - equity.jsonl: one line per tick {ts, bar, equity, peak, dd_pct, n_positions, positions}
   - trades.jsonl: one line per trade action {ts, bar, kind, symbol, qty, price, reason, pnl, ...}
   - signals.jsonl: one line per tick {ts, bar, signals: {symbol: value}}
-  - targets.jsonl: one line per target tick {ts, bar, profile, target_ts, weights, ignored_weights, orders}
+  - targets.jsonl: one line per target tick {ts, bar, profile, target_ts, weights, ignored_weights,
+    planned_orders, submitted_orders, filled_trades, failed_orders}
 
 When configured, records also include additive runtime identity fields such as
 live_instance_id, run_id, and public_instance_slug. Older readers can ignore
@@ -74,8 +75,16 @@ class LiveJournalStore(Protocol):
         weights: dict[str, float],
         orders: list[dict],
         ignored_weights: dict[str, float] | None = None,
+        submitted_orders: list[dict] | None = None,
+        filled_trades: list[dict] | None = None,
+        failed_orders: list[dict] | None = None,
     ) -> None:
-        """Record target-weight diagnostics."""
+        """Record target-weight diagnostics.
+
+        ``orders`` is kept as the legacy planned-order field. New readers should
+        prefer the explicit execution buckets: ``planned_orders``,
+        ``submitted_orders``, ``filled_trades``, and ``failed_orders``.
+        """
         ...
 
     def load_equity(self) -> list[dict]:
@@ -210,6 +219,9 @@ class TradeJournal:
         weights: dict[str, float],
         orders: list[dict],
         ignored_weights: dict[str, float] | None = None,
+        submitted_orders: list[dict] | None = None,
+        filled_trades: list[dict] | None = None,
+        failed_orders: list[dict] | None = None,
     ) -> None:
         """Record target-weight diagnostics for shadow/live reconciliation."""
         ignored_gross = sum(abs(v) for v in (ignored_weights or {}).values())
@@ -236,7 +248,14 @@ class TradeJournal:
                 for k, v in (ignored_weights or {}).items()
                 if abs(v) > 1e-12
             },
+            # Legacy alias: historically this was the planned rebalance order
+            # list. Keep it readable for old tooling, but make the semantics
+            # explicit for new audit/dashboard code.
             "orders": orders,
+            "planned_orders": orders,
+            "submitted_orders": submitted_orders or [],
+            "filled_trades": filled_trades or [],
+            "failed_orders": failed_orders or [],
         }
         self._append(self._targets_file, self._with_identity(record))
 
