@@ -147,25 +147,29 @@ def test_apply_target_fill_non_reduce_flip_resets_entry_metadata() -> None:
     assert pos.partial_taken is False
 
 
-class PartialFillExchange:
+class FilledSizeExchange:
+    def __init__(self, filled_size: float, avg_price: float = 51_000.0) -> None:
+        self.filled_size = filled_size
+        self.avg_price = avg_price
+
     async def place_market_order(self, symbol, is_buy, size, *, reduce_only=False):
         return OrderResult(
-            order_id="partial",
+            order_id="filled",
             success=True,
             message="filled",
-            avg_price=51_000.0,
-            filled_size=0.04,
+            avg_price=self.avg_price,
+            filled_size=self.filled_size,
         )
 
 
 @pytest.mark.asyncio
-async def test_execute_target_order_uses_actual_filled_size(tmp_path) -> None:
+async def test_execute_target_order_uses_actual_partial_fill_size(tmp_path) -> None:
     state = EngineState(bar_count=3)
     state.positions["BTC"] = PositionState("BTC", 0.10, 50_000.0, 1, 51_000.0)
     journal = TradeJournal(tmp_path)
 
     ok = await execute_target_order(
-        exchange=PartialFillExchange(),
+        exchange=FilledSizeExchange(0.04),
         journal=journal,
         state=state,
         profile="test-profile",
@@ -179,6 +183,30 @@ async def test_execute_target_order_uses_actual_filled_size(tmp_path) -> None:
     trade = journal.load_trades()[-1]
     assert trade["qty"] == pytest.approx(0.04)
     assert trade["price"] == pytest.approx(51_000.0)
+
+
+@pytest.mark.asyncio
+async def test_execute_target_order_records_exchange_rounded_fill_size(
+    tmp_path,
+) -> None:
+    state = EngineState(bar_count=3)
+    journal = TradeJournal(tmp_path)
+
+    ok = await execute_target_order(
+        exchange=FilledSizeExchange(13.9, avg_price=2.0777),
+        journal=journal,
+        state=state,
+        profile="test-profile",
+        dry_run=False,
+        order=_order(symbol="NEAR", side="buy", qty=13.85980505146829),
+        price=2.0777,
+    )
+
+    assert ok is True
+    assert state.positions["NEAR"].qty == pytest.approx(13.9)
+    trade = journal.load_trades()[-1]
+    assert trade["qty"] == pytest.approx(13.9)
+    assert trade["price"] == pytest.approx(2.0777)
 
 
 def test_sync_target_state_can_filter_to_managed_symbols() -> None:

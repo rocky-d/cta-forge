@@ -179,7 +179,7 @@ async def execute_target_order(
         if result.filled_size <= 0:
             logger.error("Target order %s reported no fill: %s", order.symbol, result)
             return False
-        fill_qty = min(float(result.filled_size), order.qty)
+        fill_qty = float(result.filled_size)
         if result.avg_price > 0:
             fill_price = result.avg_price
 
