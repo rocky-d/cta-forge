@@ -191,8 +191,16 @@ class TestJournalToReportFormat:
             bar = 42
 
             j.record_tick(bar, 10_000.0, 10_100.0, {"BTC": {"side": "long"}})
-            j.record_trade(bar, "target_buy", "ETH", 0.5, 2_000.0, "target:v16a",
-                           side="long", exchange_order_id="0xabc")
+            j.record_trade(
+                bar,
+                "target_buy",
+                "ETH",
+                0.5,
+                2_000.0,
+                "target:v16a",
+                side="long",
+                exchange_order_id="0xabc",
+            )
             j.record_signals(bar, {"BTC": 0.3, "ETH": 0.1})
             j.record_target(
                 bar=bar,
@@ -238,14 +246,20 @@ class TestJournalToReportFormat:
             ]
             filled = [
                 {
-                    "symbol": "ADA", "side": "sell", "qty": 10.0,
-                    "fill_price": 0.35, "status": "filled",
+                    "symbol": "ADA",
+                    "side": "sell",
+                    "qty": 10.0,
+                    "fill_price": 0.35,
+                    "status": "filled",
                 },
             ]
             failed = [
                 {
-                    "symbol": "ETH", "side": "buy", "qty": 0.1,
-                    "status": "skipped", "reason": "missing_price",
+                    "symbol": "ETH",
+                    "side": "buy",
+                    "qty": 0.1,
+                    "status": "skipped",
+                    "reason": "missing_price",
                 },
             ]
 
