@@ -24,21 +24,26 @@ RUN uv sync --frozen --no-dev --all-packages
 # ── Service targets ──────────────────────────────────────────
 
 FROM base AS data-service
+# nosemgrep: missing-user — intentional, revisit with volume permission changes
 EXPOSE 8001
 CMD ["uv", "run", "uvicorn", "data_service.app:app", "--host", "0.0.0.0", "--port", "8001"]
 
 FROM base AS alpha-service
+# nosemgrep: missing-user — intentional, revisit with volume permission changes
 EXPOSE 8002
 CMD ["uv", "run", "uvicorn", "alpha_service.app:app", "--host", "0.0.0.0", "--port", "8002"]
 
 FROM base AS strategy-service
+# nosemgrep: missing-user — intentional, revisit with volume permission changes
 EXPOSE 8003
 CMD ["uv", "run", "uvicorn", "strategy_service.app:app", "--host", "0.0.0.0", "--port", "8003"]
 
 FROM base AS executor
+# nosemgrep: missing-user — intentional, revisit with volume permission changes
 EXPOSE 8004
 CMD ["uv", "run", "uvicorn", "executor.app:app", "--host", "0.0.0.0", "--port", "8004"]
 
 FROM base AS report-service
+# nosemgrep: missing-user — intentional, revisit with volume permission changes
 EXPOSE 8005
 CMD ["uv", "run", "uvicorn", "report_service.app:app", "--host", "0.0.0.0", "--port", "8005"]

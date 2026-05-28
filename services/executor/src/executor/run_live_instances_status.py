@@ -196,8 +196,8 @@ def _fetch_instance_rows(conn: DbConnection, *, instance_ids: tuple[str, ...]):
         filter_sql = "where li.live_instance_id = any(%(instance_ids)s)"
     cursor = cast(
         FetchAllCursor,
+        # nosemgrep: sqlalchemy-execute-raw-query — filter_sql hardcoded, values parameterized
         conn.execute(
-            # nosemgrep: sqlalchemy-execute-raw-query — filter_sql hardcoded, values parameterized
         f"""
         select
             li.live_instance_id,
