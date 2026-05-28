@@ -506,7 +506,7 @@ async def test_dry_run_journals_without_exchange_placement(tmp_path) -> None:
     assert ok is not None
     trade = journal.load_trades()[-1]
     assert trade["bar"] == 4
-    assert trade["kind"] == "target_buy"
+    assert trade["kind"] == "buy"
     assert trade["qty"] == 0.5
     assert trade["price"] == 50_000.0
     assert trade["reason"] == "target:test-profile"

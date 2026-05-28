@@ -971,7 +971,7 @@ class LiveEngine:
                     "Open %s %s reported no fill: %s", side, action.symbol, result
                 )
                 return False
-            action.qty = min(float(result.filled_size), action.qty)
+            action.qty = float(result.filled_size)
             size_usd = action.qty * current_price
             if result.avg_price > 0:
                 current_price = result.avg_price

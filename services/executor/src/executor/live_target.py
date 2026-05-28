@@ -234,7 +234,7 @@ async def execute_target_order(
     apply_target_fill(state, filled_order, fill_price, bar=bar)
     journal.record_trade(
         bar=bar,
-        kind="target_buy" if is_buy else "target_sell",
+        kind="buy" if is_buy else "sell",
         symbol=order.symbol,
         qty=fill_qty,
         price=fill_price,
