@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 try:
     import urllib.request
 except ImportError:
-    import urllib2 as urllib_request  # type: ignore[import-not-found, no-redef]
+    pass  # type: ignore[import-not-found, no-redef]
 
 
 HL_FILLS_URL = "https://api.hyperliquid.xyz/info"
@@ -38,8 +38,12 @@ DASHBOARD_URL = "https://quant.rockydu.com/api/v1/live/cta-forge/public/latest"
 
 
 def _http_get_json(url: str, data: bytes | None = None) -> dict | list:
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as resp:  # nosemgrep: dynamic-urllib-use-detected — urls are hardcoded constants
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(
+        req, timeout=30
+    ) as resp:  # nosemgrep: dynamic-urllib-use-detected — urls are hardcoded constants
         return json.loads(resp.read())
 
 
@@ -58,6 +62,7 @@ def fetch_dashboard_events() -> list[dict]:
 
 def subprocess_run(cmd: list[str]) -> str:
     import subprocess
+
     return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
 
 
@@ -69,7 +74,11 @@ def build_hl_index(fills: list[dict]) -> dict[tuple[str, str, str], list[dict]]:
         if not isinstance(ts, (int, float)):
             continue
         dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
-        key = (dt.strftime("%Y-%m-%dT%H:%M"), f.get("coin", "").strip(), f.get("side", ""))
+        key = (
+            dt.strftime("%Y-%m-%dT%H:%M"),
+            f.get("coin", "").strip(),
+            f.get("side", ""),
+        )
         index[key].append(f)
     return index
 
@@ -113,16 +122,18 @@ def match_trades(
         if abs_diff < 0.0001:
             continue
 
-        mismatches.append({
-            "ts": d_ts,
-            "symbol": d_symbol,
-            "dash_kind": d_kind,
-            "dash_side": e.get("side", ""),
-            "dash_qty": d_qty,
-            "hl_sz": total_sz,
-            "hl_px": float(hl_px),
-            "hl_side": "buy" if hl_side == "B" else "sell",
-        })
+        mismatches.append(
+            {
+                "ts": d_ts,
+                "symbol": d_symbol,
+                "dash_kind": d_kind,
+                "dash_side": e.get("side", ""),
+                "dash_qty": d_qty,
+                "hl_sz": total_sz,
+                "hl_px": float(hl_px),
+                "hl_side": "buy" if hl_side == "B" else "sell",
+            }
+        )
 
     return mismatches
 
@@ -131,9 +142,7 @@ def generate_sql(mismatches: list[dict]) -> list[str]:
     """Generate UPDATE statements for Postgres live_trades table."""
     statements = []
     statements.append("-- Fix historical trade qty in live_trades")
-    statements.append(
-        f"-- Generated at {datetime.now(timezone.utc).isoformat()}"
-    )
+    statements.append(f"-- Generated at {datetime.now(timezone.utc).isoformat()}")
     statements.append(f"-- {len(mismatches)} rows to update")
     statements.append("BEGIN;")
     statements.append("")
@@ -170,8 +179,10 @@ def apply_fixes(mismatches: list[dict], db_url: str) -> None:
     try:
         import psycopg2  # type: ignore[import-not-found]
     except ImportError:
-        print("Error: psycopg2 not installed. Install with: pip install psycopg2-binary",
-              file=sys.stderr)
+        print(
+            "Error: psycopg2 not installed. Install with: pip install psycopg2-binary",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     conn = psycopg2.connect(db_url)
