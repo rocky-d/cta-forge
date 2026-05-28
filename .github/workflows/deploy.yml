@@ -104,7 +104,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    environment: production
 
     steps:
       - uses: actions/checkout@v6
