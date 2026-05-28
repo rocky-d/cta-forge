@@ -197,7 +197,8 @@ def _fetch_instance_rows(conn: DbConnection, *, instance_ids: tuple[str, ...]):
     cursor = cast(
         FetchAllCursor,
         conn.execute(
-            f"""
+            # nosemgrep: sqlalchemy-execute-raw-query — filter_sql hardcoded, values parameterized
+        f"""
         select
             li.live_instance_id,
             li.status as instance_status,

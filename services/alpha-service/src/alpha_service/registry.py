@@ -37,6 +37,7 @@ class FactorRegistry:
     def auto_discover(self) -> None:
         """Scan the factors/ package and register all classes with a `name` property and `compute` method."""
         for _importer, modname, _ispkg in pkgutil.iter_modules(_factors_pkg.__path__):
+            # nosemgrep: non-literal-import — module names from local filesystem
             module = importlib.import_module(
                 f".factors.{modname}", package="alpha_service"
             )

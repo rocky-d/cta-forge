@@ -39,7 +39,7 @@ DASHBOARD_URL = "https://quant.rockydu.com/api/v1/live/cta-forge/public/latest"
 
 def _http_get_json(url: str, data: bytes | None = None) -> dict | list:
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:  # nosemgrep: dynamic-urllib-use-detected — urls are hardcoded constants
         return json.loads(resp.read())
 
 
