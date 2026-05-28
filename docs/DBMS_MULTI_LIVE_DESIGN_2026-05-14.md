@@ -1,6 +1,8 @@
 # DBMS Persistence and Multi-Live Design — 2026-05-14
 
-Status: design and implementation trace. PostgreSQL schema/import/readback tooling exists, but cta-forge live runtime is still not wired to DB persistence.
+> **Current status (2026-05-28):** DBMS persistence is the production source of truth (`PERSISTENCE_BACKEND=postgres`). Multi-instance isolation is operational (instance-specific advisory locks, separate DB rows by `LIVE_INSTANCE_ID`). Dual-write cutover and historical import are complete. A second dry-run instance (`mainnet-400-01`) is running. The document below is the original design; implementation details may have diverged. See [`MULTI_LIVE_MINIMAL_ROLLOUT_2026-05-21.md`](MULTI_LIVE_MINIMAL_ROLLOUT_2026-05-21.md) for current rollout state and [`DBMS_CUTOVER_CHECKLIST_2026-05-15.md`](DBMS_CUTOVER_CHECKLIST_2026-05-15.md) for the executed cutover.
+
+Original status: design and implementation trace. PostgreSQL schema/import/readback tooling exists.
 
 ## Intent
 

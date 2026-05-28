@@ -17,7 +17,7 @@ Sources checked:
 
 - `hyperliquid-python-sdk==0.23.0` is locked in `uv.lock`; PyPI latest at check time is also `0.23.0`.
 - Adapter chooses `constants.TESTNET_API_URL` or `constants.MAINNET_API_URL` from the SDK.
-- v16a non-dry-run mainnet is currently blocked in `services/executor/src/executor/run_live.py`; this is intentional.
+- v16a non-dry-run mainnet was initially blocked in `services/executor/src/executor/run_live.py`; this was intentional at the time of writing (2026-05-02). Mainnet is now live with the `v16a-mainnet-pilot` profile since 2026-05-05.
 - Testnet filters out `XRP`, `LINK`, `DOT`, `SEI` because these exist on mainnet but are unavailable on Hyperliquid testnet.
 
 ## Findings
@@ -73,7 +73,7 @@ The biggest SDK-level concerns are not “mainnet will be worse than testnet in 
 2. User-signed action handling has open upstream discussion around chain id, though our normal order path is not the affected path.
 3. Mainnet unlocks symbols testnet excluded, so first mainnet targets may include symbols that were not exercised in testnet-live.
 4. Public market microstructure differs materially; testnet order-flow success is not the same as mainnet execution economics.
-5. Current v16a mainnet is intentionally code-blocked, so enabling it requires an explicit guardrail change and should not be done casually.
+5. Current v16a mainnet was intentionally code-blocked at the time of writing; it was enabled with an explicit guardrail change on 2026-05-05 under the `v16a-mainnet-pilot` profile.
 
 ## Recommended investigation before mainnet live
 
@@ -90,7 +90,7 @@ The biggest SDK-level concerns are not “mainnet will be worse than testnet in 
    - latest best bid/ask;
    - estimated minimum rounded order size for 100/200 USDC equity.
 
-3. Keep v16a mainnet blocked until the report is clean and reviewed.
+3. ✅ Completed 2026-05-05. Mainnet pilot is live.
 
 4. If proceeding, use a separate tiny mainnet config/profile with:
    - no leverage;

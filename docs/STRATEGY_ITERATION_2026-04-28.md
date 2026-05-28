@@ -118,7 +118,7 @@ The online v16a provider has moved from dry-run/shadow validation into guarded H
 - `V16aOnlineTargetStrategy` refreshes local 1h/6h parquet cache and builds the latest v16a target set.
 - The target builder forward-fills the latest 6h v10g core bar across the following live 6h window so the 1h overlay can keep updating hourly after the core bar has closed; it does not forward-fill past the next 6h bar close unless a newer core target exists.
 - The live CLI allows `STRATEGY_PROFILE=v16a-badscore-overlay` in dry-run shadow mode by default.
-- Non-dry-run v16a is guarded to Hyperliquid testnet only and requires explicit `ALLOW_V16A_TESTNET_LIVE=true`; mainnet v16a still fails fast.
+- Non-dry-run v16a was initially guarded to Hyperliquid testnet only with `ALLOW_V16A_TESTNET_LIVE=true`. Mainnet now uses the separate guarded `v16a-mainnet-pilot` profile with `ALLOW_MAINNET_PILOT_LIVE=true` (deployed 2026-05-05).
 - As of 2026-04-29, production `docker-compose.prod.yml` explicitly sets the non-secret v16a testnet-live flags. This is an execution-readiness rollout, not a mainnet promotion.
 - Target-mode ticks write `journal/targets.jsonl` diagnostics including profile, target timestamp, staleness, gross, executable normalized weights, ignored/out-of-universe weights, ignored gross, execution coverage, and order deltas.
 - Local one-shot shadow ticks wrote `backtest-results/shadow-v16a-*` diagnostics successfully. On testnet, XRP/SEI targets were ignored because they are outside the configured testnet universe, reducing executable normalized gross versus research target gross. This is expected but must stay visible in shadow logs.
@@ -131,4 +131,4 @@ Observe the guarded testnet-live deployment before any further strategy work:
 1. confirm each hourly tick completes without container restarts, API failures, or stale targets;
 2. track `journal/targets.jsonl` for target timestamp, staleness, gross exposure, execution coverage, ignored/out-of-universe gross, and order deltas;
 3. compare generated targets against the research script around the same timestamps if diagnostics drift;
-4. keep mainnet blocked until testnet order flow, state persistence, and journal diagnostics are boring across multiple 6h boundaries.
+4. (Completed 2026-05-05) Mainnet pilot is now live with PostgreSQL-backed persistence, dashboard observability, and multi-instance support. See [`MAINNET_PILOT_RUNBOOK_2026-05-04.md`](MAINNET_PILOT_RUNBOOK_2026-05-04.md).

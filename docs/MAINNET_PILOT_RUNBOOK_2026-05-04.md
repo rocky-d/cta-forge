@@ -68,6 +68,10 @@ Forward-shadow diagnostics must be read-only and isolated from the live runtime.
 They must not change the live container environment, restart the live engine, run
 a live tick, refresh data unexpectedly, or submit orders.
 
+Live health checks run on the EC2 host via systemd timers (`cta-forge-live-health.timer`
+and `cta-forge-shadow-snapshot.timer`). The shadow snapshot records read-only side-by-side
+phase comparisons using the existing live cache without an engine tick.
+
 Keep detailed snapshot journals private when they include live account state,
 positions, target weights, balances, or host paths. Public research notes should
 summarize only the method and conclusions.

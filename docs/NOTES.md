@@ -1,11 +1,8 @@
-# cta-forge -- NOTES.md
+# cta-forge — Project Notes
 
-## Project Overview
-
-Crypto CTA (Commodity Trading Advisor) trend-following strategy engine.
-Monorepo with 5 microservices + 2 shared libraries. Historical/cache data
-currently comes primarily from Binance USDS-M futures, while live execution
-targets Hyperliquid.
+Crypto CTA trend-following strategy engine.
+Monorepo with 5 microservices + 2 shared libraries.
+Market data primarily from Binance USDS-M futures; live execution on Hyperliquid mainnet.
 
 ## Architecture
 
@@ -19,140 +16,98 @@ services/
   strategy-service/  -- signal composition, allocation, risk
   executor/          -- backtest engine, target-weight portfolio layer & live execution
   report-service/    -- metrics calculation, chart generation (3-panel backtest chart)
-scripts/backtest/    -- CLI entry point (thin wrapper, imports from services)
-backtest-results/    -- output charts, metrics JSON
+scripts/backtest/    -- thin reproduction CLIs
+backtest-results/    -- generated charts and metrics (gitignored)
 docs/                -- project documentation
+infra/               -- compose, env examples, DB migrations
 ```
 
-Ports and service URLs have sensible defaults in `core/constants.py`, overridable via environment variables.
+Ports and defaults in `core/constants.py`, overridable via env vars.
 
-## Strategy: v10g
+## Strategy
 
-Multi-factor trend-following with adaptive features.
+Current production profile: **v16a Badscore Overlay** (`v16a-mainnet-pilot`).
 
-Research checkpoint: the current best robust iteration candidate is documented in
-[`STRATEGY_ITERATION_2026-04-28.md`](STRATEGY_ITERATION_2026-04-28.md). It now
-has a reusable target-weight profile/backtest path. The code default remains
-v10g, while the production testnet compose can explicitly promote v16a with
-separate guard flags.
+### v10g engine (core sleeve)
 
-Signals:
-- Multi-timeframe momentum (lookbacks: 20/60/120 bars)
-- Ensemble ADX filter (thresholds: 22/27/32, averaged)
-- Donchian breakout confirmation (20-bar channel)
-- Volume confirmation (20-bar avg ratio)
-- DI directional filter (+DI/-DI)
-- BTC correlation filter (dampen alt signals contradicting BTC trend)
-- Adaptive lookback weighting (high vol favors short lookback)
-- Signal persistence (require 2 consecutive bars same direction)
+Multi-factor trend-following:
 
-Position management:
-- Risk parity sizing (inverse vol contribution)
-- Vol targeting (12% annualized, EMA of recent returns)
-- ATR trailing stop (5.0x, tightens to 3.0x after 2.0x ATR profit)
-- Max hold 100 bars (forced exit)
-- Min hold 16 bars (prevent whipsaw)
-- Partial take-profit at 2.5x ATR
-- Max 5 concurrent positions
-- Rebalance every 4 bars
-- 8% drawdown circuit breaker (halves new position size)
+- Multi-timeframe momentum (20/60/120 bars)
+- Ensemble ADX filter (22/27/32)
+- Donchian breakout (20-bar channel)
+- Volume confirmation
+- DI directional filter
+- BTC correlation dampening
+- Signal persistence (2 consecutive bars)
+
+Position management: risk parity sizing, 12% annualized vol target, ATR trailing stops (5.0→3.0x), max hold 100 bars, min hold 16 bars, partial take-profit at 2.5x ATR, max 5 concurrent positions, 8% drawdown breaker.
+
+### v16a overlay
+
+Research checkpoint: [`STRATEGY_ITERATION_2026-04-28.md`](STRATEGY_ITERATION_2026-04-28.md).
+
+- Core sleeve: shifted v10g 6h trend strategy.
+- Overlay sleeve: 1h fast-exit top-2 signals.
+- Regime risk gate: badscore (vol + trend efficiency + cross-asset correlation).
+- Allocation: 50% core / 50% overlay.
 
 ## Design Principles
 
 - Protocol + composition over ABC/inheritance
-- No: ccxt, loguru, pandas (use polars/numpy), LangChain
+- No: ccxt, loguru, pandas (prefer polars/numpy), LangChain
 - Ruff lint + format, ty type check, pytest
 - Factor auto-discovery via registry
 - Parquet storage: `{data_dir}/{symbol}/{interval}.parquet` (zstd)
-- Signal range: normalized to [-1, +1]
 
-## Live Trading (Hyperliquid)
+## Live Trading
 
-Architecture:
-- `libs/exchange/` -- HL SDK wrapper library
-  - `ExchangeAdapter` Protocol interface (structural subtyping)
-  - `HyperliquidAdapter` implementation (SDK 0.23 metadata-safe init, unified account, async executor)
-- `services/executor/src/executor/decision.py` -- V10GDecisionEngine (stateless decision logic, shared by live + backtest)
-- `services/executor/src/executor/targeting.py` -- target-weight portfolio abstractions and target-to-order delta calculation
-- `services/executor/src/executor/portfolio_backtest.py` -- target-weight portfolio simulation utilities
-- `services/executor/src/executor/profiles/v16a_badscore_overlay.py` -- reusable v16a Badscore Overlay target profile
-- `services/executor/src/executor/live.py` -- LiveEngine (code default: v10g strategy, 6h candle-aligned loop; target-mode reconciliation is available behind explicit strategy injection and is used by the guarded v16a testnet-live deployment)
-- `services/executor/src/executor/notify.py` -- Notifier stack (Telegram, Lark/Feishu, multi-backend)
-- `services/executor/src/executor/run_live.py` -- CLI entry point
+Production runs on EC2 (Tokyo, t3.small) with Docker Compose.
 
-Preflight checks (must all pass before trading):
-1. Exchange connectivity
-2. Minimum equity ($100)
-3. Position reconcile (state vs exchange, adopt orphaned positions)
-4. Stale open orders -> auto-cancel
-5. Market data spot check
+- **Profile**: `v16a-mainnet-pilot`, 19-symbol universe, Hyperliquid mainnet
+- **Persistence**: PostgreSQL primary (`PERSISTENCE_BACKEND=postgres`), Docker volumes for parquet cache
+- **Deploy**: GitHub Actions workflow_dispatch → GHCR → SSH EC2
+- **Guard**: preflight checks before every deploy; multi-layer allow flags (strategy profile, network, instance-specific)
+- **Notifications**: Telegram (main), Lark/Feishu (secondary)
 
-Risk controls:
-- Drawdown is represented project-wide as a positive magnitude from peak (for example 5% below peak -> `0.05`, journal `dd_pct=5.0`). Only chart rendering may negate it visually for underwater plots.
-- 15% max drawdown -> hard stop (flatten all)
-- 8% drawdown -> DD breaker (50% position size reduction)
-- ATR trailing stops (5.0x, tightens to 3.0x after 2.0x ATR profit)
-- Max 5 concurrent positions
-- 15% max per-position equity
+Second dry-run instance (`mainnet-400-01`) is prepared via the `mainnet-400-01` Compose profile. See [`MULTI_LIVE_MINIMAL_ROLLOUT_2026-05-21.md`](MULTI_LIVE_MINIMAL_ROLLOUT_2026-05-21.md).
 
-Important: V10GDecisionEngine.tick() mutates state internally (deletes closed
-positions, adjusts partial qty, updates best_price). Callers must snapshot
-positions before tick() if they need pre-tick state for settlement.
+Key design invariants:
 
-Ops:
-- Env vars: HL_PRIVATE_KEY, HL_ACCOUNT_ADDRESS, HL_NETWORK, DRY_RUN, TG_BOT_TOKEN, TG_CHAT_ID, LARK_WEBHOOK_URL, DATA_DIR, JOURNAL_DIR, STATE_FILE, LIVE_INSTANCE_ID, PUBLIC_INSTANCE_SLUG, RUN_ID, STRATEGY_PROFILE, MIN_ORDER_NOTIONAL, MAX_ORDER_NOTIONAL, MIN_EQUITY, MIN_AVAILABLE_BALANCE, MAX_EQUITY, TARGET_SCALE, TARGET_GROSS_CAP, HL_LEVERAGE, LIVE_SYMBOLS, V16A_MAX_STALENESS_HOURS, V16A_CORE_PHASE_HOURS, V16A_COMPARE_CORE_PHASE_HOURS, PHASE_COMPARISON_JOURNAL_DIR, ALLOW_V16A_TESTNET_LIVE, ALLOW_MAINNET_PILOT_LIVE, ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS
-- `STRATEGY_PROFILE` code default is `v10g-engine-6h`. `v16a-badscore-overlay` is shadow-safe by default; non-dry-run v16a requires both `HL_NETWORK=testnet` and explicit `ALLOW_V16A_TESTNET_LIVE=true`. Mainnet uses the separate guarded `v16a-mainnet-pilot` profile. Keep the active mainnet pilot risk record in private host-side deployment config, not duplicated in public docs.
-- One-shot v16a shadow command: `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay uv run python -m executor.run_shadow_tick`. Run it locally, or as an explicit one-off executor command only after review; do not use the deploy workflow for experiments. The command requires `HL_PRIVATE_KEY` and `HL_ACCOUNT_ADDRESS` in the environment so it can read account/position state, but it rejects `DRY_RUN=false`.
-- v16a target freshness: the latest 6h v10g core bar is forward-filled across the following live 6h window while the 1h overlay can update hourly. Do not forward-fill past the next 6h bar close unless a newer core target exists.
-- v16a core phase config: `V16A_CORE_PHASE_HOURS` code default is `0` and accepts integer UTC-hour offsets `0..5`. Non-zero values build the 6h v10g core sleeve from refreshed 1h cache while leaving the 1h overlay unchanged. Do not infer active live phase from code defaults or old research docs; verify the private production env and the running container before answering or changing live-risk settings.
-- v16a phase comparison shadow: set `V16A_COMPARE_CORE_PHASE_HOURS=2` on `executor.run_shadow_tick` to write read-only side-by-side phase diagnostics to `PHASE_COMPARISON_JOURNAL_DIR` (default `journal/phase-shadow`). This records target diff metrics and hypothetical orders; it must remain dry-run/no-order.
-- Cache-only phase shadow: `DRY_RUN=true STRATEGY_PROFILE=v16a-badscore-overlay V16A_COMPARE_CORE_PHASE_HOURS=2 uv run python -m executor.run_phase_shadow_snapshot` records the same side-by-side phase diagnostics without running a `LiveEngine` tick and without refreshing Binance data. Use this for forward evidence collection when the live cache is already maintained elsewhere.
-- v16a live-like constraint ablation: `uv run python scripts/backtest/v16a_live_constraints_ablation.py` compares ideal target-weight results with historical pilot-style constraints, scale/gross-cap variants, and slippage assumptions. Treat its `$50`/`$75` max-increase-cap findings as dated research scenarios, not proof of the current live cap; verify live env first.
-- Historical v16a mainnet-pilot forward shadow: after deploying commit `47fdea0` on 2026-05-06, the first cache-only EC2 snapshots compared phase `0` live baseline against phase `2` shadow using read-only subprocesses. This was a dated observation, not the current-live source of truth. Keep ongoing active phase/cap state in private operator records and verify the running container when needed.
-- v16a live target construction is cache-only: `LiveEngine` refreshes required parquet data asynchronously before target generation, and `V16aOnlineTargetStrategy` must not fetch/backfill or start an event loop inside synchronous target calculation.
-- v16a staleness guard: `V16A_MAX_STALENESS_HOURS` defaults to 8 for shadow and guarded testnet-live target generation. If ticks show targets older than the expected 1h overlay cadence outside data/API outages, investigate before further rollout or any mainnet discussion.
-- State persistence: `engine-state.json` for live mode and `engine-state-shadow.json` for shadow mode (auto-generated, gitignored)
-- Runtime identity: `LIVE_INSTANCE_ID` and `PUBLIC_INSTANCE_SLUG` are optional non-secret labels for future multi-live/dashboard routing; `RUN_ID` is optional and otherwise generated per live process start. These fields are additive journal metadata and do not change order behavior.
-- Journal outputs: `equity.jsonl`, `trades.jsonl`, `signals.jsonl`, and target-mode `targets.jsonl` diagnostics. Target diagnostics include staleness, execution coverage, and ignored gross so testnet/mainnet universe gaps stay visible.
-- Data cache: parquet files in DATA_DIR (live + backtest share via ParquetStore)
-- Deployment: GitHub Actions workflow_dispatch -> GHCR -> SSH EC2 (Tokyo t3.small). Prefer this CI/CD path for v16a promotion; avoid ad hoc EC2 changes except read-only checks or urgent diagnostics. Deploy target `testnet-live` uses only `docker-compose.prod.yml`; target `mainnet-pilot-dry-run` overlays `docker-compose.mainnet-pilot.yml`; target `mainnet-pilot-live` additionally overlays `docker-compose.mainnet-pilot-live.yml`. Secrets and notification endpoints remain in the EC2 `.env`.
+- `V10GDecisionEngine.tick()` mutates internal state. Callers needing pre-tick positions must snapshot before calling `tick()`.
+- Drawdown is a positive magnitude from peak in journals; only charts may negate it for display.
+- All live-risk changes (phase, leverage, cap, symbols) must come from verified private env, not code defaults or old research docs.
 
 ## CI/CD
 
-- Lint: ruff check + ruff format + ty check (3 parallel jobs)
-- Test: pytest (unit + integration)
-- Deploy: workflow_dispatch -> check-ci gate -> build Docker -> push GHCR -> SSH deploy EC2
-- Workflow action runtime versions are owned by the referenced actions; watch GitHub annotations for upstream deprecation warnings.
+- Lint: ruff check + ruff format + ty check
+- Test: pytest
+- Deploy: workflow_dispatch → check-ci gate → build Docker → push GHCR → SSH deploy EC2
 
 ## Backtest
 
-Architecture:
-- `executor` is the source of truth for strategy and backtest logic.
-- `scripts/backtest/*.py` are intentionally thin reproduction CLIs: they choose a profile, call executor modules, call report-service plotting, and write local artifacts.
-- `services/executor/src/executor/signal_pipeline.py` -- shared historical data and signal pipeline
-  - `fetch_bars()` -- ParquetStore cache + Binance incremental fetch
-  - `precompute()`, `build_timeline()`, `align_data()`, `compute_signals()` -- shared data pipeline
-- `services/executor/src/executor/backtest.py` -- V10GDecisionEngine action-based backtest module
-  - `run_backtest()` -- V10GDecisionEngine loop (same engine as live trading)
-  - `run_full_backtest()` -- single orchestration entry point over `signal_pipeline`
-- `services/executor/src/executor/profiles/v16a_badscore_overlay.py` -- reusable v16a profile and target construction logic, also using `signal_pipeline`
-- `services/executor/src/executor/portfolio_backtest.py` -- target-weight and simple execution-realistic portfolio backtest paths used by v16a
-- `services/report-service/src/report_service/plot.py` -- `plot_backtest()` three-panel chart
-  (equity + BTC/ETH indexed overlay, drawdown, monthly returns)
+Backtest entry points are thin CLIs over executor modules:
 
-Usage:
-- v10g CLI: `uv run python scripts/backtest/v10g_maxrange.py` (thin wrapper around `executor.backtest`)
-- v16a CLI: `uv run python scripts/backtest/joint_badscore_research.py` (thin wrapper around `executor.profiles.v16a_badscore_overlay` + `executor.portfolio_backtest`)
-- REST API:
-  1. `POST :8004/backtest` -> v10g JSON (metrics, equity_curve, btc/eth prices, yearly)
-  2. `POST :8005/plot/backtest` -> PNG (three-panel chart with BTC/ETH overlay)
+```bash
+uv run python scripts/backtest/v10g_maxrange.py        # v10g
+uv run python scripts/backtest/joint_badscore_research.py  # v16a
+```
 
-Output examples: `backtest-results/backtest_v10g_6h_default.png`, `backtest-results/backtest_joint_badscore_research.png`, and matching `metrics_*.json` files.
+Chart convention (Boss-facing): 16:9 PNG, 3 panels (equity, drawdown, monthly P&L), max 4 configs per chart.
 
-Local chart convention for Boss-facing backtest/research comparisons:
-- Prefer a 16:9 PNG with three vertically stacked panels.
-- Panel 1: equity index / normalized equity.
-- Panel 2: underwater drawdown.
-- Panel 3: monthly P&L / monthly return bar chart.
-- Compare at most 4 configurations in one chart. If a comparison needs more than 4 groups, ask Boss before plotting.
-- Keep this as a local project-level note; do not make a remote-sync/change solely for this preference.
+## Where to find more
+
+| Topic | Document |
+|-------|----------|
+| Mainnet pilot runbook & guards | [`MAINNET_PILOT_RUNBOOK_2026-05-04.md`](MAINNET_PILOT_RUNBOOK_2026-05-04.md) |
+| Multi-live (400-01) rollout | [`MULTI_LIVE_MINIMAL_ROLLOUT_2026-05-21.md`](MULTI_LIVE_MINIMAL_ROLLOUT_2026-05-21.md) |
+| Strategy iteration research | [`STRATEGY_ITERATION_2026-04-28.md`](STRATEGY_ITERATION_2026-04-28.md) |
+| Time-phase research | [`TIME_PHASE_RESEARCH_2026-05-06.md`](TIME_PHASE_RESEARCH_2026-05-06.md) |
+| DBMS/multi-live design | [`DBMS_MULTI_LIVE_DESIGN_2026-05-14.md`](DBMS_MULTI_LIVE_DESIGN_2026-05-14.md) |
+| DBMS dual-write design | [`DBMS_DUAL_WRITE_DESIGN_2026-05-15.md`](DBMS_DUAL_WRITE_DESIGN_2026-05-15.md) |
+| DBMS cutover checklist | [`DBMS_CUTOVER_CHECKLIST_2026-05-15.md`](DBMS_CUTOVER_CHECKLIST_2026-05-15.md) |
+| DBMS backup/restore | [`DBMS_BACKUP_RESTORE_RUNBOOK_2026-05-15.md`](DBMS_BACKUP_RESTORE_RUNBOOK_2026-05-15.md) |
+| DBMS container deployment | [`DBMS_CONTAINER_DEPLOYMENT_2026-05-15.md`](DBMS_CONTAINER_DEPLOYMENT_2026-05-15.md) |
+| HL mainnet/testnet research | [`HL_MAINNET_TESTNET_RESEARCH_2026-05-02.md`](HL_MAINNET_TESTNET_RESEARCH_2026-05-02.md) |
+| HL SDK known issues | [`HYPERLIQUID_SDK_ISSUES.md`](HYPERLIQUID_SDK_ISSUES.md) |
+| Historical import plan | [`LIVE_PERSISTENCE_IMPORT_PLAN_2026-05-15.md`](LIVE_PERSISTENCE_IMPORT_PLAN_2026-05-15.md) |
+| Import review | [`LIVE_PERSISTENCE_IMPORT_REVIEW_2026-05-16.md`](LIVE_PERSISTENCE_IMPORT_REVIEW_2026-05-16.md) |
