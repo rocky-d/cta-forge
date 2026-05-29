@@ -111,3 +111,4 @@ Chart convention (Boss-facing): 16:9 PNG, 3 panels (equity, drawdown, monthly P&
 | HL SDK known issues | [`HYPERLIQUID_SDK_ISSUES.md`](HYPERLIQUID_SDK_ISSUES.md) |
 | Historical import plan | [`LIVE_PERSISTENCE_IMPORT_PLAN_2026-05-15.md`](LIVE_PERSISTENCE_IMPORT_PLAN_2026-05-15.md) |
 | Import review | [`LIVE_PERSISTENCE_IMPORT_REVIEW_2026-05-16.md`](LIVE_PERSISTENCE_IMPORT_REVIEW_2026-05-16.md) |
+| Multi-live config incident (2026-05-29) | [`INCIDENT_2026-05-29_MULTI_LIVE_CONFIG.md`](INCIDENT_2026-05-29_MULTI_LIVE_CONFIG.md) |
