@@ -112,12 +112,12 @@ jobs:
         run: |
           MINUTE=$(date -u +%M)
           MINUTE_NUM=$((10#$MINUTE))
-          if [ "$MINUTE_NUM" -ge 20 ] && [ "$MINUTE_NUM" -le 50 ]; then
+          if [ "$MINUTE_NUM" -ge 15 ] && [ "$MINUTE_NUM" -le 45 ]; then
             echo "✓ Safe deploy window (UTC xx:${MINUTE}, tick has completed)"
           else
             echo "✗ Unsafe deploy window (UTC xx:${MINUTE})"
             echo "Ticks fire at :00 and need ~7 min to complete."
-            echo "Deploy only between xx:20 and xx:50 UTC."
+            echo "Deploy only between xx:15 and xx:45 UTC."
             echo "Retry this workflow in a few minutes."
             exit 1
           fi
