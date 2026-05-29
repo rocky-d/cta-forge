@@ -84,9 +84,7 @@ def test_check_live_instance_env_rejects_enabled_live_flag_during_prep() -> None
 
     assert code == 2
     live_flag_check = next(
-        check
-        for check in payload["checks"]
-        if check["name"] == "allow_live"
+        check for check in payload["checks"] if check["name"] == "allow_live"
     )
     assert live_flag_check["ok"] is False
 
