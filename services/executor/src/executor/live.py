@@ -750,11 +750,17 @@ class LiveEngine:
         cash_summary = f" | Avail ${float(account.available_balance):.1f}"
         if account.unrealized_pnl is not None:
             cash_summary += f" | uPnL ${float(account.unrealized_pnl):+.1f}"
+        dry_label = "🔶 [DRY RUN] " if self._dry_run else ""
+        if self._dry_run:
+            action_summary = action_summary.replace("Actions", "Targets", 1)
+            pos_label = "Target positions"
+        else:
+            pos_label = "Positions"
         await self._notify.send(
-            f"⏰ Tick #{self._state.bar_count} | Eq ${equity:.1f}"
+            f"{dry_label}⏰ Tick #{self._state.bar_count} | Eq ${equity:.1f}"
             f"{cash_summary} | DD {drawdown_pct:.2f}%\n"
             f"{action_summary}\n"
-            f"Positions: {pos_summary}"
+            f"{pos_label}: {pos_summary}"
         )
 
     # ── Target portfolio execution ───────────────────────────────
