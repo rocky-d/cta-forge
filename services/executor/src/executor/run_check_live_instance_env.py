@@ -20,10 +20,7 @@ from .live import V16A_PROFILE_SLUG
 from .profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
 from .run_live import (
     MAINNET_400_LIVE_INSTANCE_ID,
-    MAINNET_400_MAX_EQUITY,
-    MAINNET_400_MAX_LEVERAGE,
-    MAINNET_400_MAX_ORDER_NOTIONAL,
-    MAINNET_400_MAX_TARGET_GROSS_CAP,
+    MAINNET_CAPS,
     _is_truthy,
 )
 
@@ -139,18 +136,18 @@ def _validate_mainnet_400_env(
         ),
         _check_path_mentions_instance("state_file", env.get("STATE_FILE")),
         _check_path_mentions_instance("journal_dir", env.get("JOURNAL_DIR")),
-        _check_cap("max_equity", env.get("MAX_EQUITY"), MAINNET_400_MAX_EQUITY),
+        _check_cap("max_equity", env.get("MAX_EQUITY"), MAINNET_CAPS[MAINNET_400_LIVE_INSTANCE_ID]["equity"]),
         _check_cap(
             "max_order_notional",
             env.get("MAX_ORDER_NOTIONAL"),
-            MAINNET_400_MAX_ORDER_NOTIONAL,
+            MAINNET_CAPS[MAINNET_400_LIVE_INSTANCE_ID]["order_notional"],
         ),
         _check_cap(
             "target_gross_cap",
             env.get("TARGET_GROSS_CAP"),
-            MAINNET_400_MAX_TARGET_GROSS_CAP,
+            MAINNET_CAPS[MAINNET_400_LIVE_INSTANCE_ID]["gross_cap"],
         ),
-        _check_int_cap("hl_leverage", env.get("HL_LEVERAGE"), MAINNET_400_MAX_LEVERAGE),
+        _check_int_cap("hl_leverage", env.get("HL_LEVERAGE"), MAINNET_CAPS[MAINNET_400_LIVE_INSTANCE_ID]["leverage"]),
         _check_secrets(env, require_secrets=require_secrets),
     ]
 

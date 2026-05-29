@@ -65,15 +65,12 @@ def _load_runtime_identity(env: Mapping[str, str] = os.environ) -> RuntimeIdenti
     )
 
 
-MAINNET_PILOT_MAX_EQUITY = 200.0
-MAINNET_PILOT_MAX_ORDER_NOTIONAL = 50.0
-MAINNET_PILOT_MAX_TARGET_GROSS_CAP = 4.0
-MAINNET_PILOT_MAX_LEVERAGE = 5
-MAINNET_400_MAX_EQUITY = 500.0
-MAINNET_400_MAX_ORDER_NOTIONAL = 50.0
-MAINNET_400_MAX_TARGET_GROSS_CAP = 4.0
-MAINNET_400_MAX_LEVERAGE = 5
 MAINNET_400_LIVE_INSTANCE_ID = "mainnet-400-01"
+
+MAINNET_CAPS: dict[str, dict[str, float]] = {
+    "mainnet-pilot": {"equity": 200.0, "order_notional": 50.0, "gross_cap": 4.0, "leverage": 5},
+    MAINNET_400_LIVE_INSTANCE_ID: {"equity": 500.0, "order_notional": 50.0, "gross_cap": 4.0, "leverage": 5},
+}
 ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV = "ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS"
 
 
@@ -121,52 +118,6 @@ def _validate_mainnet_caps(
         raise ValueError(msg)
 
 
-def _validate_mainnet_pilot_caps(
-    *,
-    max_equity: float | None,
-    max_order_notional: float | None,
-    target_gross_cap: float,
-    leverage: int,
-    allow_uncapped_orders: bool = False,
-) -> None:
-    """Require explicit bounded risk caps for the existing mainnet pilot."""
-    _validate_mainnet_caps(
-        label="mainnet pilot",
-        max_equity=max_equity,
-        max_order_notional=max_order_notional,
-        target_gross_cap=target_gross_cap,
-        leverage=leverage,
-        max_allowed_equity=MAINNET_PILOT_MAX_EQUITY,
-        max_allowed_order_notional=MAINNET_PILOT_MAX_ORDER_NOTIONAL,
-        max_allowed_target_gross_cap=MAINNET_PILOT_MAX_TARGET_GROSS_CAP,
-        max_allowed_leverage=MAINNET_PILOT_MAX_LEVERAGE,
-        allow_uncapped_orders=allow_uncapped_orders,
-    )
-
-
-def _validate_mainnet_400_caps(
-    *,
-    max_equity: float | None,
-    max_order_notional: float | None,
-    target_gross_cap: float,
-    leverage: int,
-    allow_uncapped_orders: bool = False,
-) -> None:
-    """Require explicit bounded risk caps for the planned 400 USDT instance."""
-    _validate_mainnet_caps(
-        label=MAINNET_400_LIVE_INSTANCE_ID,
-        max_equity=max_equity,
-        max_order_notional=max_order_notional,
-        target_gross_cap=target_gross_cap,
-        leverage=leverage,
-        max_allowed_equity=MAINNET_400_MAX_EQUITY,
-        max_allowed_order_notional=MAINNET_400_MAX_ORDER_NOTIONAL,
-        max_allowed_target_gross_cap=MAINNET_400_MAX_TARGET_GROSS_CAP,
-        max_allowed_leverage=MAINNET_400_MAX_LEVERAGE,
-        allow_uncapped_orders=allow_uncapped_orders,
-    )
-
-
 def _validate_v16a_live_mode(
     *,
     dry_run: bool,
@@ -193,22 +144,20 @@ def _validate_v16a_live_mode(
             msg = "Non-dry-run requires ALLOW_LIVE=true"
             raise ValueError(msg)
         if enforce_pilot_caps:
-            if live_instance_id == MAINNET_400_LIVE_INSTANCE_ID:
-                _validate_mainnet_400_caps(
-                    max_equity=max_equity,
-                    max_order_notional=max_order_notional,
-                    target_gross_cap=target_gross_cap,
-                    leverage=leverage,
-                    allow_uncapped_orders=allow_uncapped_orders,
-                )
-            else:
-                _validate_mainnet_pilot_caps(
-                    max_equity=max_equity,
-                    max_order_notional=max_order_notional,
-                    target_gross_cap=target_gross_cap,
-                    leverage=leverage,
-                    allow_uncapped_orders=allow_uncapped_orders,
-                )
+            caps_slug = live_instance_id if live_instance_id in MAINNET_CAPS else "mainnet-pilot"
+            caps = MAINNET_CAPS[caps_slug]
+            _validate_mainnet_caps(
+                label=live_instance_id or "mainnet",
+                max_equity=max_equity,
+                max_order_notional=max_order_notional,
+                target_gross_cap=target_gross_cap,
+                leverage=leverage,
+                max_allowed_equity=caps["equity"],
+                max_allowed_order_notional=caps["order_notional"],
+                max_allowed_target_gross_cap=caps["gross_cap"],
+                max_allowed_leverage=int(caps["leverage"]),
+                allow_uncapped_orders=allow_uncapped_orders,
+            )
         return
     if not testnet:
         msg = f"{V16A_PROFILE_SLUG} non-dry-run is only allowed on HL_NETWORK=testnet"
