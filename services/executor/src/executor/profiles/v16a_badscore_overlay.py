@@ -246,7 +246,7 @@ def overlay_params() -> V10GStrategyParams:
         mom_lookbacks=[24, 72, 168],
         adx_ensemble=[20, 28, 36],
         adx_threshold=20.0,
-        signal_persistence=3,
+        signal_persistence=1,
         donchian_period=48,
         rvol_lookback=24,
         rvol_median_lookback=168,
@@ -709,7 +709,7 @@ def expanding_badscore_gate(timeline) -> np.ndarray:
             and corr > np.nanquantile(hist_corr, 0.66)
         ):
             bad += 1
-        scale_by_day[day] = 0.5 if bad >= 2 else 1.0
+        scale_by_day[day] = 0.25 if bad >= 2 else 1.0
         if np.isfinite(vol):
             hist_vol.append(float(vol))
         if np.isfinite(eff):
