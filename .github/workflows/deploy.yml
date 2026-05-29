@@ -116,9 +116,8 @@ jobs:
             echo "✓ Safe deploy window (UTC xx:${MINUTE}, tick has completed)"
           else
             echo "✗ Unsafe deploy window (UTC xx:${MINUTE})"
-            echo "Ticks fire at :00 and need ~7 min to complete."
             echo "Deploy only between xx:15 and xx:45 UTC."
-            echo "Retry this workflow in a few minutes."
+            echo "Retry this workflow within the window."
             exit 1
           fi
 
