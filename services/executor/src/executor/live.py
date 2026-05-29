@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -230,6 +231,7 @@ class LiveEngine:
         self._dry_run = dry_run
         self._running = False
         self._clean_start = clean_start
+        self._shutdown_event = asyncio.Event()
         self._state = EngineState()
         self._last_tick_equity: float | None = None
         self._bars_cache: dict[str, pl.DataFrame] = {}
@@ -280,6 +282,14 @@ class LiveEngine:
 
     async def start(self) -> None:
         """Start the live trading loop."""
+        # Register SIGTERM handler for graceful container shutdown.
+        loop = asyncio.get_running_loop()
+        try:
+            loop.add_signal_handler(signal.SIGTERM, self._shutdown_event.set)
+        except NotImplementedError:
+            # Windows / unsupported platform — shutdown event won't fire.
+            pass
+
         logger.info(
             "LiveEngine starting: profile=%s, symbols=%d, dry_run=%s",
             self._strategy_profile,
@@ -380,7 +390,12 @@ class LiveEngine:
 
         while self._running:
             try:
-                await self._wait_for_candle_close()
+                if not self._shutdown_event.is_set():
+                    await self._wait_for_candle_close()
+                if self._shutdown_event.is_set():
+                    logger.info(
+                        "Shutdown requested — completing final tick before exit"
+                    )
                 await self._tick()
                 # Persist state after each tick
                 live_state = _engine_to_live_state(
@@ -388,6 +403,9 @@ class LiveEngine:
                     last_tick_equity=self._last_tick_equity,
                 )
                 state_store.save(live_state)
+                if self._shutdown_event.is_set():
+                    logger.info("Final tick complete — shutting down")
+                    self._running = False
             except asyncio.CancelledError:
                 logger.info("LiveEngine cancelled")
                 live_state = _engine_to_live_state(
@@ -403,7 +421,10 @@ class LiveEngine:
                     last_tick_equity=self._last_tick_equity,
                 )
                 state_store.save(live_state)
-                await asyncio.sleep(60)
+                if self._shutdown_event.is_set():
+                    self._running = False
+                else:
+                    await asyncio.sleep(60)
 
         logger.info("LiveEngine stopped")
 
@@ -568,7 +589,7 @@ class LiveEngine:
     # ── Core loop ────────────────────────────────────────────────
 
     async def _wait_for_candle_close(self) -> None:
-        """Sleep until next candle close (e.g. UTC 00:00, 06:00, 12:00, 18:00 for 6h)."""
+        """Sleep until next candle close, interruptible by shutdown signal."""
         now = datetime.now(tz=UTC)
         hours_since_midnight = now.hour
         tf_hours = (
@@ -594,7 +615,13 @@ class LiveEngine:
                 wait_seconds,
                 next_close.strftime("%H:%M"),
             )
-            await asyncio.sleep(wait_seconds)
+            # Sleep in 30s chunks so shutdown signals are detected promptly.
+            while wait_seconds > 0 and not self._shutdown_event.is_set():
+                chunk = min(wait_seconds, 30)
+                await asyncio.sleep(chunk)
+                wait_seconds -= chunk
+            if self._shutdown_event.is_set():
+                logger.info("Shutdown requested — skipping remaining wait")
 
     def _record_tick_return(self, equity: float) -> None:
         """Append the realized tick-to-tick equity return for vol scaling."""

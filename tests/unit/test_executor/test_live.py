@@ -741,3 +741,33 @@ def test_unknown_live_profile_requires_target_provider() -> None:
     exchange = FakeExchange()
     with pytest.raises(ValueError, match="no live target provider"):
         LiveEngine(exchange, strategy_profile="v16a-badscore-overlay")
+
+
+class TestLiveEngineShutdown:
+    """Verify LiveEngine handles SIGTERM gracefully without corrupting state."""
+
+    def test_shutdown_event_initialised(self):
+        from executor.live import LiveEngine
+
+        exchange = FakeExchange()
+        engine = LiveEngine(exchange, symbols=["BTC", "ETH"], dry_run=True)
+        assert engine._shutdown_event is not None
+        assert engine._shutdown_event.is_set() is False
+
+    def test_wait_for_candle_close_interruptible(self):
+        import asyncio
+        from executor.live import LiveEngine
+
+        exchange = FakeExchange()
+        engine = LiveEngine(exchange, symbols=["BTC", "ETH"], dry_run=True)
+
+        async def _test():
+            # Set shutdown before wait — should skip immediately.
+            engine._shutdown_event.set()
+            before = asyncio.get_running_loop().time()
+            await engine._wait_for_candle_close()
+            elapsed = asyncio.get_running_loop().time() - before
+            # Should return in well under a second (not sleep the full hour).
+            assert elapsed < 0.5, f"shutdown wait took {elapsed:.2f}s"
+
+        asyncio.run(_test())

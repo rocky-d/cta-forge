@@ -108,6 +108,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Check tick-safe deploy window
+        run: |
+          MINUTE=$(date -u +%M)
+          MINUTE_NUM=$((10#$MINUTE))
+          if [ "$MINUTE_NUM" -ge 20 ] && [ "$MINUTE_NUM" -le 50 ]; then
+            echo "✓ Safe deploy window (UTC xx:${MINUTE}, tick has completed)"
+          else
+            echo "✗ Unsafe deploy window (UTC xx:${MINUTE})"
+            echo "Ticks fire at :00 and need ~7 min to complete."
+            echo "Deploy only between xx:20 and xx:50 UTC."
+            echo "Retry this workflow in a few minutes."
+            exit 1
+          fi
+
       - name: Sync compose file to EC2
         uses: appleboy/scp-action@v0.1.7
         with:

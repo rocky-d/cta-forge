@@ -42,6 +42,7 @@ services:
     image: ghcr.io/rocky-d/cta-forge/executor:latest
     container_name: cta-forge-executor
     restart: unless-stopped
+    stop_grace_period: 600s
     command: ["uv", "run", "python", "-m", "executor.run_live"]
     env_file: .env
     volumes:
@@ -58,6 +59,7 @@ services:
     image: ghcr.io/rocky-d/cta-forge/executor:latest
     container_name: cta-forge-executor-mainnet-400-01
     restart: unless-stopped
+    stop_grace_period: 600s
     profiles: ["mainnet-400-01"]
     command: ["uv", "run", "python", "-m", "executor.run_live"]
     env_file: .env.mainnet-400-01
