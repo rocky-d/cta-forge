@@ -75,7 +75,6 @@ MAINNET_400_MAX_TARGET_GROSS_CAP = 4.0
 MAINNET_400_MAX_LEVERAGE = 5
 MAINNET_400_LIVE_INSTANCE_ID = "mainnet-400-01"
 ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV = "ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS"
-ALLOW_MAINNET_400_LIVE_ENV = "ALLOW_MAINNET_400_LIVE"
 
 
 def _validate_mainnet_caps(
@@ -173,9 +172,8 @@ def _validate_v16a_live_mode(
     dry_run: bool,
     testnet: bool,
     strategy_profile: str = V16A_PROFILE_SLUG,
+    allow_live: bool = False,
     allow_testnet_live: bool = False,
-    allow_mainnet_pilot_live: bool = False,
-    allow_mainnet_400_live: bool = False,
     live_instance_id: str | None = None,
     enforce_pilot_caps: bool = False,
     max_equity: float | None = None,
@@ -191,11 +189,11 @@ def _validate_v16a_live_mode(
         if testnet:
             msg = f"{V16A_MAINNET_PILOT_PROFILE.slug} requires HL_NETWORK=mainnet"
             raise ValueError(msg)
-        if live_instance_id == MAINNET_400_LIVE_INSTANCE_ID:
-            if not allow_mainnet_400_live:
-                msg = f"{MAINNET_400_LIVE_INSTANCE_ID} requires {ALLOW_MAINNET_400_LIVE_ENV}=true"
-                raise ValueError(msg)
-            if enforce_pilot_caps:
+        if not allow_live:
+            msg = "Non-dry-run requires ALLOW_LIVE=true"
+            raise ValueError(msg)
+        if enforce_pilot_caps:
+            if live_instance_id == MAINNET_400_LIVE_INSTANCE_ID:
                 _validate_mainnet_400_caps(
                     max_equity=max_equity,
                     max_order_notional=max_order_notional,
@@ -203,18 +201,14 @@ def _validate_v16a_live_mode(
                     leverage=leverage,
                     allow_uncapped_orders=allow_uncapped_orders,
                 )
-            return
-        if not allow_mainnet_pilot_live:
-            msg = f"{V16A_MAINNET_PILOT_PROFILE.slug} requires ALLOW_MAINNET_PILOT_LIVE=true"
-            raise ValueError(msg)
-        if enforce_pilot_caps:
-            _validate_mainnet_pilot_caps(
-                max_equity=max_equity,
-                max_order_notional=max_order_notional,
-                target_gross_cap=target_gross_cap,
-                leverage=leverage,
-                allow_uncapped_orders=allow_uncapped_orders,
-            )
+            else:
+                _validate_mainnet_pilot_caps(
+                    max_equity=max_equity,
+                    max_order_notional=max_order_notional,
+                    target_gross_cap=target_gross_cap,
+                    leverage=leverage,
+                    allow_uncapped_orders=allow_uncapped_orders,
+                )
         return
     if not testnet:
         msg = f"{V16A_PROFILE_SLUG} non-dry-run is only allowed on HL_NETWORK=testnet"
@@ -346,8 +340,7 @@ def main() -> None:
         int(os.environ.get("V16A_CORE_PHASE_HOURS", "0"))
     )
     allow_v16a_testnet_live = _is_truthy(os.environ.get("ALLOW_V16A_TESTNET_LIVE"))
-    allow_mainnet_pilot_live = _is_truthy(os.environ.get("ALLOW_MAINNET_PILOT_LIVE"))
-    allow_mainnet_400_live = _is_truthy(os.environ.get(ALLOW_MAINNET_400_LIVE_ENV))
+    allow_live = _is_truthy(os.environ.get("ALLOW_LIVE"))
     allow_uncapped_orders = _is_truthy(
         os.environ.get(ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV)
     )
@@ -367,9 +360,8 @@ def main() -> None:
                 dry_run=dry_run,
                 testnet=testnet,
                 strategy_profile=strategy_profile,
+                allow_live=allow_live,
                 allow_testnet_live=allow_v16a_testnet_live,
-                allow_mainnet_pilot_live=allow_mainnet_pilot_live,
-                allow_mainnet_400_live=allow_mainnet_400_live,
                 live_instance_id=identity.live_instance_id,
                 enforce_pilot_caps=True,
                 max_equity=max_equity,

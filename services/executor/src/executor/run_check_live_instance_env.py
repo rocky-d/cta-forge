@@ -19,7 +19,6 @@ from typing import TextIO
 from .live import V16A_PROFILE_SLUG
 from .profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
 from .run_live import (
-    ALLOW_MAINNET_400_LIVE_ENV,
     MAINNET_400_LIVE_INSTANCE_ID,
     MAINNET_400_MAX_EQUITY,
     MAINNET_400_MAX_LEVERAGE,
@@ -130,8 +129,8 @@ def _validate_mainnet_400_env(
             {V16A_MAINNET_PILOT_PROFILE.slug, V16A_PROFILE_SLUG},
         ),
         _check_live_allow_flag(
-            "allow_mainnet_400_live",
-            env.get(ALLOW_MAINNET_400_LIVE_ENV),
+            "allow_live",
+            env.get("ALLOW_LIVE"),
             allow_non_dry_run=allow_non_dry_run,
         ),
         _check_status_default("live_instance_status", env.get("LIVE_INSTANCE_STATUS")),

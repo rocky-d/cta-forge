@@ -182,7 +182,8 @@ jobs:
             printf '%s\n' "$ENV_DUMP" | grep -q '^HL_NETWORK=mainnet$'
             printf '%s\n' "$ENV_DUMP" | grep -q '^DRY_RUN=false$'
             printf '%s\n' "$ENV_DUMP" | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
-            printf '%s\n' "$ENV_DUMP" | grep -q '^ALLOW_MAINNET_PILOT_LIVE=true$'
+            printf '%s
+' "$ENV_DUMP" | grep -q '^ALLOW_LIVE=true'$'
             echo "✓ Required deployment guard flags verified"
             echo "Running strict mainnet pilot preflight..."
             if ! docker exec cta-forge-executor uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then

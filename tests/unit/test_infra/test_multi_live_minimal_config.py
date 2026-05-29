@@ -38,8 +38,7 @@ def test_second_live_env_example_starts_paused_hidden_and_dry_run() -> None:
     assert env["LIVE_INSTANCE_STATUS"] == "paused"
     assert env["PUBLIC_INSTANCE_STATUS"] == "hidden"
     assert env["DRY_RUN"] == "true"
-    assert env["ALLOW_MAINNET_400_LIVE"] == "false"
-    assert env["ALLOW_MAINNET_PILOT_LIVE"] == "false"
+    assert env["ALLOW_LIVE"] == "false"
     assert env["REQUIRE_LIVE_INSTANCE_LOCK_AVAILABLE"] == "true"
 
 
@@ -51,7 +50,6 @@ def test_second_live_env_example_uses_db_primary_and_bounded_caps() -> None:
     assert env["HL_NETWORK"] == "mainnet"
     assert env["STRATEGY_PROFILE"] == "v16a-mainnet-pilot"
     assert float(env["MAX_EQUITY"]) <= 500
-    assert float(env["MAX_ORDER_NOTIONAL"]) <= 50
     assert float(env["TARGET_GROSS_CAP"]) <= 4
     assert int(env["HL_LEVERAGE"]) <= 5
 

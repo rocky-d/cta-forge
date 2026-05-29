@@ -102,17 +102,17 @@ def test_validate_mainnet_pilot_requires_mainnet_network() -> None:
             dry_run=False,
             testnet=True,
             strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-            allow_mainnet_pilot_live=True,
+            allow_live=True,
         )
 
 
 def test_validate_mainnet_pilot_requires_explicit_live_flag() -> None:
-    with pytest.raises(ValueError, match="ALLOW_MAINNET_PILOT_LIVE=true"):
+    with pytest.raises(ValueError, match="ALLOW_LIVE=true"):
         _validate_v16a_live_mode(
             dry_run=False,
             testnet=False,
             strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-            allow_mainnet_pilot_live=False,
+            allow_live=False,
         )
 
 
@@ -121,18 +121,17 @@ def test_validate_mainnet_pilot_allows_explicit_live_flag() -> None:
         dry_run=False,
         testnet=False,
         strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-        allow_mainnet_pilot_live=True,
+        allow_live=True,
     )
 
 
 def test_validate_mainnet_400_requires_dedicated_live_flag_and_caps() -> None:
-    with pytest.raises(ValueError, match="ALLOW_MAINNET_400_LIVE=true"):
+    with pytest.raises(ValueError, match="ALLOW_LIVE=true"):
         _validate_v16a_live_mode(
             dry_run=False,
             testnet=False,
             strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-            allow_mainnet_pilot_live=True,
-            allow_mainnet_400_live=False,
+            allow_live=False,
             live_instance_id=MAINNET_400_LIVE_INSTANCE_ID,
             enforce_pilot_caps=True,
             max_equity=450,
@@ -145,8 +144,7 @@ def test_validate_mainnet_400_requires_dedicated_live_flag_and_caps() -> None:
         dry_run=False,
         testnet=False,
         strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-        allow_mainnet_pilot_live=False,
-        allow_mainnet_400_live=True,
+        allow_live=True,
         live_instance_id=MAINNET_400_LIVE_INSTANCE_ID,
         enforce_pilot_caps=True,
         max_equity=450,
@@ -160,7 +158,7 @@ def test_validate_mainnet_400_requires_dedicated_live_flag_and_caps() -> None:
             dry_run=False,
             testnet=False,
             strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-            allow_mainnet_400_live=True,
+            allow_live=True,
             live_instance_id=MAINNET_400_LIVE_INSTANCE_ID,
             enforce_pilot_caps=True,
             max_equity=501,
@@ -175,7 +173,7 @@ def test_validate_mainnet_pilot_enforced_caps() -> None:
         dry_run=False,
         testnet=False,
         strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-        allow_mainnet_pilot_live=True,
+        allow_live=True,
         enforce_pilot_caps=True,
         max_equity=200,
         max_order_notional=50,
@@ -188,7 +186,7 @@ def test_validate_mainnet_pilot_enforced_caps() -> None:
             dry_run=False,
             testnet=False,
             strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-            allow_mainnet_pilot_live=True,
+            allow_live=True,
             enforce_pilot_caps=True,
             max_equity=None,
             max_order_notional=50,
@@ -200,7 +198,7 @@ def test_validate_mainnet_pilot_enforced_caps() -> None:
             dry_run=False,
             testnet=False,
             strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-            allow_mainnet_pilot_live=True,
+            allow_live=True,
             enforce_pilot_caps=True,
             max_equity=200,
             max_order_notional=None,
@@ -212,7 +210,7 @@ def test_validate_mainnet_pilot_enforced_caps() -> None:
             dry_run=False,
             testnet=False,
             strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-            allow_mainnet_pilot_live=True,
+            allow_live=True,
             enforce_pilot_caps=True,
             max_equity=200,
             max_order_notional=51,
@@ -223,7 +221,7 @@ def test_validate_mainnet_pilot_enforced_caps() -> None:
         dry_run=False,
         testnet=False,
         strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-        allow_mainnet_pilot_live=True,
+        allow_live=True,
         enforce_pilot_caps=True,
         max_equity=200,
         max_order_notional=None,
@@ -237,7 +235,7 @@ def test_validate_mainnet_pilot_enforced_caps() -> None:
             dry_run=False,
             testnet=False,
             strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-            allow_mainnet_pilot_live=True,
+            allow_live=True,
             enforce_pilot_caps=True,
             max_equity=200,
             max_order_notional=51,
@@ -251,7 +249,7 @@ def test_validate_mainnet_pilot_enforced_caps() -> None:
             dry_run=False,
             testnet=False,
             strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-            allow_mainnet_pilot_live=True,
+            allow_live=True,
             enforce_pilot_caps=True,
             max_equity=200,
             max_order_notional=50,
@@ -263,7 +261,7 @@ def test_validate_mainnet_pilot_enforced_caps() -> None:
             dry_run=False,
             testnet=False,
             strategy_profile=V16A_MAINNET_PILOT_PROFILE.slug,
-            allow_mainnet_pilot_live=True,
+            allow_live=True,
             enforce_pilot_caps=True,
             max_equity=200,
             max_order_notional=50,
