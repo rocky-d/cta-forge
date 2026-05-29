@@ -68,8 +68,18 @@ def _load_runtime_identity(env: Mapping[str, str] = os.environ) -> RuntimeIdenti
 MAINNET_400_LIVE_INSTANCE_ID = "mainnet-400-01"
 
 MAINNET_CAPS: dict[str, dict[str, float]] = {
-    "mainnet-pilot": {"equity": 200.0, "order_notional": 50.0, "gross_cap": 4.0, "leverage": 5},
-    MAINNET_400_LIVE_INSTANCE_ID: {"equity": 500.0, "order_notional": 50.0, "gross_cap": 4.0, "leverage": 5},
+    "mainnet-pilot": {
+        "equity": 200.0,
+        "order_notional": 50.0,
+        "gross_cap": 4.0,
+        "leverage": 5,
+    },
+    MAINNET_400_LIVE_INSTANCE_ID: {
+        "equity": 500.0,
+        "order_notional": 50.0,
+        "gross_cap": 4.0,
+        "leverage": 5,
+    },
 }
 ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV = "ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS"
 
@@ -144,7 +154,11 @@ def _validate_v16a_live_mode(
             msg = "Non-dry-run requires ALLOW_LIVE=true"
             raise ValueError(msg)
         if enforce_pilot_caps:
-            caps_slug = live_instance_id if live_instance_id in MAINNET_CAPS else "mainnet-pilot"
+            caps_slug = (
+                live_instance_id
+                if live_instance_id in MAINNET_CAPS
+                else "mainnet-pilot"
+            )
             caps = MAINNET_CAPS[caps_slug]
             _validate_mainnet_caps(
                 label=live_instance_id or "mainnet",

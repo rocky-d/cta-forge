@@ -23,7 +23,6 @@ from .profiles.v16a_badscore_overlay import (
 from .run_live import (
     ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
     MAINNET_CAPS,
-    _is_truthy,
 )
 
 router = APIRouter()
