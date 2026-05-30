@@ -749,20 +749,21 @@ class LiveEngine:
         self._state.peak_equity = max(self._state.peak_equity, equity)
 
         # 6. Journal: record tick equity + signals
-        # DRY RUN must not expose positions in public data; the engine still
-        # tracks in-memory state so strategy logic works, but persistence is
-        # limited to equity/bar tracking only.
-        pos_snapshot = {} if self._dry_run else await self._position_snapshot(equity)
-        self._journal.record_tick(
-            bar=self._state.bar_count,
-            equity=equity,
-            peak_equity=self._state.peak_equity,
-            positions=pos_snapshot,
-        )
-        self._journal.record_signals(
-            bar=self._state.bar_count,
-            signals={s: snap.signal for s, snap in snapshots.items()},
-        )
+        # DRY RUN must not persist any live_* data. The engine still tracks
+        # in-memory state so strategy logic works, but persistence is
+        # completely skipped to prevent leaking synthetic data.
+        if not self._dry_run:
+            pos_snapshot = await self._position_snapshot(equity)
+            self._journal.record_tick(
+                bar=self._state.bar_count,
+                equity=equity,
+                peak_equity=self._state.peak_equity,
+                positions=pos_snapshot,
+            )
+            self._journal.record_signals(
+                bar=self._state.bar_count,
+                signals={s: snap.signal for s, snap in snapshots.items()},
+            )
 
         # 7. Summary
         drawdown_pct = (

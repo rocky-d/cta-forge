@@ -387,20 +387,21 @@ async def execute_target_portfolio(
             )
         )
 
-    record_target_diagnostics(
-        journal,
-        state=state,
-        profile=profile,
-        now=now,
-        target=target,
-        target_weights=target_weights,
-        planned_orders=orders,
-        bar=record_bar,
-        ignored_weights=ignored_weights,
-        submitted_orders=submitted_orders,
-        filled_trades=filled_trade_records,
-        failed_orders=failed_orders,
-    )
+    if not dry_run:
+        record_target_diagnostics(
+            journal,
+            state=state,
+            profile=profile,
+            now=now,
+            target=target,
+            target_weights=target_weights,
+            planned_orders=orders,
+            bar=record_bar,
+            ignored_weights=ignored_weights,
+            submitted_orders=submitted_orders,
+            filled_trades=filled_trade_records,
+            failed_orders=failed_orders,
+        )
 
     logger.info(
         "Target profile %s produced %d order(s), gross=%.3f",
