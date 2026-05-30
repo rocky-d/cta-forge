@@ -138,6 +138,7 @@ class TradeJournal:
         equity: float,
         peak_equity: float,
         positions: dict[str, dict],
+        **kwargs: object,
     ) -> None:
         """Record an equity snapshot for the current tick.
 

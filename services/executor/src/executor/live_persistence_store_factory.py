@@ -171,8 +171,10 @@ class FileFirstPostgresMirrorJournalStore:
         equity: float,
         peak_equity: float,
         positions: dict[str, dict],
+        *,
+        dry_run: bool = False,
     ) -> None:
-        self._primary.record_tick(bar, equity, peak_equity, positions)
+        self._primary.record_tick(bar, equity, peak_equity, positions, dry_run=dry_run)
         record = self._latest_matching(
             self._load_exact_file("equity"), "equity", bar=bar
         )

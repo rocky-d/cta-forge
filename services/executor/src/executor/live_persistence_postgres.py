@@ -150,8 +150,16 @@ class PostgresLiveJournalStore:
         equity: float,
         peak_equity: float,
         positions: dict[str, dict],
+        *,
+        dry_run: bool = False,
     ) -> None:
-        """Record an equity snapshot for the current tick."""
+        """Record an equity snapshot for the current tick.
+
+        When dry_run is True, skip all Postgres writes — the file journal
+        (shadow) still captures state for restart recovery.
+        """
+        if dry_run:
+            return
 
         ts = _utc_now_iso()
         peak = max(float(peak_equity), float(equity))
