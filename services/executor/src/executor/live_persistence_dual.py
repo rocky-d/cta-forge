@@ -123,8 +123,8 @@ class DualLiveJournalStore:
             exchange_order_id=exchange_order_id,
         )
 
-    def record_signals(self, bar: int, signals: dict[str, float]) -> None:
-        self._primary.record_signals(bar, signals)
+    def record_signals(self, bar: int, signals: dict[str, float], *, dry_run: bool = False) -> None:
+        self._primary.record_signals(bar, signals, dry_run=dry_run)
         self._write_shadow("record_signals", bar, signals)
 
     def record_target(

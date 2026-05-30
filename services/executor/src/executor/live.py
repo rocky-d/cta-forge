@@ -763,6 +763,7 @@ class LiveEngine:
         self._journal.record_signals(
             bar=self._state.bar_count,
             signals={s: snap.signal for s, snap in snapshots.items()},
+            dry_run=self._dry_run,
         )
 
         # 7. Summary

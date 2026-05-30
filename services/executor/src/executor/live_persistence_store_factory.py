@@ -219,8 +219,8 @@ class FileFirstPostgresMirrorJournalStore:
         )
         self._write_shadow("record_file_trade", record)
 
-    def record_signals(self, bar: int, signals: dict[str, float]) -> None:
-        self._primary.record_signals(bar, signals)
+    def record_signals(self, bar: int, signals: dict[str, float], *, dry_run: bool = False) -> None:
+        self._primary.record_signals(bar, signals, dry_run=dry_run)
         record = self._latest_matching(
             self._load_exact_file("signals"), "signals", bar=bar
         )
