@@ -749,7 +749,10 @@ class LiveEngine:
         self._state.peak_equity = max(self._state.peak_equity, equity)
 
         # 6. Journal: record tick equity + signals
-        pos_snapshot = await self._position_snapshot(equity)
+        # DRY RUN must not expose positions in public data; the engine still
+        # tracks in-memory state so strategy logic works, but persistence is
+        # limited to equity/bar tracking only.
+        pos_snapshot = {} if self._dry_run else await self._position_snapshot(equity)
         self._journal.record_tick(
             bar=self._state.bar_count,
             equity=equity,
@@ -1025,16 +1028,17 @@ class LiveEngine:
             f"📈 OPEN {side.upper()} {action.symbol} | size=${size_usd:.0f} | "
             f"entry={current_price:.2f} | {action.reason}"
         )
-        self._journal.record_trade(
-            bar=self._state.bar_count,
-            kind=action.kind.value,
-            symbol=action.symbol,
-            qty=action.qty,
-            price=current_price,
-            reason=action.reason,
-            side=side,
-            exchange_order_id=exchange_order_id,
-        )
+        if not self._dry_run:
+            self._journal.record_trade(
+                bar=self._state.bar_count,
+                kind=action.kind.value,
+                symbol=action.symbol,
+                qty=action.qty,
+                price=current_price,
+                reason=action.reason,
+                side=side,
+                exchange_order_id=exchange_order_id,
+            )
         return True
 
     def _restore_position(self, pos: PositionState) -> None:
@@ -1134,20 +1138,21 @@ class LiveEngine:
             f"📉 CLOSE {side.upper()} {symbol} | held={held} bars | "
             f"pnl=${pnl:.2f} ({pnl_pct:+.1f}%) | {reason}"
         )
-        self._journal.record_trade(
-            bar=record_bar,
-            kind="close",
-            symbol=symbol,
-            qty=fill_qty,
-            price=exit_price,
-            reason=reason,
-            side=side,
-            entry_price=pos.entry_price,
-            pnl=pnl,
-            pnl_pct=pnl_pct,
-            held_bars=held,
-            exchange_order_id=exchange_order_id,
-        )
+        if not self._dry_run:
+            self._journal.record_trade(
+                bar=record_bar,
+                kind="close",
+                symbol=symbol,
+                qty=fill_qty,
+                price=exit_price,
+                reason=reason,
+                side=side,
+                entry_price=pos.entry_price,
+                pnl=pnl,
+                pnl_pct=pnl_pct,
+                held_bars=held,
+                exchange_order_id=exchange_order_id,
+            )
         return True
 
     async def _partial_close(
@@ -1220,22 +1225,23 @@ class LiveEngine:
             pnl = (exit_price - pos_before.entry_price) * fill_qty
         else:
             pnl = (pos_before.entry_price - exit_price) * fill_qty
-        self._journal.record_trade(
-            bar=self._state.bar_count,
-            kind="partial_close",
-            symbol=symbol,
-            qty=fill_qty,
-            price=exit_price,
-            reason=reason,
-            side=side,
-            entry_price=pos_before.entry_price,
-            pnl=pnl,
-            pnl_pct=(pnl / (pos_before.entry_price * fill_qty) * 100)
-            if pos_before.entry_price > 0
-            else 0,
-            held_bars=self._state.bar_count - pos_before.entry_bar,
-            exchange_order_id=exchange_order_id,
-        )
+        if not self._dry_run:
+            self._journal.record_trade(
+                bar=self._state.bar_count,
+                kind="partial_close",
+                symbol=symbol,
+                qty=fill_qty,
+                price=exit_price,
+                reason=reason,
+                side=side,
+                entry_price=pos_before.entry_price,
+                pnl=pnl,
+                pnl_pct=(pnl / (pos_before.entry_price * fill_qty) * 100)
+                if pos_before.entry_price > 0
+                else 0,
+                held_bars=self._state.bar_count - pos_before.entry_bar,
+                exchange_order_id=exchange_order_id,
+            )
         return True
 
     async def _flatten_all(

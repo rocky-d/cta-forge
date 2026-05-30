@@ -232,16 +232,17 @@ async def execute_target_order(
         reduce_only=order.reduce_only,
     )
     apply_target_fill(state, filled_order, fill_price, bar=bar)
-    journal.record_trade(
-        bar=bar,
-        kind="buy" if is_buy else "sell",
-        symbol=order.symbol,
-        qty=fill_qty,
-        price=fill_price,
-        reason=f"target:{profile}",
-        side="long" if is_buy else "short",
-        exchange_order_id=exchange_order_id,
-    )
+    if not dry_run:
+        journal.record_trade(
+            bar=bar,
+            kind="buy" if is_buy else "sell",
+            symbol=order.symbol,
+            qty=fill_qty,
+            price=fill_price,
+            reason=f"target:{profile}",
+            side="long" if is_buy else "short",
+            exchange_order_id=exchange_order_id,
+        )
     return TargetExecution(
         order=filled_order,
         fill_price=fill_price,
