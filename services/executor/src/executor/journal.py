@@ -36,6 +36,8 @@ class LiveJournalStore(Protocol):
         equity: float,
         peak_equity: float,
         positions: dict[str, dict],
+        *,
+        dry_run: bool = False,
     ) -> None:
         """Record an equity snapshot for the current tick."""
         ...
