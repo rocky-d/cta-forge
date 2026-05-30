@@ -487,8 +487,8 @@ async def test_apply_target_fill_bar_matches_journal_trade_bar(tmp_path) -> None
 
 
 @pytest.mark.asyncio
-async def test_dry_run_journals_without_exchange_placement(tmp_path) -> None:
-    """Dry-run target orders write trade journal but skip exchange placement."""
+async def test_dry_run_skips_exchange_placement_and_trade_recording(tmp_path) -> None:
+    """Dry-run target orders keep in-memory state but skip exchange + journal."""
     state = EngineState(bar_count=3)
     journal = TradeJournal(tmp_path)
 
@@ -504,10 +504,7 @@ async def test_dry_run_journals_without_exchange_placement(tmp_path) -> None:
     )
 
     assert ok is not None
-    trade = journal.load_trades()[-1]
-    assert trade["bar"] == 4
-    assert trade["kind"] == "buy"
-    assert trade["qty"] == 0.5
-    assert trade["price"] == 50_000.0
-    assert trade["reason"] == "target:test-profile"
-    assert "exchange_order_id" not in trade
+    # DRY RUN updates in-memory position state for strategy logic …
+    assert state.positions.get("BTC") is not None
+    # … but does NOT record a trade journal entry.
+    assert journal.load_trades() == []
