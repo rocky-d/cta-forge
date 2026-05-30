@@ -61,7 +61,9 @@ class LiveJournalStore(Protocol):
         """Record a trade action."""
         ...
 
-    def record_signals(self, bar: int, signals: dict[str, float], *, dry_run: bool = False) -> None:
+    def record_signals(
+        self, bar: int, signals: dict[str, float], *, dry_run: bool = False
+    ) -> None:
         """Record signal values for the current tick."""
         ...
 

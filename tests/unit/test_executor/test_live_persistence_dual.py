@@ -32,6 +32,8 @@ class RecordingJournal:
         equity: float,
         peak_equity: float,
         positions: dict[str, dict],
+        *,
+        dry_run: bool = False,
     ) -> None:
         self._record("record_tick", bar, equity, peak_equity, positions)
 
@@ -67,7 +69,9 @@ class RecordingJournal:
             exchange_order_id=exchange_order_id,
         )
 
-    def record_signals(self, bar: int, signals: dict[str, float]) -> None:
+    def record_signals(
+        self, bar: int, signals: dict[str, float], *, dry_run: bool = False
+    ) -> None:
         self._record("record_signals", bar, signals)
 
     def record_target(
