@@ -156,25 +156,33 @@ jobs:
             echo "✓ Live persistence migrations applied"
 
             echo "Running preflight for mainnet-pilot..."
-            if ! docker compose $COMPOSE_FILES run --rm --no-deps \
-              executor-live uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight-pilot.json; then
-              echo "✗ Pilot preflight failed"
-              echo "Preflight details are intentionally not printed to public GitHub logs. Inspect /tmp/mainnet-preflight-pilot.json on the deployment host."
-              exit 1
+            deploy_ok=true
+            if docker compose $COMPOSE_FILES run --rm --no-deps \
+              executor-live uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight-pilot.json 2>/tmp/mainnet-preflight-pilot.err; then
+              echo "✓ Pilot preflight passed"
+            else
+              echo "✗ Pilot preflight failed — deploy blocked"
+              echo "Preflight details: /tmp/mainnet-preflight-pilot.json on deployment host"
+              deploy_ok=false
             fi
-            echo "✓ Pilot preflight passed"
 
-            echo "Running preflight for mainnet-400-01..."
-            docker compose $COMPOSE_FILES --profile mainnet-400-01 run --rm --no-deps \
-              executor-mainnet-400-01 uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight-400-01.json || \
-              echo "⚠ 400-01 preflight non-blocking (DRY_RUN mode); inspect /tmp/mainnet-preflight-400-01.json if needed"
+            if $deploy_ok; then
+              echo "Running preflight for mainnet-400-01..."
+              docker compose $COMPOSE_FILES --profile mainnet-400-01 run --rm --no-deps \
+                executor-mainnet-400-01 uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight-400-01.json || \
+                echo "⚠ 400-01 preflight non-blocking (DRY_RUN mode); inspect /tmp/mainnet-preflight-400-01.json if needed"
+            fi
 
-            echo "Restarting all executor instances..."
-            docker compose $COMPOSE_FILES up -d --no-deps --force-recreate executor-live
-            docker compose $COMPOSE_FILES --profile mainnet-400-01 up -d --no-deps --force-recreate executor-mainnet-400-01
+            if $deploy_ok; then
+              echo "Restarting all executor instances..."
+              docker compose $COMPOSE_FILES up -d --no-deps --force-recreate executor-live
+              docker compose $COMPOSE_FILES --profile mainnet-400-01 up -d --no-deps --force-recreate executor-mainnet-400-01
 
-            docker image prune -f
-            echo "✓ All executor instances restarted"
+              docker image prune -f
+              echo "✓ All executor instances restarted"
+            else
+              echo "✗ Deploy aborted — preflight check failed, executors NOT restarted"
+            fi
 
       - name: Verify both executor instances
         uses: appleboy/ssh-action@v1
