@@ -1010,10 +1010,17 @@ class LiveEngine:
                 )
                 return False
             action.qty = float(result.filled_size)
-            size_usd = action.qty * current_price
             if result.avg_price > 0:
                 current_price = result.avg_price
-                size_usd = action.qty * current_price
+            else:
+                logger.error(
+                    "Open %s %s: avg_price=%s — fill price unconfirmed, recording sentinel",
+                    side,
+                    action.symbol,
+                    result.avg_price,
+                )
+                current_price = 0.0
+            size_usd = action.qty * current_price
             exchange_order_id = result.order_id
 
         # Update internal state
@@ -1091,11 +1098,7 @@ class LiveEngine:
         )
 
         fill_qty = abs(pos.qty)
-        exit_price = (
-            float(self._bars_cache.get(symbol, pl.DataFrame())["close"][-1])
-            if symbol in self._bars_cache
-            else pos.entry_price
-        )
+        exit_price: float = 0.0
         exchange_order_id: str | None = None
         if not self._dry_run:
             result = await self._exchange.place_market_order(
@@ -1112,6 +1115,13 @@ class LiveEngine:
             fill_qty = min(float(result.filled_size), abs(pos.qty))
             if result.avg_price > 0:
                 exit_price = result.avg_price
+            else:
+                logger.error(
+                    "Close %s: avg_price=%s — fill price unconfirmed, recording sentinel",
+                    symbol,
+                    result.avg_price,
+                )
+                exit_price = 0.0
             exchange_order_id = result.order_id
 
         remaining_qty = abs(pos.qty) - fill_qty
