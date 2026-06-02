@@ -77,22 +77,24 @@ async def _build_report() -> dict[str, Any]:
         os.environ.get(ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV)
     )
     live_instance_id = os.environ.get("LIVE_INSTANCE_ID", "").strip()
-    caps_slug = (
-        live_instance_id if live_instance_id in MAINNET_CAPS else "mainnet-pilot"
-    )
-    caps = MAINNET_CAPS[caps_slug]
-    _validate_mainnet_caps(
-        label=live_instance_id or "mainnet",
-        max_equity=max_equity,
-        max_order_notional=max_order_notional,
-        target_gross_cap=target_gross_cap,
-        leverage=leverage,
-        max_allowed_equity=caps["equity"],
-        max_allowed_order_notional=caps["order_notional"],
-        max_allowed_target_gross_cap=caps["gross_cap"],
-        max_allowed_leverage=int(caps["leverage"]),
-        allow_uncapped_orders=allow_uncapped_orders,
-    )
+    dry_run = _is_truthy(os.environ.get("DRY_RUN"))
+    if not dry_run:
+        caps_slug = (
+            live_instance_id if live_instance_id in MAINNET_CAPS else "mainnet-pilot"
+        )
+        caps = MAINNET_CAPS[caps_slug]
+        _validate_mainnet_caps(
+            label=live_instance_id or "mainnet",
+            max_equity=max_equity,
+            max_order_notional=max_order_notional,
+            target_gross_cap=target_gross_cap,
+            leverage=leverage,
+            max_allowed_equity=caps["equity"],
+            max_allowed_order_notional=caps["order_notional"],
+            max_allowed_target_gross_cap=caps["gross_cap"],
+            max_allowed_leverage=int(caps["leverage"]),
+            allow_uncapped_orders=allow_uncapped_orders,
+        )
 
     adapter = HyperliquidAdapter(pk, addr, testnet=False)
     try:

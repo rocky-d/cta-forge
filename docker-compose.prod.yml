@@ -76,5 +76,69 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # --- Dashboard services (managed via same compose to keep topology in one place) ---
+
+  dashboard-collector:
+    image: ghcr.io/rocky-d/quant-dashboard-collector:latest
+    container_name: dashboard-collector
+    restart: unless-stopped
+    env_file: /home/admin/quant-dashboard/config/collector.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - /home/admin/quant-dashboard/config/source-config.json:/etc/dashboard/source-config.json:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  dashboard-collector-400-01:
+    image: ghcr.io/rocky-d/quant-dashboard-collector:latest
+    container_name: dashboard-collector-400-01
+    restart: unless-stopped
+    profiles: ["mainnet-400-01"]
+    env_file: /home/admin/quant-dashboard/config/collector-400-01.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - /home/admin/quant-dashboard/config/source-config.json:/etc/dashboard/source-config.json:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  dashboard-realtime:
+    image: ghcr.io/rocky-d/quant-dashboard-realtime:latest
+    container_name: dashboard-realtime
+    restart: unless-stopped
+    env_file: /home/admin/quant-dashboard/config/realtime.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  dashboard-realtime-400-01:
+    image: ghcr.io/rocky-d/quant-dashboard-realtime:latest
+    container_name: dashboard-realtime-400-01
+    restart: unless-stopped
+    profiles: ["mainnet-400-01"]
+    env_file: /home/admin/quant-dashboard/config/realtime-400-01.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   cta_forge_postgres_data:

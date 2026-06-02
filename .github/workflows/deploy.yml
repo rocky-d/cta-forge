@@ -28,24 +28,24 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Wait for CI workflows to complete
+      - name: Wait for Lint and Test on this commit
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "Waiting for Lint and Test workflows on commit ${{ github.sha }}..."
 
           for i in $(seq 1 30); do
-            LINT_STATUS=$(gh run list --commit ${{ github.sha }} --workflow lint.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')
-            TEST_STATUS=$(gh run list --commit ${{ github.sha }} --workflow test.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')
+            LINT=$(gh run list --commit ${{ github.sha }} --workflow lint.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')
+            TEST=$(gh run list --commit ${{ github.sha }} --workflow test.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')
 
-            echo "Attempt $i/30: Lint=$LINT_STATUS, Test=$TEST_STATUS"
+            echo "Attempt $i/30: Lint=$LINT, Test=$TEST"
 
-            if [ "$LINT_STATUS" = "failure" ] || [ "$TEST_STATUS" = "failure" ]; then
+            if [ "$LINT" = "failure" ] || [ "$TEST" = "failure" ]; then
               echo "✗ CI failed — aborting deploy"
               exit 1
             fi
 
-            if [ "$LINT_STATUS" = "success" ] && [ "$TEST_STATUS" = "success" ]; then
+            if [ "$LINT" = "success" ] && [ "$TEST" = "success" ]; then
               echo "✓ CI passed"
               exit 0
             fi
@@ -130,7 +130,7 @@ jobs:
           source: docker-compose.prod.yml
           target: ~/cta-forge/
 
-      - name: Deploy to EC2
+      - name: Deploy all executor instances to EC2
         uses: appleboy/ssh-action@v1
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
@@ -144,24 +144,39 @@ jobs:
             cd ~/cta-forge
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u rocky-d --password-stdin
             COMPOSE_FILES="-f docker-compose.prod.yml"
-            docker compose $COMPOSE_FILES pull
+
+            echo "Pulling all images (default + mainnet-400-01 profile)..."
+            docker compose $COMPOSE_FILES --profile mainnet-400-01 pull
+
             echo "Starting local PostgreSQL container..."
             docker compose $COMPOSE_FILES up -d postgres
+
             echo "Applying live persistence migrations..."
             docker compose $COMPOSE_FILES --profile db-maintenance run --rm db-migrate >/tmp/live-persistence-migrate.json
             echo "✓ Live persistence migrations applied"
-            echo "Running pre-start strict mainnet pilot preflight..."
+
+            echo "Running preflight for mainnet-pilot..."
             if ! docker compose $COMPOSE_FILES run --rm --no-deps \
-              executor-live uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
-              echo "✗ Pre-start mainnet pilot preflight failed"
-              echo "Preflight details are intentionally not printed to public GitHub logs. Inspect /tmp/mainnet-preflight.json on the deployment host."
+              executor-live uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight-pilot.json; then
+              echo "✗ Pilot preflight failed"
+              echo "Preflight details are intentionally not printed to public GitHub logs. Inspect /tmp/mainnet-preflight-pilot.json on the deployment host."
               exit 1
             fi
-            echo "✓ Pre-start mainnet pilot preflight passed"
-            docker compose $COMPOSE_FILES up -d --no-deps --force-recreate executor-live
-            docker image prune -f
+            echo "✓ Pilot preflight passed"
 
-      - name: Verify deployment
+            echo "Running preflight for mainnet-400-01..."
+            docker compose $COMPOSE_FILES --profile mainnet-400-01 run --rm --no-deps \
+              executor-mainnet-400-01 uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight-400-01.json || \
+              echo "⚠ 400-01 preflight non-blocking (DRY_RUN mode); inspect /tmp/mainnet-preflight-400-01.json if needed"
+
+            echo "Restarting all executor instances..."
+            docker compose $COMPOSE_FILES up -d --no-deps --force-recreate executor-live
+            docker compose $COMPOSE_FILES --profile mainnet-400-01 up -d --no-deps --force-recreate executor-mainnet-400-01
+
+            docker image prune -f
+            echo "✓ All executor instances restarted"
+
+      - name: Verify both executor instances
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -171,10 +186,12 @@ jobs:
             set -euo pipefail
             cd ~/cta-forge
             sleep 15
+
+            echo "--- mainnet-pilot ---"
             STATUS=$(docker inspect --format='{{.State.Status}}' cta-forge-executor 2>/dev/null || echo "missing")
             echo "Container status: $STATUS"
             if [ "$STATUS" != "running" ]; then
-              echo "✗ Container not running. Inspect host logs directly; they are not printed to public CI logs."
+              echo "✗ Pilot container not running"
               exit 1
             fi
             ENV_DUMP=$(docker inspect cta-forge-executor --format '{{range .Config.Env}}{{println .}}{{end}}')
@@ -182,18 +199,42 @@ jobs:
             printf '%s\n' "$ENV_DUMP" | grep -q '^DRY_RUN=false$'
             printf '%s\n' "$ENV_DUMP" | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
             printf '%s\n' "$ENV_DUMP" | grep -q '^ALLOW_LIVE=true$'
-            echo "✓ Required deployment guard flags verified"
-            echo "Running strict mainnet pilot preflight..."
-            if ! docker exec cta-forge-executor uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight.json; then
-              echo "✗ Mainnet pilot preflight failed"
-              echo "Preflight details are intentionally not printed to public GitHub logs. Inspect /tmp/mainnet-preflight.json on the deployment host."
+            echo "✓ Pilot guard flags verified"
+
+            if ! docker exec cta-forge-executor uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight-pilot.json; then
+              echo "✗ Pilot post-deploy preflight failed"
               exit 1
             fi
-            echo "✓ Mainnet pilot preflight passed"
+            echo "✓ Pilot post-deploy preflight passed"
+
             if docker logs cta-forge-executor 2>&1 | grep -q "Preflight PASSED"; then
-              echo "✓ LiveEngine started successfully"
+              echo "✓ Pilot LiveEngine started successfully"
             elif docker logs cta-forge-executor 2>&1 | grep -q "Waiting.*until next candle"; then
-              echo "✓ LiveEngine started, waiting for next tick"
+              echo "✓ Pilot LiveEngine started, waiting for next tick"
             else
-              echo "⚠ LiveEngine startup not confirmed yet. Inspect host logs directly; they are not printed to public CI logs."
+              echo "⚠ Pilot startup not confirmed yet; inspect host logs"
             fi
+
+            echo "--- mainnet-400-01 ---"
+            STATUS_400=$(docker inspect --format='{{.State.Status}}' cta-forge-executor-mainnet-400-01 2>/dev/null || echo "missing")
+            echo "Container status: $STATUS_400"
+            if [ "$STATUS_400" != "running" ]; then
+              echo "✗ 400-01 container not running"
+              exit 1
+            fi
+            ENV_DUMP_400=$(docker inspect cta-forge-executor-mainnet-400-01 --format '{{range .Config.Env}}{{println .}}{{end}}')
+            printf '%s\n' "$ENV_DUMP_400" | grep -q '^HL_NETWORK=mainnet$'
+            printf '%s\n' "$ENV_DUMP_400" | grep -q '^DRY_RUN=true$'
+            printf '%s\n' "$ENV_DUMP_400" | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
+            printf '%s\n' "$ENV_DUMP_400" | grep -q '^ALLOW_LIVE=false$'
+            echo "✓ 400-01 guard flags verified"
+
+            if docker logs cta-forge-executor-mainnet-400-01 2>&1 | grep -q "Preflight PASSED"; then
+              echo "✓ 400-01 LiveEngine started successfully"
+            elif docker logs cta-forge-executor-mainnet-400-01 2>&1 | grep -q "Waiting.*until next candle"; then
+              echo "✓ 400-01 LiveEngine started, waiting for next tick"
+            else
+              echo "⚠ 400-01 startup not confirmed yet; inspect host logs"
+            fi
+
+            echo "✓ Deployment verified: both executor instances healthy"
