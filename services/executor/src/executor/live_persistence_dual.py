@@ -92,6 +92,7 @@ class DualLiveJournalStore:
         pnl_pct: float = 0.0,
         held_bars: int = 0,
         exchange_order_id: str | None = None,
+        fee: float | None = None,
     ) -> None:
         self._primary.record_trade(
             bar,
@@ -106,6 +107,7 @@ class DualLiveJournalStore:
             pnl_pct=pnl_pct,
             held_bars=held_bars,
             exchange_order_id=exchange_order_id,
+            fee=fee,
         )
         self._write_shadow(
             "record_trade",

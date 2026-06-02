@@ -1,28 +1,9 @@
 # cta-forge — Project Notes
 
-Crypto CTA trend-following strategy engine.
-Monorepo with 5 microservices + 2 shared libraries.
+Deeper technical reference supplementing [README.md](../README.md) (canonical overview).
+
+Crypto CTA trend-following strategy engine. Monorepo with 5 microservices + 2 shared libraries.
 Market data primarily from Binance USDS-M futures; live execution on Hyperliquid mainnet.
-
-## Architecture
-
-```
-libs/
-  core/              -- shared protocols, constants, metrics
-  exchange/          -- exchange connectivity (Hyperliquid adapter)
-services/
-  data-service/      -- Binance kline fetcher, parquet store, REST API
-  alpha-service/     -- factor computation (TSMOM, Donchian, VolRegime, V10GComposite)
-  strategy-service/  -- signal composition, allocation, risk
-  executor/          -- backtest engine, target-weight portfolio layer & live execution
-  report-service/    -- metrics calculation, chart generation (3-panel backtest chart)
-scripts/backtest/    -- thin reproduction CLIs
-backtest-results/    -- generated charts and metrics (gitignored)
-docs/                -- project documentation
-infra/               -- compose, env examples, DB migrations
-```
-
-Ports and defaults in `core/constants.py`, overridable via env vars.
 
 ## Strategy
 
@@ -76,12 +57,6 @@ Key design invariants:
 - `V10GDecisionEngine.tick()` mutates internal state. Callers needing pre-tick positions must snapshot before calling `tick()`.
 - Drawdown is a positive magnitude from peak in journals; only charts may negate it for display.
 - All live-risk changes (phase, leverage, cap, symbols) must come from verified private env, not code defaults or old research docs.
-
-## CI/CD
-
-- Lint: ruff check + ruff format + ty check
-- Test: pytest
-- Deploy: workflow_dispatch → check-ci gate → build Docker → push GHCR → SSH deploy EC2
 
 ## Backtest
 

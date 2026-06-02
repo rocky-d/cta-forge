@@ -37,3 +37,7 @@ uv run pytest -q
 - parquet local storage
 - Docker / docker compose
 - pytest + ruff + ty
+
+## Further reading
+
+[docs/NOTES.md](docs/NOTES.md) — strategy details, live trading, design principles, backtest commands, and doc index.

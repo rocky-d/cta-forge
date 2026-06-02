@@ -57,6 +57,7 @@ class LiveJournalStore(Protocol):
         pnl_pct: float = 0.0,
         held_bars: int = 0,
         exchange_order_id: str | None = None,
+        fee: float | None = None,
     ) -> None:
         """Record a trade action."""
         ...
@@ -176,6 +177,7 @@ class TradeJournal:
         pnl_pct: float = 0.0,
         held_bars: int = 0,
         exchange_order_id: str | None = None,
+        fee: float | None = None,
     ) -> None:
         """Record a trade action (open, close, partial close, flatten)."""
         record = {
