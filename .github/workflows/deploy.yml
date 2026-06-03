@@ -166,22 +166,35 @@ jobs:
               deploy_ok=false
             fi
 
+            deploy_ok_400=false
             if $deploy_ok; then
               echo "Running preflight for mainnet-400-01..."
-              docker compose $COMPOSE_FILES --profile mainnet-400-01 run --rm --no-deps \
-                executor-mainnet-400-01 uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight-400-01.json || \
-                echo "⚠ 400-01 preflight non-blocking (DRY_RUN mode); inspect /tmp/mainnet-preflight-400-01.json if needed"
+              if docker compose $COMPOSE_FILES --profile mainnet-400-01 run --rm --no-deps \
+                executor-mainnet-400-01 uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight-400-01.json 2>/tmp/mainnet-preflight-400-01.err; then
+                echo "✓ 400-01 preflight passed"
+                deploy_ok_400=true
+              else
+                echo "✗ 400-01 preflight failed — blocking 400-01 restart"
+                echo "400-01 preflight stderr:"
+                cat /tmp/mainnet-preflight-400-01.err
+              fi
             fi
 
             if $deploy_ok; then
-              echo "Restarting all executor instances..."
+              echo "Restarting mainnet-pilot..."
               docker compose $COMPOSE_FILES up -d --no-deps --force-recreate executor-live
-              docker compose $COMPOSE_FILES --profile mainnet-400-01 up -d --no-deps --force-recreate executor-mainnet-400-01
+
+              if $deploy_ok_400; then
+                echo "Restarting mainnet-400-01..."
+                docker compose $COMPOSE_FILES --profile mainnet-400-01 up -d --no-deps --force-recreate executor-mainnet-400-01
+              else
+                echo "⚠ 400-01 restart skipped (preflight failed)"
+              fi
 
               docker image prune -f
-              echo "✓ All executor instances restarted"
+              echo "✓ Deploy completed"
             else
-              echo "✗ Deploy aborted — preflight check failed, executors NOT restarted"
+              echo "✗ Deploy aborted — pilot preflight check failed, executors NOT restarted"
             fi
 
       - name: Verify both executor instances
@@ -232,9 +245,9 @@ jobs:
             fi
             ENV_DUMP_400=$(docker inspect cta-forge-executor-mainnet-400-01 --format '{{range .Config.Env}}{{println .}}{{end}}')
             printf '%s\n' "$ENV_DUMP_400" | grep -q '^HL_NETWORK=mainnet$'
-            printf '%s\n' "$ENV_DUMP_400" | grep -q '^DRY_RUN=true$'
+            printf '%s\n' "$ENV_DUMP_400" | grep -q '^DRY_RUN=false$'
             printf '%s\n' "$ENV_DUMP_400" | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
-            printf '%s\n' "$ENV_DUMP_400" | grep -q '^ALLOW_LIVE=false$'
+            printf '%s\n' "$ENV_DUMP_400" | grep -q '^ALLOW_LIVE=true$'
             echo "✓ 400-01 guard flags verified"
 
             if docker logs cta-forge-executor-mainnet-400-01 2>&1 | grep -q "Preflight PASSED"; then
