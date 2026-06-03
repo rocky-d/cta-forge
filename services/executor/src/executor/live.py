@@ -397,6 +397,11 @@ class LiveEngine:
 
                 await self._wait_for_candle_close()
 
+                if self._shutdown_event.is_set():
+                    logger.info("Shutdown after wait — exiting before tick")
+                    self._running = False
+                    break
+
                 await self._tick()
                 # Persist state after each tick
                 live_state = _engine_to_live_state(
