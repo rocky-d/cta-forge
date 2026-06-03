@@ -20,6 +20,7 @@ def test_persistence_runtime_config_defaults_to_file() -> None:
         "run_id_configured": False,
         "shadow_failure_policy": "warn",
         "allow_postgres_source_of_truth": False,
+        "dry_run": False,
     }
 
 
