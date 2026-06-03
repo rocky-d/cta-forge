@@ -405,9 +405,6 @@ def _ensure_live_run(
 
     When DRY_RUN is True, skip the live_runs row — the dry-run run
     event does not need DB traceability.
-    """
-    if config.dry_run:
-        return
 
     Journal and checkpoint tables reference ``live_runs``. Runtime-generated
     ``RUN_ID`` values are intentionally unique per process, so dual mode must
@@ -415,6 +412,8 @@ def _ensure_live_run(
     rows by foreign key. The live instance itself must already exist from the
     approved historical import/cutover setup; otherwise this fails closed.
     """
+    if config.dry_run:
+        return
 
     conn.execute(
         """
