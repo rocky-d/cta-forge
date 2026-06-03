@@ -226,12 +226,6 @@ jobs:
             printf '%s\n' "$ENV_DUMP" | grep -q '^ALLOW_LIVE=true$'
             echo "✓ Pilot guard flags verified"
 
-            if ! docker exec cta-forge-executor uv run python -m executor.run_mainnet_preflight >/tmp/mainnet-preflight-pilot.json; then
-              echo "✗ Pilot post-deploy preflight failed"
-              exit 1
-            fi
-            echo "✓ Pilot post-deploy preflight passed"
-
             if docker logs cta-forge-executor 2>&1 | grep -q "Preflight PASSED"; then
               echo "✓ Pilot LiveEngine started successfully"
             elif docker logs cta-forge-executor 2>&1 | grep -q "Waiting.*until next candle"; then
