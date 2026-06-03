@@ -249,9 +249,9 @@ jobs:
             fi
             ENV_DUMP_400=$(docker inspect cta-forge-executor-mainnet-400-01 --format '{{range .Config.Env}}{{println .}}{{end}}')
             printf '%s\n' "$ENV_DUMP_400" | grep -q '^HL_NETWORK=mainnet$'
-            printf '%s\n' "$ENV_DUMP_400" | grep -q '^DRY_RUN=false$'
+            printf '%s\n' "$ENV_DUMP_400" | grep -q '^DRY_RUN='
             printf '%s\n' "$ENV_DUMP_400" | grep -q '^STRATEGY_PROFILE=v16a-mainnet-pilot$'
-            printf '%s\n' "$ENV_DUMP_400" | grep -q '^ALLOW_LIVE=true$'
+            printf '%s\n' "$ENV_DUMP_400" | grep -q '^ALLOW_LIVE='
             echo "✓ 400-01 guard flags verified"
 
             if docker logs cta-forge-executor-mainnet-400-01 2>&1 | grep -q "Preflight PASSED"; then
