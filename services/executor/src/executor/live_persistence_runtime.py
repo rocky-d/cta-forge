@@ -43,6 +43,7 @@ class LivePersistenceRuntimeConfig:
     run_id: str | None = None
     shadow_failure_policy: ShadowWriteFailurePolicy = "warn"
     allow_postgres_source_of_truth: bool = False
+    dry_run: bool = False
 
     @property
     def uses_database(self) -> bool:
@@ -56,6 +57,7 @@ class LivePersistenceRuntimeConfig:
             "run_id_configured": bool(self.run_id),
             "shadow_failure_policy": self.shadow_failure_policy,
             "allow_postgres_source_of_truth": self.allow_postgres_source_of_truth,
+            "dry_run": self.dry_run,
         }
 
 
@@ -92,6 +94,7 @@ def load_live_persistence_runtime_config(
         run_id=resolved_run_id,
         shadow_failure_policy=shadow_failure_policy,
         allow_postgres_source_of_truth=allow_postgres_source_of_truth,
+        dry_run=_is_truthy(env.get("DRY_RUN")),
     )
     validate_live_persistence_runtime_config(config)
     return config
