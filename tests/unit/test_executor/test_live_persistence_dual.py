@@ -53,6 +53,7 @@ class RecordingJournal:
         held_bars: int = 0,
         exchange_order_id: str | None = None,
         fee: float | None = None,
+        dry_run: bool = False,
     ) -> None:
         self._record(
             "record_trade",
@@ -91,6 +92,7 @@ class RecordingJournal:
         submitted_orders: list[dict] | None = None,
         filled_trades: list[dict] | None = None,
         failed_orders: list[dict] | None = None,
+        dry_run: bool = False,
     ) -> None:
         self._record(
             "record_target",
