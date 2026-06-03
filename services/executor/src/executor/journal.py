@@ -58,6 +58,7 @@ class LiveJournalStore(Protocol):
         held_bars: int = 0,
         exchange_order_id: str | None = None,
         fee: float | None = None,
+        dry_run: bool = False,
     ) -> None:
         """Record a trade action."""
         ...
@@ -83,6 +84,7 @@ class LiveJournalStore(Protocol):
         submitted_orders: list[dict] | None = None,
         filled_trades: list[dict] | None = None,
         failed_orders: list[dict] | None = None,
+        dry_run: bool = False,
     ) -> None:
         """Record target-weight diagnostics.
 
