@@ -403,6 +403,12 @@ def _ensure_live_run(
 ) -> None:
     """Ensure the current runtime run id exists before shadow writes.
 
+    When DRY_RUN is True, skip the live_runs row — the dry-run run
+    event does not need DB traceability.
+    """
+    if config.dry_run:
+        return
+
     Journal and checkpoint tables reference ``live_runs``. Runtime-generated
     ``RUN_ID`` values are intentionally unique per process, so dual mode must
     register the run before the first mirrored write or PostgreSQL will reject

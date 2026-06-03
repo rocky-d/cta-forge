@@ -205,8 +205,14 @@ class PostgresLiveJournalStore:
         held_bars: int = 0,
         exchange_order_id: str | None = None,
         fee: float | None = None,
+        dry_run: bool = False,
     ) -> None:
-        """Record a trade action."""
+        """Record a trade action.
+
+        When dry_run is True, skip all Postgres writes.
+        """
+        if dry_run:
+            return
 
         record: dict[str, Any] = {
             "ts": _utc_now_iso(),
@@ -290,8 +296,14 @@ class PostgresLiveJournalStore:
         submitted_orders: list[dict] | None = None,
         filled_trades: list[dict] | None = None,
         failed_orders: list[dict] | None = None,
+        dry_run: bool = False,
     ) -> None:
-        """Record target-weight diagnostics."""
+        """Record target-weight diagnostics.
+
+        When dry_run is True, skip all Postgres writes.
+        """
+        if dry_run:
+            return
 
         ignored_gross = sum(abs(value) for value in (ignored_weights or {}).values())
         execution_coverage = (

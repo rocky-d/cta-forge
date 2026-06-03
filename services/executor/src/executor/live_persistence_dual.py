@@ -93,6 +93,7 @@ class DualLiveJournalStore:
         held_bars: int = 0,
         exchange_order_id: str | None = None,
         fee: float | None = None,
+        dry_run: bool = False,
     ) -> None:
         self._primary.record_trade(
             bar,
@@ -108,6 +109,7 @@ class DualLiveJournalStore:
             held_bars=held_bars,
             exchange_order_id=exchange_order_id,
             fee=fee,
+            dry_run=dry_run,
         )
         self._write_shadow(
             "record_trade",
@@ -146,6 +148,7 @@ class DualLiveJournalStore:
         submitted_orders: list[dict] | None = None,
         filled_trades: list[dict] | None = None,
         failed_orders: list[dict] | None = None,
+        dry_run: bool = False,
     ) -> None:
         self._primary.record_target(
             bar=bar,
@@ -160,6 +163,7 @@ class DualLiveJournalStore:
             submitted_orders=submitted_orders,
             filled_trades=filled_trades,
             failed_orders=failed_orders,
+            dry_run=dry_run,
         )
         self._write_shadow(
             "record_target",
@@ -175,6 +179,7 @@ class DualLiveJournalStore:
             submitted_orders=submitted_orders,
             filled_trades=filled_trades,
             failed_orders=failed_orders,
+            dry_run=dry_run,
         )
 
     def load_equity(self) -> list[dict]:
