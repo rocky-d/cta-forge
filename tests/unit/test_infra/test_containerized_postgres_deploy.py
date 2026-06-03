@@ -28,5 +28,5 @@ def test_deploy_migrates_db_before_recreating_executor_without_downing_db() -> N
 
     assert "docker compose $COMPOSE_FILES up -d postgres" in workflow
     assert "--profile db-maintenance run --rm db-migrate" in workflow
-    assert "up -d --no-deps --force-recreate executor-live" in workflow
+    assert "up -d --no-deps executor-live" in workflow
     assert "docker compose $COMPOSE_FILES down --remove-orphans" not in workflow
