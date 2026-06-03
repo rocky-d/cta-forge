@@ -178,6 +178,7 @@ class TradeJournal:
         held_bars: int = 0,
         exchange_order_id: str | None = None,
         fee: float | None = None,
+        dry_run: bool = False,
     ) -> None:
         """Record a trade action (open, close, partial close, flatten)."""
         record = {
@@ -230,6 +231,7 @@ class TradeJournal:
         submitted_orders: list[dict] | None = None,
         filled_trades: list[dict] | None = None,
         failed_orders: list[dict] | None = None,
+        dry_run: bool = False,
     ) -> None:
         """Record target-weight diagnostics for shadow/live reconciliation."""
         ignored_gross = sum(abs(v) for v in (ignored_weights or {}).values())
