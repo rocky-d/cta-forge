@@ -21,6 +21,7 @@ def test_check_live_persistence_config_cli_outputs_safe_file_default() -> None:
         "run_id_configured": False,
         "shadow_failure_policy": "warn",
         "allow_postgres_source_of_truth": False,
+        "dry_run": False,
     }
 
 
@@ -45,6 +46,7 @@ def test_check_live_persistence_config_cli_outputs_safe_dual_config() -> None:
         "run_id_configured": True,
         "shadow_failure_policy": "warn",
         "allow_postgres_source_of_truth": False,
+        "dry_run": False,
     }
     assert "secret" not in stdout.getvalue()
     assert "postgresql://" not in stdout.getvalue()
