@@ -182,11 +182,15 @@ jobs:
 
             if $deploy_ok; then
               echo "Restarting mainnet-pilot..."
-              docker compose $COMPOSE_FILES up -d --no-deps --force-recreate executor-live
+              docker compose $COMPOSE_FILES stop -t 120 executor-live 2>/dev/null || true
+              docker compose $COMPOSE_FILES rm -f executor-live 2>/dev/null || true
+              docker compose $COMPOSE_FILES up -d --no-deps executor-live
 
               if $deploy_ok_400; then
                 echo "Restarting mainnet-400-01..."
-                docker compose $COMPOSE_FILES --profile mainnet-400-01 up -d --no-deps --force-recreate executor-mainnet-400-01
+                docker compose $COMPOSE_FILES --profile mainnet-400-01 stop -t 120 executor-mainnet-400-01 2>/dev/null || true
+                docker compose $COMPOSE_FILES --profile mainnet-400-01 rm -f executor-mainnet-400-01 2>/dev/null || true
+                docker compose $COMPOSE_FILES --profile mainnet-400-01 up -d --no-deps executor-mainnet-400-01
               else
                 echo "⚠ 400-01 restart skipped (preflight failed)"
               fi
