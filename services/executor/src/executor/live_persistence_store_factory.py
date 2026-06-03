@@ -196,6 +196,7 @@ class FileFirstPostgresMirrorJournalStore:
         held_bars: int = 0,
         exchange_order_id: str | None = None,
         fee: float | None = None,
+        dry_run: bool = False,
     ) -> None:
         self._primary.record_trade(
             bar,
@@ -211,6 +212,7 @@ class FileFirstPostgresMirrorJournalStore:
             held_bars=held_bars,
             exchange_order_id=exchange_order_id,
             fee=fee,
+            dry_run=dry_run,
         )
         record = self._latest_matching(
             self._load_exact_file("trades"),
@@ -245,6 +247,7 @@ class FileFirstPostgresMirrorJournalStore:
         submitted_orders: list[dict] | None = None,
         filled_trades: list[dict] | None = None,
         failed_orders: list[dict] | None = None,
+        dry_run: bool = False,
     ) -> None:
         self._primary.record_target(
             bar=bar,
@@ -259,6 +262,7 @@ class FileFirstPostgresMirrorJournalStore:
             submitted_orders=submitted_orders,
             filled_trades=filled_trades,
             failed_orders=failed_orders,
+            dry_run=dry_run,
         )
         record = self._latest_matching(
             self._load_exact_file("targets"),
