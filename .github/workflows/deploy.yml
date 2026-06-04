@@ -37,15 +37,16 @@ jobs:
           for i in $(seq 1 30); do
             LINT=$(gh run list --commit ${{ github.sha }} --workflow lint.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')
             TEST=$(gh run list --commit ${{ github.sha }} --workflow test.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')
+            SEMGREP=$(gh run list --commit ${{ github.sha }} --workflow semgrep.yml --limit 1 --json conclusion --jq '.[0].conclusion // "pending"')
 
-            echo "Attempt $i/30: Lint=$LINT, Test=$TEST"
+            echo "Attempt $i/30: Lint=$LINT, Test=$TEST, Semgrep=$SEMGREP"
 
-            if [ "$LINT" = "failure" ] || [ "$TEST" = "failure" ]; then
+            if [ "$LINT" = "failure" ] || [ "$TEST" = "failure" ] || [ "$SEMGREP" = "failure" ]; then
               echo "✗ CI failed — aborting deploy"
               exit 1
             fi
 
-            if [ "$LINT" = "success" ] && [ "$TEST" = "success" ]; then
+            if [ "$LINT" = "success" ] && [ "$TEST" = "success" ] && [ "$SEMGREP" = "success" ]; then
               echo "✓ CI passed"
               exit 0
             fi
