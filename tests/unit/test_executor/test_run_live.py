@@ -125,7 +125,11 @@ def test_validate_mainnet_pilot_allows_explicit_live_flag() -> None:
     )
 
 
-def test_validate_mainnet_400_requires_dedicated_live_flag_and_caps() -> None:
+def test_validate_mainnet_400_requires_dedicated_live_flag_and_caps(monkeypatch) -> None:
+    monkeypatch.setenv("MAINNET_MAX_EQUITY", "500")
+    monkeypatch.setenv("MAINNET_MAX_ORDER_NOTIONAL", "50")
+    monkeypatch.setenv("MAINNET_MAX_GROSS_CAP", "4.0")
+    monkeypatch.setenv("MAINNET_MAX_LEVERAGE", "5")
     with pytest.raises(ValueError, match="ALLOW_LIVE=true"):
         _validate_v16a_live_mode(
             dry_run=False,
@@ -168,7 +172,11 @@ def test_validate_mainnet_400_requires_dedicated_live_flag_and_caps() -> None:
         )
 
 
-def test_validate_mainnet_pilot_enforced_caps() -> None:
+def test_validate_mainnet_pilot_enforced_caps(monkeypatch) -> None:
+    monkeypatch.setenv("MAINNET_MAX_EQUITY", "200")
+    monkeypatch.setenv("MAINNET_MAX_ORDER_NOTIONAL", "50")
+    monkeypatch.setenv("MAINNET_MAX_GROSS_CAP", "4.0")
+    monkeypatch.setenv("MAINNET_MAX_LEVERAGE", "5")
     _validate_v16a_live_mode(
         dry_run=False,
         testnet=False,

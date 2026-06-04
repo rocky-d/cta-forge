@@ -24,6 +24,10 @@ def _mainnet_400_env(**overrides: str) -> dict[str, str]:
         "MAX_ORDER_NOTIONAL": "50",
         "TARGET_GROSS_CAP": "1.00",
         "HL_LEVERAGE": "5",
+        "MAINNET_MAX_EQUITY": "500",
+        "MAINNET_MAX_ORDER_NOTIONAL": "50",
+        "MAINNET_MAX_GROSS_CAP": "4.0",
+        "MAINNET_MAX_LEVERAGE": "5",
         "HL_PRIVATE_KEY": "",
         "HL_ACCOUNT_ADDRESS": "",
     }

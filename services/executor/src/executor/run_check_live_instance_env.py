@@ -20,8 +20,8 @@ from .live import V16A_PROFILE_SLUG
 from .profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
 from .run_live import (
     MAINNET_400_LIVE_INSTANCE_ID,
-    MAINNET_CAPS,
     _is_truthy,
+    _read_mainnet_caps_from_env,
 )
 
 
@@ -111,6 +111,7 @@ def _validate_mainnet_400_env(
     allow_non_dry_run: bool,
     require_secrets: bool,
 ) -> list[CheckResult]:
+    caps = _read_mainnet_caps_from_env(env)
     return [
         _check_equals(
             "persistence_backend", env.get("PERSISTENCE_BACKEND"), "postgres"
@@ -139,22 +140,22 @@ def _validate_mainnet_400_env(
         _check_cap(
             "max_equity",
             env.get("MAX_EQUITY"),
-            MAINNET_CAPS[MAINNET_400_LIVE_INSTANCE_ID]["equity"],
+            caps["equity"],
         ),
         _check_cap(
             "max_order_notional",
             env.get("MAX_ORDER_NOTIONAL"),
-            MAINNET_CAPS[MAINNET_400_LIVE_INSTANCE_ID]["order_notional"],
+            caps["order_notional"],
         ),
         _check_cap(
             "target_gross_cap",
             env.get("TARGET_GROSS_CAP"),
-            MAINNET_CAPS[MAINNET_400_LIVE_INSTANCE_ID]["gross_cap"],
+            caps["gross_cap"],
         ),
         _check_int_cap(
             "hl_leverage",
             env.get("HL_LEVERAGE"),
-            MAINNET_CAPS[MAINNET_400_LIVE_INSTANCE_ID]["leverage"],
+            caps["leverage"],
         ),
         _check_secrets(env, require_secrets=require_secrets),
     ]

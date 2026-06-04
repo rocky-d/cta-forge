@@ -22,7 +22,10 @@ from .profiles.v16a_badscore_overlay import (
 )
 from .run_live import (
     ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
-    MAINNET_CAPS,
+    MAINNET_MAX_EQUITY_ENV,
+    MAINNET_MAX_ORDER_NOTIONAL_ENV,
+    MAINNET_MAX_GROSS_CAP_ENV,
+    MAINNET_MAX_LEVERAGE_ENV,
 )
 
 router = APIRouter()
@@ -165,11 +168,19 @@ async def get_config() -> dict[str, Any]:
             if symbol.strip()
         ],
         "mainnet_pilot_caps": {
-            "max_equity": MAINNET_CAPS["mainnet-pilot"]["equity"],
-            "max_order_notional": MAINNET_CAPS["mainnet-pilot"]["order_notional"],
+            "max_equity": float(
+                os.environ.get(MAINNET_MAX_EQUITY_ENV, "200")
+            ),
+            "max_order_notional": float(
+                os.environ.get(MAINNET_MAX_ORDER_NOTIONAL_ENV, "50")
+            ),
             "uncapped_orders_env": ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
-            "target_gross_cap": MAINNET_CAPS["mainnet-pilot"]["gross_cap"],
-            "leverage": MAINNET_CAPS["mainnet-pilot"]["leverage"],
+            "target_gross_cap": float(
+                os.environ.get(MAINNET_MAX_GROSS_CAP_ENV, "4.0")
+            ),
+            "leverage": float(
+                os.environ.get(MAINNET_MAX_LEVERAGE_ENV, "5")
+            ),
         },
     }
 

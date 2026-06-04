@@ -67,21 +67,31 @@ def _load_runtime_identity(env: Mapping[str, str] = os.environ) -> RuntimeIdenti
 
 MAINNET_400_LIVE_INSTANCE_ID = "mainnet-400-01"
 
-MAINNET_CAPS: dict[str, dict[str, float]] = {
-    "mainnet-pilot": {
-        "equity": 200.0,
-        "order_notional": 50.0,
-        "gross_cap": 4.0,
-        "leverage": 5,
-    },
-    MAINNET_400_LIVE_INSTANCE_ID: {
-        "equity": 500.0,
-        "order_notional": 50.0,
-        "gross_cap": 4.0,
-        "leverage": 5,
-    },
-}
+MAINNET_MAX_EQUITY_ENV = "MAINNET_MAX_EQUITY"
+MAINNET_MAX_ORDER_NOTIONAL_ENV = "MAINNET_MAX_ORDER_NOTIONAL"
+MAINNET_MAX_GROSS_CAP_ENV = "MAINNET_MAX_GROSS_CAP"
+MAINNET_MAX_LEVERAGE_ENV = "MAINNET_MAX_LEVERAGE"
 ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV = "ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS"
+
+
+def _read_mainnet_caps_from_env(
+    env: Mapping[str, str] | None = None,
+) -> dict[str, float]:
+    """Read per-instance mainnet safety caps from environment.
+
+    Each instance carries its own caps in its .env file.
+    An unset cap defaults to 0, which causes all live validation to fail
+    — this is intentional: caps must be explicitly configured.
+    """
+    source = env if env is not None else os.environ
+    return {
+        "equity": float(source.get(MAINNET_MAX_EQUITY_ENV, "0")),
+        "order_notional": float(
+            source.get(MAINNET_MAX_ORDER_NOTIONAL_ENV, "0")
+        ),
+        "gross_cap": float(source.get(MAINNET_MAX_GROSS_CAP_ENV, "0")),
+        "leverage": float(source.get(MAINNET_MAX_LEVERAGE_ENV, "0")),
+    }
 
 
 def _validate_mainnet_caps(
@@ -154,12 +164,7 @@ def _validate_v16a_live_mode(
             msg = "Non-dry-run requires ALLOW_LIVE=true"
             raise ValueError(msg)
         if enforce_pilot_caps:
-            caps_slug = (
-                live_instance_id
-                if live_instance_id in MAINNET_CAPS
-                else "mainnet-pilot"
-            )
-            caps = MAINNET_CAPS[caps_slug]
+            caps = _read_mainnet_caps_from_env()
             _validate_mainnet_caps(
                 label=live_instance_id or "mainnet",
                 max_equity=max_equity,

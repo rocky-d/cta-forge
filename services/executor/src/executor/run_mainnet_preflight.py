@@ -32,10 +32,10 @@ from .profiles.v16a_badscore_overlay import (
 from .run_bootstrap_live_instance import _address_hash
 from .run_live import (
     ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
-    MAINNET_CAPS,
     _is_truthy,
     _parse_optional_float,
     _parse_symbols,
+    _read_mainnet_caps_from_env,
     _validate_mainnet_caps,
 )
 from .targeting import weights_to_orders
@@ -79,10 +79,7 @@ async def _build_report() -> dict[str, Any]:
     live_instance_id = os.environ.get("LIVE_INSTANCE_ID", "").strip()
     dry_run = _is_truthy(os.environ.get("DRY_RUN"))
     if not dry_run:
-        caps_slug = (
-            live_instance_id if live_instance_id in MAINNET_CAPS else "mainnet-pilot"
-        )
-        caps = MAINNET_CAPS[caps_slug]
+        caps = _read_mainnet_caps_from_env()
         _validate_mainnet_caps(
             label=live_instance_id or "mainnet",
             max_equity=max_equity,
