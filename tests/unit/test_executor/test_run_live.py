@@ -125,7 +125,9 @@ def test_validate_mainnet_pilot_allows_explicit_live_flag() -> None:
     )
 
 
-def test_validate_mainnet_400_requires_dedicated_live_flag_and_caps(monkeypatch) -> None:
+def test_validate_mainnet_400_requires_dedicated_live_flag_and_caps(
+    monkeypatch,
+) -> None:
     monkeypatch.setenv("MAINNET_MAX_EQUITY", "500")
     monkeypatch.setenv("MAINNET_MAX_ORDER_NOTIONAL", "50")
     monkeypatch.setenv("MAINNET_MAX_GROSS_CAP", "4.0")

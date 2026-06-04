@@ -86,9 +86,7 @@ def _read_mainnet_caps_from_env(
     source = env if env is not None else os.environ
     return {
         "equity": float(source.get(MAINNET_MAX_EQUITY_ENV, "0")),
-        "order_notional": float(
-            source.get(MAINNET_MAX_ORDER_NOTIONAL_ENV, "0")
-        ),
+        "order_notional": float(source.get(MAINNET_MAX_ORDER_NOTIONAL_ENV, "0")),
         "gross_cap": float(source.get(MAINNET_MAX_GROSS_CAP_ENV, "0")),
         "leverage": float(source.get(MAINNET_MAX_LEVERAGE_ENV, "0")),
     }
