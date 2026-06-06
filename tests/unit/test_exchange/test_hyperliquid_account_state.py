@@ -141,7 +141,11 @@ async def test_fetch_spot_balance_retries_on_transient_failure() -> None:
         FlakySpotInfo(
             account_mode="unifiedAccount",
             user_state={
-                "marginSummary": {"accountValue": "10", "totalRawUsd": "0", "totalMarginUsed": "0"},
+                "marginSummary": {
+                    "accountValue": "10",
+                    "totalRawUsd": "0",
+                    "totalMarginUsed": "0",
+                },
                 "assetPositions": [],
             },
             spot_state={"balances": [{"coin": "USDC", "total": "200", "hold": "5"}]},
