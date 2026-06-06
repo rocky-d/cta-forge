@@ -146,6 +146,7 @@ def _engine_to_live_state(
         bar_count=engine_state.bar_count,
         initial_equity=engine_state.initial_equity,
         peak_equity=engine_state.peak_equity,
+        dd_breaker_active=getattr(engine_state, 'dd_breaker_active', False),
         recent_returns=list(engine_state.recent_returns[-120:]),
         last_tick_equity=last_tick_equity,
     )
@@ -430,6 +431,10 @@ class LiveEngine:
                 if self._shutdown_event.is_set():
                     self._running = False
                 else:
+                    await self._notify.send(
+                        f"⚠️ Tick #{self._state.bar_count + 1} failed — "
+                        "retrying next candle"
+                    )
                     await asyncio.sleep(60)
 
         logger.info("LiveEngine stopped")
