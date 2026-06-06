@@ -23,6 +23,7 @@ def test_apply_migrations_dry_run_outputs_safe_summary() -> None:
     assert payload["migrations"] == [
         "001_live_persistence.sql",
         "002_live_target_execution_buckets.sql",
+        "003_drop_live_trades_fee.sql",
     ]
     assert "secret" not in stdout.getvalue()
     assert "postgresql://" not in stdout.getvalue()

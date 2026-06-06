@@ -204,7 +204,6 @@ class PostgresLiveJournalStore:
         pnl_pct: float = 0.0,
         held_bars: int = 0,
         exchange_order_id: str | None = None,
-        fee: float | None = None,
         dry_run: bool = False,
     ) -> None:
         """Record a trade action.
@@ -258,7 +257,6 @@ class PostgresLiveJournalStore:
                 if kind in ("close", "partial_close", "flatten_all")
                 else None,
                 "exchange_order_id": exchange_order_id,
-                "fee": _numeric(fee) if fee is not None else None,
                 "raw_json": record,
             },
         )
@@ -1213,12 +1211,12 @@ def _write_trade(conn: DbConnection, row: dict[str, Any]) -> None:
         """
         insert into live_trades (
             live_instance_id, run_id, bar, ts, kind, symbol, side, qty, price,
-            reason, pnl, pnl_pct, held_bars, exchange_order_id, fee, raw_json
+            reason, pnl, pnl_pct, held_bars, exchange_order_id, raw_json
         )
         values (
             %(live_instance_id)s, %(run_id)s, %(bar)s, %(ts)s, %(kind)s,
             %(symbol)s, %(side)s, %(qty)s, %(price)s, %(reason)s, %(pnl)s,
-            %(pnl_pct)s, %(held_bars)s, %(exchange_order_id)s, %(fee)s,
+            %(pnl_pct)s, %(held_bars)s, %(exchange_order_id)s,
             %(raw_json)s::jsonb
         )
         on conflict (
@@ -1229,7 +1227,6 @@ def _write_trade(conn: DbConnection, row: dict[str, Any]) -> None:
             pnl_pct = excluded.pnl_pct,
             held_bars = excluded.held_bars,
             exchange_order_id = excluded.exchange_order_id,
-            fee = excluded.fee,
             raw_json = excluded.raw_json
         """,
         {**row, "raw_json": _jsonb(row["raw_json"])},
