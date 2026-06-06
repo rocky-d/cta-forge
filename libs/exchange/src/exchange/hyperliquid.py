@@ -181,15 +181,26 @@ class HyperliquidAdapter:
         # account is unified.
         spot_total = Decimal("0")
         spot_hold = Decimal("0")
-        try:
-            spot = await self._run_sync(self._info.spot_user_state, self._address)
-            for bal in spot.get("balances", []):
-                if bal.get("coin") == "USDC":
-                    spot_total = Decimal(str(bal.get("total", "0")))
-                    spot_hold = Decimal(str(bal.get("hold", "0")))
-                    break
-        except Exception as e:
-            logger.warning("Failed to fetch spot balance: %s", e)
+        for attempt in range(3):
+            try:
+                spot = await self._run_sync(self._info.spot_user_state, self._address)
+                for bal in spot.get("balances", []):
+                    if bal.get("coin") == "USDC":
+                        spot_total = Decimal(str(bal.get("total", "0")))
+                        spot_hold = Decimal(str(bal.get("hold", "0")))
+                        break
+                break  # success — exit retry loop
+            except Exception as e:
+                if attempt == 2:
+                    logger.warning(
+                        "Failed to fetch spot balance after 3 attempts: %s", e
+                    )
+                    if is_unified_account:
+                        raise RuntimeError(
+                            "Cannot determine unified account equity: "
+                            "spot balance unavailable"
+                        ) from e
+                await asyncio.sleep(2.0**attempt)  # 1 s, 2 s backoff
 
         positions = []
         unrealized_pnl = Decimal("0")
