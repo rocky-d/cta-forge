@@ -139,7 +139,6 @@ create table if not exists live_trades (
     pnl_pct numeric,
     held_bars integer,
     exchange_order_id text,
-    fee numeric,
     raw_json jsonb not null default '{}'::jsonb,
     created_at timestamptz not null default now(),
     unique (live_instance_id, run_id, bar, ts, kind, symbol, qty, price, reason)
