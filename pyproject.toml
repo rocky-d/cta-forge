@@ -3,7 +3,9 @@ name = "cta-forge"
 version = "0.1.0"
 description = "CTA Forge"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "tenacity>=9.1.4",
+]
 
 [dependency-groups]
 dev = [

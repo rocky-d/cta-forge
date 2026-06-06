@@ -123,3 +123,32 @@ async def test_non_unified_account_uses_perp_margin_summary() -> None:
     assert state.equity == Decimal("2000.5")
     assert state.available_balance == Decimal("123.4")
     assert state.unrealized_pnl == Decimal("0")
+
+
+async def test_fetch_spot_balance_retries_on_transient_failure() -> None:
+    """_fetch_spot_balance with @RETRY_TRANSIENT retries 3 times then succeeds."""
+    call_count = 0
+
+    class FlakySpotInfo(FakeInfo):
+        def spot_user_state(self, _address: str) -> dict[str, Any]:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise TimeoutError("transient HL spot timeout")
+            return self._spot_state
+
+    adapter = make_adapter(
+        FlakySpotInfo(
+            account_mode="unifiedAccount",
+            user_state={
+                "marginSummary": {"accountValue": "10", "totalRawUsd": "0", "totalMarginUsed": "0"},
+                "assetPositions": [],
+            },
+            spot_state={"balances": [{"coin": "USDC", "total": "200", "hold": "5"}]},
+        )
+    )
+
+    state = await adapter.get_account_state()
+
+    assert call_count == 3
+    assert state.equity == Decimal("200")

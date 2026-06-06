@@ -19,12 +19,24 @@ from hyperliquid.info import Info
 from hyperliquid.utils import constants
 from hyperliquid.utils.types import Meta, SpotMeta
 
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from .adapter import AccountState, MarketSnapshot, OrderResult, Position
 
 logger = logging.getLogger(__name__)
 
 # Timeout for SDK calls to prevent hangs
 SDK_TIMEOUT: float = 15.0
+
+# Transient HL API calls are retried up to 3 times with exponential
+# backoff (1 s → 2 s → 4 s). This catches momentary network blips and
+# brief exchange-side routing failures without holding a tick for more
+# than ~48 s total (3 × 15 s timeout + ~3 s cumulative delay).
+RETRY_TRANSIENT = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=4),
+    reraise=True,
+)
 
 # Transient error patterns (retry-safe)
 TRANSIENT_PATTERNS = (
@@ -152,10 +164,30 @@ class HyperliquidAdapter:
         quant = Decimal(10) ** -sz_dec
         return float(size.quantize(quant, rounding=ROUND_DOWN))
 
+    # ── retry-wrapped API calls ───────────────────────────────────
+
+    @RETRY_TRANSIENT
+    async def _fetch_user_state(self) -> Any:
+        return await self._run_sync(self._info.user_state, self._address)
+
+    @RETRY_TRANSIENT
+    async def _fetch_abstraction_state(self) -> Any:
+        return await self._run_sync(
+            self._info.query_user_abstraction_state, self._address
+        )
+
+    @RETRY_TRANSIENT
+    async def _fetch_spot_balance(self) -> Any:
+        return await self._run_sync(self._info.spot_user_state, self._address)
+
+    @RETRY_TRANSIENT
+    async def _fetch_l2_snapshot(self, symbol: str) -> Any:
+        return await self._run_sync(self._info.l2_snapshot, symbol)
+
     # ── ExchangeAdapter implementation ───────────────────────────────
 
     async def get_account_state(self) -> AccountState:
-        state = await self._run_sync(self._info.user_state, self._address)
+        state = await self._fetch_user_state()
         margin = state.get("marginSummary", {})
 
         # Non-unified perp account equity. In unified accounts, Hyperliquid
@@ -168,9 +200,7 @@ class HyperliquidAdapter:
 
         is_unified_account = False
         try:
-            mode = await self._run_sync(
-                self._info.query_user_abstraction_state, self._address
-            )
+            mode = await self._fetch_abstraction_state()
             is_unified_account = mode == "unifiedAccount"
         except Exception as e:
             logger.warning("Failed to fetch Hyperliquid account mode: %s", e)
@@ -181,26 +211,19 @@ class HyperliquidAdapter:
         # account is unified.
         spot_total = Decimal("0")
         spot_hold = Decimal("0")
-        for attempt in range(3):
-            try:
-                spot = await self._run_sync(self._info.spot_user_state, self._address)
-                for bal in spot.get("balances", []):
-                    if bal.get("coin") == "USDC":
-                        spot_total = Decimal(str(bal.get("total", "0")))
-                        spot_hold = Decimal(str(bal.get("hold", "0")))
-                        break
-                break  # success — exit retry loop
-            except Exception as e:
-                if attempt == 2:
-                    logger.warning(
-                        "Failed to fetch spot balance after 3 attempts: %s", e
-                    )
-                    if is_unified_account:
-                        raise RuntimeError(
-                            "Cannot determine unified account equity: "
-                            "spot balance unavailable"
-                        ) from e
-                await asyncio.sleep(2.0**attempt)  # 1 s, 2 s backoff
+        try:
+            spot = await self._fetch_spot_balance()
+            for bal in spot.get("balances", []):
+                if bal.get("coin") == "USDC":
+                    spot_total = Decimal(str(bal.get("total", "0")))
+                    spot_hold = Decimal(str(bal.get("hold", "0")))
+                    break
+        except Exception as e:
+            logger.warning("Failed to fetch spot balance: %s", e)
+            if is_unified_account:
+                raise RuntimeError(
+                    "Cannot determine unified account equity: spot balance unavailable"
+                ) from e
 
         positions = []
         unrealized_pnl = Decimal("0")
@@ -249,7 +272,7 @@ class HyperliquidAdapter:
 
     async def get_market_snapshot(self, symbol: str) -> MarketSnapshot:
         # L2 for bid/ask
-        l2 = await self._run_sync(self._info.l2_snapshot, symbol)
+        l2 = await self._fetch_l2_snapshot(symbol)
         levels = l2.get("levels", [])
         bids = levels[0] if len(levels) > 0 else []
         asks = levels[1] if len(levels) > 1 else []
