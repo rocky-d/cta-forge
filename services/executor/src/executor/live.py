@@ -146,7 +146,7 @@ def _engine_to_live_state(
         bar_count=engine_state.bar_count,
         initial_equity=engine_state.initial_equity,
         peak_equity=engine_state.peak_equity,
-        dd_breaker_active=getattr(engine_state, 'dd_breaker_active', False),
+        dd_breaker_active=getattr(engine_state, "dd_breaker_active", False),
         recent_returns=list(engine_state.recent_returns[-120:]),
         last_tick_equity=last_tick_equity,
     )
