@@ -147,7 +147,7 @@ class V16aOnlineTargetStrategy:
         self._target_set: V16aTargetSet | None = None
         self._loaded_at = 0.0
         # Dynamically set by LiveEngine before each tick when DD protection is
-        # active. 1.0 = full gross_cap, 0.0 = no exposure.
+        # active. 1.0 = full target_scale, 0.0 = no amplification.
         self.dd_scale: float = 1.0
 
     @property
@@ -187,14 +187,14 @@ class V16aOnlineTargetStrategy:
             raise ValueError(
                 f"Latest v16a target is stale: {target_ts!r} for {timestamp!r}"
             )
-        effective_cap = self._gross_cap * self.dd_scale
+        effective_scale = self._target_scale * self.dd_scale
         return PortfolioTarget(
             timestamp=target_ts,
             weights={
-                symbol: float(target_set.target_weights[idx, i]) * self._target_scale
+                symbol: float(target_set.target_weights[idx, i]) * effective_scale
                 for i, symbol in enumerate(target_set.symbols)
             },
-            gross_cap=effective_cap,
+            gross_cap=self._gross_cap,
         ).capped()
 
 
