@@ -161,6 +161,8 @@ async def get_config() -> dict[str, Any]:
         "max_equity": _optional_float_from_env("MAX_EQUITY"),
         "target_scale": float(os.environ.get("TARGET_SCALE", "1")),
         "target_gross_cap": float(os.environ.get("TARGET_GROSS_CAP", "1")),
+        "soft_dd_limit": float(os.environ.get("SOFT_DD_LIMIT", "0.15")),
+        "hard_dd_limit": float(os.environ.get("HARD_DD_LIMIT", "0.30")),
         "hl_leverage": int(os.environ.get("HL_LEVERAGE", "5")),
         "live_symbols": [
             symbol.strip().upper()

@@ -221,6 +221,8 @@ class LiveEngine:
         public_instance_slug: str | None = None,
         journal: LiveJournalStore | None = None,
         state_store: LiveStateStore | None = None,
+        soft_dd_limit: float = 0.15,
+        hard_dd_limit: float = 0.30,
     ) -> None:
         self._exchange = exchange
         # Auto-filter symbols unavailable on testnet
@@ -260,6 +262,8 @@ class LiveEngine:
         self._min_available_balance = min_available_balance
         self._max_equity = max_equity
         self._leverage = leverage or self.DEFAULT_LEVERAGE
+        self._soft_dd_limit = soft_dd_limit
+        self._hard_dd_limit = hard_dd_limit
         if target_strategy is None and self._strategy_profile != V10G_PROFILE_SLUG:
             msg = (
                 f"Strategy profile {self._strategy_profile!r} has no live target "
@@ -718,6 +722,25 @@ class LiveEngine:
         action_summary = "0 actions"
         next_bar = self._state.bar_count + 1
         if self._target_strategy is not None:
+            # Soft DD scaling: reduce gross_cap when DD crosses soft_dd_limit.
+            # Scale linearly from 1.0 at soft_dd_limit to 0.0 at hard_dd_limit.
+            peak = max(self._state.peak_equity, equity)
+            cur_dd = (peak - equity) / peak if peak > 0 else 0.0
+            ts = self._target_strategy
+            if (
+                hasattr(ts, "dd_scale")
+                and cur_dd >= self._soft_dd_limit
+                and self._hard_dd_limit > self._soft_dd_limit
+            ):
+                ts.dd_scale = max(
+                    0.0,
+                    1.0
+                    - (cur_dd - self._soft_dd_limit)
+                    / (self._hard_dd_limit - self._soft_dd_limit),
+                )
+            elif hasattr(ts, "dd_scale"):
+                ts.dd_scale = 1.0
+
             if await self._handle_target_drawdown_stop(account, equity, next_bar):
                 action_summary = "max drawdown flatten"
             else:
@@ -814,7 +837,7 @@ class LiveEngine:
         """Fail closed for target-mode profiles when max drawdown is breached."""
         peak = max(self._state.peak_equity, equity)
         cur_dd = (peak - equity) / peak if peak > 0 else 0.0
-        if cur_dd < self._decision.p.max_drawdown:
+        if cur_dd < self._hard_dd_limit:
             return False
 
         logger.warning(

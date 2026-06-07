@@ -350,6 +350,23 @@ class StaticTargetStrategy:
         return PortfolioTarget(timestamp=timestamp, weights=self.weights)
 
 
+class MutableTargetStrategy:
+    """Non-frozen variant for DD scaling tests that mutate dd_scale."""
+
+    profile: StrategyProfile
+    weights: dict[str, float]
+    required_timeframes = ()
+    dd_scale: float = 1.0
+
+    def __init__(self, profile: StrategyProfile, weights: dict[str, float]) -> None:
+        self.profile = profile
+        self.weights = weights
+        self.dd_scale = 1.0
+
+    def target(self, timestamp: datetime) -> PortfolioTarget:
+        return PortfolioTarget(timestamp=timestamp, weights=self.weights)
+
+
 @dataclass(frozen=True)
 class WarmupTargetStrategy(StaticTargetStrategy):
     required_timeframes = (("1h", 1, 60_000), ("6h", 6, 10_000))
@@ -646,6 +663,7 @@ async def test_target_mode_max_drawdown_flattens_without_new_exposure(tmp_path) 
         dry_run=False,
         journal_dir=str(tmp_path / "journal"),
         target_strategy=strategy,
+        hard_dd_limit=0.15,
     )
     engine._state.peak_equity = 10_000.0
 
@@ -771,3 +789,103 @@ class TestLiveEngineShutdown:
             assert elapsed < 0.5, f"shutdown wait took {elapsed:.2f}s"
 
         asyncio.run(_test())
+
+
+@pytest.mark.asyncio
+async def test_target_dd_soft_scaling_reduces_gross_cap(tmp_path) -> None:
+    """DD between soft and hard limits scales dd_scale linearly."""
+    exchange = FakeExchange(equity=Decimal("8000"))
+    strategy = MutableTargetStrategy(
+        profile=StrategyProfile("test", "t", timeframe_hours=1),
+        weights={"BTCUSDT": 0.001},
+    )
+    engine = LiveEngine(
+        exchange,
+        symbols=["BTC"],
+        dry_run=True,
+        journal_dir=str(tmp_path / "journal"),
+        target_strategy=strategy,
+        soft_dd_limit=0.15,
+        hard_dd_limit=0.30,
+    )
+    engine._state.peak_equity = 10_000.0  # DD = 20%
+
+    await engine._tick()
+
+    expected_scale = 1.0 - (0.20 - 0.15) / (0.30 - 0.15)  # ≈ 0.667
+    assert abs(strategy.dd_scale - expected_scale) < 0.001
+
+
+@pytest.mark.asyncio
+async def test_target_dd_scaling_returns_to_one_below_soft_limit(tmp_path) -> None:
+    """DD below soft_dd_limit resets dd_scale to 1.0."""
+    exchange = FakeExchange(equity=Decimal("9000"))
+    strategy = MutableTargetStrategy(
+        profile=StrategyProfile("test", "t", timeframe_hours=1),
+        weights={"BTCUSDT": 0.001},
+    )
+    strategy.dd_scale = 0.5
+    engine = LiveEngine(
+        exchange,
+        symbols=["BTC"],
+        dry_run=True,
+        journal_dir=str(tmp_path / "journal"),
+        target_strategy=strategy,
+        soft_dd_limit=0.15,
+        hard_dd_limit=0.30,
+    )
+    engine._state.peak_equity = 10_000.0  # DD = 10%
+
+    await engine._tick()
+
+    assert strategy.dd_scale == 1.0
+
+
+@pytest.mark.asyncio
+async def test_target_dd_soft_scaling_hits_zero_at_hard_limit(tmp_path) -> None:
+    """DD at hard_dd_limit sets dd_scale to 0.0 before hard stop triggers."""
+    exchange = FakeExchange(equity=Decimal("7000"))
+    strategy = MutableTargetStrategy(
+        profile=StrategyProfile("test", "t", timeframe_hours=1),
+        weights={"BTCUSDT": 0.001},
+    )
+    engine = LiveEngine(
+        exchange,
+        symbols=["BTC"],
+        dry_run=True,
+        journal_dir=str(tmp_path / "journal"),
+        target_strategy=strategy,
+        soft_dd_limit=0.15,
+        hard_dd_limit=0.30,
+    )
+    engine._state.peak_equity = 10_000.0  # DD = 30%
+
+    await engine._tick()
+
+    # dd_scale computed to 0.0, then hard stop triggers
+    assert strategy.dd_scale == 0.0
+
+
+@pytest.mark.asyncio
+async def test_target_dd_equal_limits_no_div_by_zero(tmp_path) -> None:
+    """Equal soft/hard limits skip scaling gracefully (no ZeroDivisionError)."""
+    exchange = FakeExchange(equity=Decimal("8000"))
+    strategy = MutableTargetStrategy(
+        profile=StrategyProfile("test", "t", timeframe_hours=1),
+        weights={"BTCUSDT": 0.001},
+    )
+    engine = LiveEngine(
+        exchange,
+        symbols=["BTC"],
+        dry_run=True,
+        journal_dir=str(tmp_path / "journal"),
+        target_strategy=strategy,
+        soft_dd_limit=0.20,
+        hard_dd_limit=0.20,
+    )
+    engine._state.peak_equity = 10_000.0  # DD = 20%
+
+    await engine._tick()
+
+    # Scaling skipped (hard > soft is False), hard stop triggers, dd_scale unchanged
+    assert strategy.dd_scale == 1.0
