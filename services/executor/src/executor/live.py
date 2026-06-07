@@ -221,7 +221,7 @@ class LiveEngine:
         public_instance_slug: str | None = None,
         journal: LiveJournalStore | None = None,
         state_store: LiveStateStore | None = None,
-        soft_dd_limit: float = 0.15,
+        soft_dd_limit: float = 0.20,
         hard_dd_limit: float = 0.30,
     ) -> None:
         self._exchange = exchange
