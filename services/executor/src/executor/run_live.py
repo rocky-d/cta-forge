@@ -299,6 +299,8 @@ def main() -> None:
     max_equity = _parse_optional_float(os.environ.get("MAX_EQUITY"))
     target_gross_cap = float(os.environ.get("TARGET_GROSS_CAP", "1"))
     target_scale = float(os.environ.get("TARGET_SCALE", "1"))
+    soft_dd_limit = float(os.environ.get("SOFT_DD_LIMIT", "0.15"))
+    hard_dd_limit = float(os.environ.get("HARD_DD_LIMIT", "0.30"))
     leverage = int(os.environ.get("HL_LEVERAGE", str(LiveEngine.DEFAULT_LEVERAGE)))
     symbols = _parse_symbols(os.environ.get("LIVE_SYMBOLS"))
     v16a_max_staleness_hours = float(os.environ.get("V16A_MAX_STALENESS_HOURS", "8"))
@@ -404,6 +406,8 @@ def main() -> None:
         public_instance_slug=identity.public_instance_slug,
         journal=persistence_stores.journal,
         state_store=persistence_stores.state_store,
+        soft_dd_limit=soft_dd_limit,
+        hard_dd_limit=hard_dd_limit,
     )
 
     async def run() -> None:
