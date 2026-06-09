@@ -679,8 +679,8 @@ def _compute_gate_indicators(timeline):
 
     These are the three condition signals common to both gate types.
     """
-    days = sorted({ts.date().isoformat() for ts in timeline})
-    sym_ret = daily_symbol_returns(days)
+    days = sorted({ts.date() for ts in timeline})
+    sym_ret = daily_symbol_returns([d.isoformat() for d in days])
     valid_counts = np.sum(np.isfinite(sym_ret), axis=1)
     market = np.divide(
         np.nansum(sym_ret, axis=1),
