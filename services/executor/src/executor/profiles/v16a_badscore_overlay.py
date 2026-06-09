@@ -136,6 +136,7 @@ class V16aOnlineTargetStrategy:
         target_scale: float = 1.0,
         gross_cap: float = 1.0,
         core_phase_hours: int = 0,
+        gate_rolling_years: float = 0.0,
         profile: StrategyProfile = V16A_PROFILE,
     ) -> None:
         self.profile = profile
@@ -145,6 +146,7 @@ class V16aOnlineTargetStrategy:
         self._target_scale = target_scale
         self._gross_cap = gross_cap
         self._core_phase_hours = validate_core_phase_hours(core_phase_hours)
+        self._gate_rolling_years = gate_rolling_years
         self._target_set: V16aTargetSet | None = None
         self._loaded_at = 0.0
         # Dynamically set by LiveEngine before each tick when DD protection is
@@ -174,6 +176,7 @@ class V16aOnlineTargetStrategy:
             self._data_dir,
             backfill=False,
             core_phase_hours=self._core_phase_hours,
+            gate_rolling_years=self._gate_rolling_years,
         )
         self._loaded_at = now
         return self._target_set
@@ -671,7 +674,11 @@ def daily_symbol_returns(days):
     return ret
 
 
-def expanding_badscore_gate(timeline) -> np.ndarray:
+def _compute_gate_indicators(timeline):
+    """Return (days, vol20, eff60, corr60) for expanding or rolling gate.
+
+    These are the three condition signals common to both gate types.
+    """
     days = sorted({ts.date().isoformat() for ts in timeline})
     sym_ret = daily_symbol_returns(days)
     valid_counts = np.sum(np.isfinite(sym_ret), axis=1)
@@ -681,18 +688,20 @@ def expanding_badscore_gate(timeline) -> np.ndarray:
         out=np.full(sym_ret.shape[0], np.nan),
         where=valid_counts > 0,
     )
-    vol20 = np.full(len(days), np.nan)
-    eff60 = np.full(len(days), np.nan)
-    corr60 = np.full(len(days), np.nan)
-
-    for i in range(len(days)):
+    nd = len(days)
+    vol20 = np.full(nd, np.nan, dtype=float)
+    eff60 = np.full(nd, np.nan, dtype=float)
+    corr60 = np.full(nd, np.nan, dtype=float)
+    for i in range(nd):
         if i >= 20:
             vol20[i] = np.nanstd(market[i - 20 : i]) * np.sqrt(365)
         if i >= 60:
             win = market[i - 60 : i]
             valid = win[np.isfinite(win)]
             if len(valid) >= 48:
-                eff60[i] = abs(np.prod(1 + valid) - 1) / max(np.sum(np.abs(valid)), EPS)
+                eff60[i] = abs(np.prod(1.0 + valid) - 1.0) / max(
+                    np.sum(np.abs(valid)), EPS
+                )
             cols = []
             for j in range(sym_ret.shape[1]):
                 col = sym_ret[i - 60 : i, j]
@@ -702,9 +711,16 @@ def expanding_badscore_gate(timeline) -> np.ndarray:
                 corr = np.corrcoef(np.vstack(cols))
                 iu = np.triu_indices_from(corr, k=1)
                 corr60[i] = np.nanmean(corr[iu])
+    return days, vol20, eff60, corr60
 
-    scale_by_day = {}
-    hist_vol, hist_eff, hist_corr = [], [], []
+
+def expanding_badscore_gate(timeline) -> np.ndarray:
+    """Expanding-window badscore gate — median references grow forever."""
+    days, vol20, eff60, corr60 = _compute_gate_indicators(timeline)
+    scale_by_day: dict[str, float] = {}
+    hist_vol: list[float] = []
+    hist_eff: list[float] = []
+    hist_corr: list[float] = []
     for day, vol, eff, corr in zip(days, vol20, eff60, corr60):
         bad = 0
         if len(hist_vol) >= 252 and np.isfinite(vol) and vol > np.nanmedian(hist_vol):
@@ -717,13 +733,63 @@ def expanding_badscore_gate(timeline) -> np.ndarray:
             and corr > np.nanquantile(hist_corr, 0.66)
         ):
             bad += 1
-        scale_by_day[day] = 0.25 if bad >= 2 else 1.0
+        scale_by_day[day.isoformat()] = 0.25 if bad >= 2 else 1.0
         if np.isfinite(vol):
             hist_vol.append(float(vol))
         if np.isfinite(eff):
             hist_eff.append(float(eff))
         if np.isfinite(corr):
             hist_corr.append(float(corr))
+    return np.array(
+        [scale_by_day[ts.date().isoformat()] for ts in timeline], dtype=float
+    )
+
+
+def rolling_badscore_gate(timeline, window_years: float) -> np.ndarray:
+    """Rolling-window badscore gate — reference adapts to recent regime.
+
+    The three condition signals (vol20, eff60, corr60) are computed once
+    and sliced with a trailing ``window_years``-wide lookback using
+    NaN-padded full-length arrays — avoiding the filtered-list indexing
+    bug that would arise from sparse Python lists.
+    """
+    days, vol20, eff60, corr60 = _compute_gate_indicators(timeline)
+    window_days = int(window_years * 365)
+    nd = len(days)
+
+    # Full-length NaN-padded history arrays
+    hv = np.full(nd, np.nan, dtype=float)
+    he = np.full(nd, np.nan, dtype=float)
+    hc = np.full(nd, np.nan, dtype=float)
+
+    scale_by_day: dict[str, float] = {}
+    for di, (d, v, e, c) in enumerate(zip(days, vol20, eff60, corr60)):
+        if np.isfinite(v):
+            hv[di] = float(v)
+        if np.isfinite(e):
+            he[di] = float(e)
+        if np.isfinite(c):
+            hc[di] = float(c)
+
+        lo = max(0, di - window_days)
+        bad = 0
+
+        wv = hv[lo:di]
+        wv = wv[np.isfinite(wv)]
+        if len(wv) >= 252 and np.isfinite(v) and v > np.nanmedian(wv):
+            bad += 1
+
+        we = he[lo:di]
+        we = we[np.isfinite(we)]
+        if len(we) >= 252 and np.isfinite(e) and e < np.nanmedian(we):
+            bad += 1
+
+        wc = hc[lo:di]
+        wc = wc[np.isfinite(wc)]
+        if len(wc) >= 252 and np.isfinite(c) and c > np.nanquantile(wc, 0.66):
+            bad += 1
+
+        scale_by_day[d.isoformat()] = 0.25 if bad >= 2 else 1.0
 
     return np.array(
         [scale_by_day[ts.date().isoformat()] for ts in timeline], dtype=float
@@ -769,6 +835,7 @@ def build_v16a_target_set(
     gross_cap: float = 1.0,
     core_phase_hours: int = 0,
     backfill: bool = True,
+    gate_rolling_years: float = 0.0,
 ) -> V16aTargetSet:
     """Build the full historical v16a target-weight matrix from local data."""
     global DATA_DIR
@@ -797,7 +864,11 @@ def build_v16a_target_set(
         o_timeline, o_syms, o_weights, timeline, symbols, forward_fill=False
     )
     returns = load_hourly_returns(timeline, symbols)
-    gate = expanding_badscore_gate(timeline)
+    gate = (
+        rolling_badscore_gate(timeline, gate_rolling_years)
+        if gate_rolling_years > 0
+        else expanding_badscore_gate(timeline)
+    )
 
     target = v10g_allocation * v_aligned + overlay_allocation * o_aligned
     target *= gate[:, None]

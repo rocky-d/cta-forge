@@ -299,6 +299,7 @@ def main() -> None:
     max_equity = _parse_optional_float(os.environ.get("MAX_EQUITY"))
     target_gross_cap = float(os.environ.get("TARGET_GROSS_CAP", "1"))
     target_scale = float(os.environ.get("TARGET_SCALE", "1"))
+    gate_rolling_years = float(os.environ.get("GATE_ROLLING_WINDOW", "0"))
     soft_dd_limit = float(os.environ.get("SOFT_DD_LIMIT", "0.20"))
     hard_dd_limit = float(os.environ.get("HARD_DD_LIMIT", "0.30"))
     leverage = int(os.environ.get("HL_LEVERAGE", str(LiveEngine.DEFAULT_LEVERAGE)))
@@ -347,6 +348,7 @@ def main() -> None:
             target_scale=target_scale,
             gross_cap=target_gross_cap,
             core_phase_hours=v16a_core_phase_hours,
+            gate_rolling_years=gate_rolling_years,
             profile=V16A_MAINNET_PILOT_PROFILE
             if strategy_profile == V16A_MAINNET_PILOT_PROFILE.slug
             else V16aOnlineTargetStrategy.profile,

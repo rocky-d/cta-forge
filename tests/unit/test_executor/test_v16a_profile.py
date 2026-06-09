@@ -10,6 +10,7 @@ import pytest
 
 import executor.profiles.v16a_badscore_overlay as v16a_module
 from executor.profiles.v16a_badscore_overlay import (
+    build_v16a_target_set,
     V16A_MAINNET_PILOT_PROFILE,
     V16A_PROFILE,
     V16aHistoricalStrategy,
@@ -222,6 +223,12 @@ def _target_set(timeline: list[datetime], weights: np.ndarray) -> V16aTargetSet:
     )
 
 
+def _fake_empty_sleeve():
+    """Return an empty sleeve (two symbols, zero weights, dummy curve)."""
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
+    return (["BTCUSDT", "ETHUSDT"], np.zeros((1, 2)), [(ts, 1.0)], [], [ts])
+
+
 def test_latest_forward_filled_hour_extends_core_until_next_bar_closes() -> None:
     core_ts = datetime(2024, 1, 1, hour=12, tzinfo=UTC)
 
@@ -269,7 +276,9 @@ def test_v16a_online_strategy_returns_latest_non_stale_target(
     target_set = _target_set(timeline, np.array([[0.1, 0.0], [0.2, -0.1]]))
     calls: list[tuple[str, bool, int]] = []
 
-    def fake_build(data_dir, *, backfill=True, core_phase_hours=0):
+    def fake_build(
+        data_dir, *, backfill=True, core_phase_hours=0, gate_rolling_years=0.0
+    ):
         calls.append((str(data_dir), backfill, core_phase_hours))
         return target_set
 
@@ -302,7 +311,9 @@ def test_v16a_online_strategy_threads_configured_core_phase(
     target_set = _target_set(timeline, np.array([[0.1, 0.0]]))
     calls: list[int] = []
 
-    def fake_build(data_dir, *, backfill=True, core_phase_hours=0):
+    def fake_build(
+        data_dir, *, backfill=True, core_phase_hours=0, gate_rolling_years=0.0
+    ):
         calls.append(core_phase_hours)
         return target_set
 
@@ -322,7 +333,9 @@ def test_v16a_online_strategy_applies_target_scale_before_gross_cap(
     monkeypatch.setattr(
         v16a_module,
         "build_v16a_target_set",
-        lambda data_dir, *, backfill=True, core_phase_hours=0: target_set,
+        lambda data_dir, *, backfill=True, core_phase_hours=0, gate_rolling_years=0.0: (
+            target_set
+        ),
     )
 
     strategy = V16aOnlineTargetStrategy(
@@ -343,7 +356,9 @@ def test_v16a_online_strategy_caps_scaled_target(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(
         v16a_module,
         "build_v16a_target_set",
-        lambda data_dir, *, backfill=True, core_phase_hours=0: target_set,
+        lambda data_dir, *, backfill=True, core_phase_hours=0, gate_rolling_years=0.0: (
+            target_set
+        ),
     )
 
     strategy = V16aOnlineTargetStrategy(
@@ -364,10 +379,78 @@ def test_v16a_online_strategy_rejects_stale_target(monkeypatch, tmp_path) -> Non
     monkeypatch.setattr(
         v16a_module,
         "build_v16a_target_set",
-        lambda data_dir, *, backfill=True, core_phase_hours=0: target_set,
+        lambda data_dir, *, backfill=True, core_phase_hours=0, gate_rolling_years=0.0: (
+            target_set
+        ),
     )
 
     strategy = V16aOnlineTargetStrategy(tmp_path, max_staleness=timedelta(hours=1))
 
     with pytest.raises(ValueError, match="stale"):
         strategy.target(datetime(2024, 1, 1, hour=2, minute=1, tzinfo=UTC))
+
+
+def test_build_v16a_target_set_passes_gate_rolling_years(monkeypatch, tmp_path) -> None:
+    """build_v16a_target_set accepts gate_rolling_years and uses rolling gate."""
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
+    sleev = (["BTCUSDT", "ETHUSDT"], np.zeros((1, 2)), [(ts, 1.0)], [], [ts])
+    monkeypatch.setattr(v16a_module, "build_v10g_sleeve", lambda **kw: sleev)
+    monkeypatch.setattr(v16a_module, "build_overlay_sleeve", lambda **kw: sleev)
+    monkeypatch.setattr(
+        v16a_module,
+        "load_hourly_returns",
+        lambda tl, sym: np.zeros((len(tl), len(sym))),
+    )
+
+    gate_calls: list[float] = []
+
+    def fake_rolling(tl, wy):
+        gate_calls.append(wy)
+        return np.ones(len(tl))
+
+    monkeypatch.setattr(v16a_module, "rolling_badscore_gate", fake_rolling)
+    monkeypatch.setattr(
+        v16a_module, "expanding_badscore_gate", lambda tl: np.full(len(tl), 0.5)
+    )
+
+    # Default (0.0) → expanding
+    build_v16a_target_set(str(tmp_path), backfill=False, gate_rolling_years=0.0)
+    assert gate_calls == []  # rolling not called
+
+    # 3.0 → rolling
+    build_v16a_target_set(str(tmp_path), backfill=False, gate_rolling_years=3.0)
+    assert gate_calls == [3.0]
+
+
+def test_v16a_online_strategy_passes_gate_rolling_years(monkeypatch, tmp_path) -> None:
+    """V16aOnlineTargetStrategy passes gate_rolling_years to build call."""
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
+    target_set = V16aTargetSet(
+        timeline=[ts],
+        symbols=["BTCUSDT", "ETHUSDT"],
+        returns=np.zeros((1, 2)),
+        target_weights=np.zeros((1, 2)),
+        v10g_weights=np.zeros((1, 2)),
+        overlay_weights=np.zeros((1, 2)),
+        gate=np.ones(1),
+    )
+
+    build_calls: list = []
+
+    def fake_build(
+        data_dir, *, backfill=True, core_phase_hours=0, gate_rolling_years=0.0
+    ):
+        build_calls.append(gate_rolling_years)
+        return target_set
+
+    monkeypatch.setattr(v16a_module, "build_v16a_target_set", fake_build)
+
+    # Default (0.0)
+    strategy = V16aOnlineTargetStrategy(tmp_path)
+    strategy.target(datetime(2024, 1, 1, hour=1, tzinfo=UTC))
+    assert build_calls == [0.0]
+
+    # 3.0
+    strategy2 = V16aOnlineTargetStrategy(tmp_path, gate_rolling_years=3.0)
+    strategy2.target(datetime(2024, 1, 1, hour=1, tzinfo=UTC))
+    assert build_calls == [0.0, 3.0]
