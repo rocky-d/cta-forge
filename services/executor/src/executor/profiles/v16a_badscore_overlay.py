@@ -123,8 +123,9 @@ class V16aOnlineTargetStrategy:
     # Use oversized minima so a fresh host backfills enough history to cover the
     # full Binance futures era for current symbols, while still using the same
     # cache-only target-construction path afterward.
+    # 6h bars are always synthesized from 1h data via aggregate_phased_bars;
+    # there is no separate 6h kline cache.
     _HOURLY_CACHE_REQUIREMENT = ("1h", 1, 60_000)
-    _SIX_HOUR_CACHE_REQUIREMENT = ("6h", 6, 10_000)
 
     def __init__(
         self,
@@ -152,9 +153,7 @@ class V16aOnlineTargetStrategy:
 
     @property
     def required_timeframes(self) -> tuple[tuple[str, int, int], ...]:
-        """Return parquet cache intervals needed for the configured phase."""
-        if self._core_phase_hours == 0:
-            return (self._HOURLY_CACHE_REQUIREMENT, self._SIX_HOUR_CACHE_REQUIREMENT)
+        """Always use hourly cache; 6h bars are synthesized from 1h data."""
         return (self._HOURLY_CACHE_REQUIREMENT,)
 
     @property
@@ -565,21 +564,24 @@ def run_engine_positions(data, sigs, timeline, warmup: int, params: V10GStrategy
 
 
 def build_v10g_sleeve(*, backfill: bool = True, core_phase_hours: int = 0):
+    """Build v10g sleeve using 1h data aggregated into 6h bars.
+
+    All core-phase modes synthesize 6h bars from 1h parquet cache via
+    ``aggregate_phased_bars``.  The ``core_phase_hours`` only controls
+    bar-boundary alignment (e.g. 0 = 00/06/12/18 UTC, 2 = 02/08/14/20 UTC).
+    """
     params = v10g_params()
     core_phase_hours = validate_core_phase_hours(core_phase_hours)
-    if core_phase_hours == 0:
-        bars = load_bars("6h", backfill=backfill)
-    else:
-        hourly_bars = load_bars("1h", min_bars=5_000, backfill=backfill)
-        bars = {}
-        for symbol, hourly in hourly_bars.items():
-            phased = aggregate_phased_bars(
-                hourly,
-                phase_hours=core_phase_hours,
-                timeframe_hours=params.timeframe_hours,
-            )
-            if not phased.is_empty() and len(phased) >= 500:
-                bars[symbol] = phased
+    hourly_bars = load_bars("1h", min_bars=5_000, backfill=backfill)
+    bars = {}
+    for symbol, hourly in hourly_bars.items():
+        phased = aggregate_phased_bars(
+            hourly,
+            phase_hours=core_phase_hours,
+            timeframe_hours=params.timeframe_hours,
+        )
+        if not phased.is_empty() and len(phased) >= 500:
+            bars[symbol] = phased
     data = precompute(bars, params)
     timeline, ts_to_idx = build_timeline(bars)
     align_data(bars, data, ts_to_idx)

@@ -369,7 +369,7 @@ class MutableTargetStrategy:
 
 @dataclass(frozen=True)
 class WarmupTargetStrategy(StaticTargetStrategy):
-    required_timeframes = (("1h", 1, 60_000), ("6h", 6, 10_000))
+    required_timeframes = (("1h", 1, 60_000),)
 
 
 class RefreshingTargetStrategy:
@@ -482,7 +482,6 @@ async def test_target_strategy_can_request_warmup_cache_sizes(monkeypatch) -> No
 
     assert calls == [
         {"interval": "1h", "timeframe_hours": 1, "min_bars": 60_000},
-        {"interval": "6h", "timeframe_hours": 6, "min_bars": 10_000},
     ]
 
 

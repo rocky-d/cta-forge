@@ -35,10 +35,7 @@ def test_v16a_online_strategy_declares_default_live_cache_history_needs(
 ) -> None:
     strategy = V16aOnlineTargetStrategy(tmp_path)
 
-    assert strategy.required_timeframes == (
-        ("1h", 1, 60_000),
-        ("6h", 6, 10_000),
-    )
+    assert strategy.required_timeframes == (("1h", 1, 60_000),)
 
 
 def test_v16a_online_strategy_phase_core_only_requires_1h_cache(tmp_path) -> None:
@@ -138,40 +135,8 @@ def test_load_bars_can_read_local_cache_without_backfill(monkeypatch, tmp_path) 
     assert len(bars["BTCUSDT"]) == 2
 
 
-def test_build_v10g_sleeve_keeps_default_6h_cache_path(monkeypatch) -> None:
-    calls: list[str] = []
-    ts = datetime(2024, 1, 1, tzinfo=UTC)
-
-    def fake_load_bars(timeframe, *args, **kwargs):
-        calls.append(timeframe)
-        return {"BTCUSDT": pl.DataFrame({"open_time": [ts]})}
-
-    monkeypatch.setattr(v16a_module, "load_bars", fake_load_bars)
-    monkeypatch.setattr(v16a_module, "precompute", lambda bars, params: {})
-    monkeypatch.setattr(v16a_module, "build_timeline", lambda bars: ([ts], {}))
-    monkeypatch.setattr(v16a_module, "align_data", lambda bars, data, ts_to_idx: None)
-    monkeypatch.setattr(
-        v16a_module,
-        "compute_signals",
-        lambda data, timeline, params, btc_filter=True: {},
-    )
-    monkeypatch.setattr(
-        v16a_module,
-        "run_engine_positions",
-        lambda data, sigs, timeline, warmup, params: (
-            [],
-            np.zeros((1, 0)),
-            [(ts, 1.0)],
-            [],
-        ),
-    )
-
-    build_v10g_sleeve(backfill=False, core_phase_hours=0)
-
-    assert calls == ["6h"]
-
-
-def test_build_v10g_sleeve_uses_1h_cache_for_nonzero_phase(monkeypatch) -> None:
+@pytest.mark.parametrize("phase", [0, 2, 5])
+def test_build_v10g_sleeve_uses_1h_cache_for_all_phases(monkeypatch, phase) -> None:
     calls: list[str] = []
     ts = datetime(2024, 1, 1, tzinfo=UTC)
     phased = pl.DataFrame({"open_time": [ts] * 500})
@@ -203,7 +168,7 @@ def test_build_v10g_sleeve_uses_1h_cache_for_nonzero_phase(monkeypatch) -> None:
         ),
     )
 
-    build_v10g_sleeve(backfill=False, core_phase_hours=2)
+    build_v10g_sleeve(backfill=False, core_phase_hours=phase)
 
     assert calls == ["1h"]
 
