@@ -225,6 +225,7 @@ def v10g_params() -> V10GStrategyParams:
         min_hold_bars=16,
         max_hold_bars=100,
         max_drawdown=1.0,
+        dd_circuit_breaker=0.0,  # Disabled: SOFT_DD_LIMIT in LiveEngine handles DD protection
     )
 
 
@@ -245,6 +246,7 @@ def overlay_params() -> V10GStrategyParams:
         tightened_stop_mult=2.3,
         signal_reversal_threshold=0.22,
         max_drawdown=1.0,
+        dd_circuit_breaker=0.0,  # Disabled: SOFT_DD_LIMIT in LiveEngine handles DD protection
         commission=0.0004,
         mom_lookbacks=[24, 72, 168],
         adx_ensemble=[20, 28, 36],
