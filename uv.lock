@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "alpha-service",
+    "backtest",
     "core",
     "cta-forge",
     "data-service",
@@ -75,6 +76,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a1/e1/7efa44789d187a1ab5f8c9710bd2788d8c1244aeecc6fb5df3549107824c/atask-0.2.1.tar.gz", hash = "sha256:7b4b02603b97a831d771d918990c857edc9f3f3fda09a9169876694213417a33", size = 3846, upload-time = "2026-04-10T13:43:05.309Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/27/fe/0709359c50b76c11807dac2a2faf4c57055fec7da7e581a092e36dd2f3b1/atask-0.2.1-py3-none-any.whl", hash = "sha256:9334b48c6b18c34ca6e9484c8719427247226afcb6d6cc58dedbf47eed1e610e", size = 4801, upload-time = "2026-04-10T13:43:04.25Z" },
+]
+
+[[package]]
+name = "backtest"
+version = "0.1.0"
+source = { editable = "libs/backtest" }
+dependencies = [
+    { name = "core" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "core", editable = "libs/core" },
+    { name = "matplotlib", specifier = ">=3.8.0" },
+    { name = "numpy", specifier = ">=2.0.0" },
 ]
 
 [[package]]
@@ -453,6 +471,7 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "alpha-service" },
+    { name = "backtest" },
     { name = "core" },
     { name = "data-service" },
     { name = "exchange" },
@@ -472,6 +491,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "alpha-service", editable = "services/alpha-service" },
+    { name = "backtest", editable = "libs/backtest" },
     { name = "core", editable = "libs/core" },
     { name = "data-service", editable = "services/data-service" },
     { name = "exchange", editable = "libs/exchange" },
@@ -780,6 +800,7 @@ version = "0.1.0"
 source = { editable = "services/executor" }
 dependencies = [
     { name = "alpha-service" },
+    { name = "backtest" },
     { name = "core" },
     { name = "dttb" },
     { name = "exchange" },
@@ -795,6 +816,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "alpha-service", editable = "services/alpha-service" },
+    { name = "backtest", editable = "libs/backtest" },
     { name = "core", editable = "libs/core" },
     { name = "dttb", specifier = ">=0.3.2" },
     { name = "exchange", editable = "libs/exchange" },
