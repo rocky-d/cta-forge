@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import time
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -836,8 +836,14 @@ def build_v16a_target_set(
     core_phase_hours: int = 0,
     backfill: bool = True,
     gate_rolling_years: float = 0.0,
+    start_date: datetime | None = None,
 ) -> V16aTargetSet:
-    """Build the full historical v16a target-weight matrix from local data."""
+    """Build the full historical v16a target-weight matrix from local data.
+
+    When ``start_date`` is set, the output timeline, weights, returns, and gate
+    are sliced to start from that date onwards. Engine replay still uses all
+    available data for warmup before the filter is applied.
+    """
     global DATA_DIR
     DATA_DIR = Path(data_dir)
 
@@ -878,6 +884,17 @@ def build_v16a_target_set(
             gross_cap=gross_cap,
         )
         target[i] = np.array([capped.get(symbol, 0.0) for symbol in symbols])
+
+    if start_date is not None:
+        idx = bisect_left(timeline, start_date)
+        if idx >= len(timeline):
+            raise ValueError(f"start_date {start_date!r} is after all timeline entries")
+        timeline = timeline[idx:]
+        v_aligned = v_aligned[idx:]
+        o_aligned = o_aligned[idx:]
+        target = target[idx:]
+        gate = gate[idx:]
+        returns = returns[idx:]
 
     return V16aTargetSet(
         timeline=timeline,

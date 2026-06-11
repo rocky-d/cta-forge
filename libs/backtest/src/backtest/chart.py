@@ -2,8 +2,8 @@
 
 Convention: 16:9 PNG with three vertically stacked panels:
   1. Normalized equity (largest)
-  2. Underwater drawdown
-  3. Monthly P&L bar chart
+  2. Underwater drawdown (filled downward from zero)
+  3. Monthly P&L chart (bar or line)
 
 At most 4 configs per chart. The module consumes ``ChartSeries`` objects
 and knows nothing about strategies, profiles, or data sources.
@@ -24,7 +24,12 @@ import numpy as np
 
 from .result import ChartSeries
 
-DEFAULT_COLORS = ["#2f81f7", "#f0883e", "#3fb950", "#f85149"]
+# ── Colour constants ─────────────────────────────────────────────
+
+EQUITY_COLORS = ["#2f81f7", "#f0883e", "#3fb950", "#f85149"]
+DD_COLOR = "#f85149"  # red — drawdown default
+BAR_POSITIVE_COLOR = "#3fb950"  # green
+BAR_NEGATIVE_COLOR = "#f85149"  # red
 
 DEFAULT_FIGSIZE = (20, 11.25)  # 16:9
 DEFAULT_DPI = 150
@@ -36,10 +41,14 @@ MAX_CONFIGS = 4
 
 @dataclass
 class PanelSpec:
-    """Definition of one panel in a comparison chart."""
+    """Definition of one panel in a comparison chart.
 
-    kind: str  # "equity", "drawdown", "monthly_bar"
-    height_ratio: float  # relative height (e.g. 6, 1.5, 2.5)
+    Supported kinds: ``"equity"``, ``"drawdown"``, ``"monthly_bar"``,
+    ``"monthly_line"``.
+    """
+
+    kind: str
+    height_ratio: float
     title: str = ""
     ylabel: str = ""
 
@@ -65,16 +74,23 @@ def create_comparison_figure(
     title: str = "",
     figsize: tuple[float, float] = DEFAULT_FIGSIZE,
     panels: list[PanelSpec] | None = None,
-    colors: list[str] | None = None,
+    equity_colors: list[str] | None = None,
+    drawdown_colors: list[str] | None = None,
+    monthly_colors: list[str] | None = None,
 ) -> plt.Figure:
     """Create a multi-panel comparison chart.
 
     Args:
         results: One ChartSeries per config (max 4).
-        title: Overall chart title (panel 1 subtitle).
+        title: Overall chart title (rendered in panel 1).
         figsize: Figure size in inches (default 16:9).
         panels: Panel definitions (default: 3-panel convention).
-        colors: Colors per series (default: DEFAULT_COLORS).
+        equity_colors: Per-series equity line colours.  Defaults to
+            ``ChartSeries.color`` falling back to ``EQUITY_COLORS``.
+        drawdown_colors: Per-series drawdown fill colours.  If omitted,
+            every series uses ``DD_COLOR`` (red).
+        monthly_colors: Per-series monthly bar colours.  If omitted, bars
+            are auto-coloured green/red by sign.
 
     Returns:
         matplotlib Figure ready for save or display.
@@ -87,23 +103,30 @@ def create_comparison_figure(
         )
 
     panels = panels or DEFAULT_PANELS
-    colors = colors or DEFAULT_COLORS
+    ec = equity_colors or [
+        r.color or EQUITY_COLORS[i % len(EQUITY_COLORS)] for i, r in enumerate(results)
+    ]
     n_panels = len(panels)
 
     fig = plt.figure(figsize=figsize, dpi=DEFAULT_DPI)
     hspace = 0.35 if n_panels >= 3 else 0.25
     gs = fig.add_gridspec(
-        n_panels, 1, height_ratios=[p.height_ratio for p in panels], hspace=hspace
+        n_panels,
+        1,
+        height_ratios=[p.height_ratio for p in panels],
+        hspace=hspace,
     )
 
     for pi, panel in enumerate(panels):
         ax = fig.add_subplot(gs[pi])
         if panel.kind == "equity":
-            _draw_equity_panel(ax, results, colors, title)
+            _draw_equity_panel(ax, results, ec, title)
         elif panel.kind == "drawdown":
-            _draw_drawdown_panel(ax, results, colors)
+            _draw_drawdown_panel(ax, results, drawdown_colors or ec)
         elif panel.kind == "monthly_bar":
-            _draw_monthly_bar_panel(ax, results, colors)
+            _draw_monthly_bar_panel(ax, results, monthly_colors)
+        elif panel.kind == "monthly_line":
+            _draw_monthly_line_panel(ax, results, monthly_colors or ec)
         else:
             raise ValueError(f"Unknown panel kind: {panel.kind!r}")
 
@@ -123,7 +146,10 @@ def save_figure(fig: plt.Figure, path: str | Path, *, dpi: int = DEFAULT_DPI) ->
 
 
 def _draw_equity_panel(
-    ax: plt.Axes, results: list[ChartSeries], colors: list[str], title: str
+    ax: plt.Axes,
+    results: list[ChartSeries],
+    colors: list[str],
+    title: str,
 ) -> None:
     for i, r in enumerate(results):
         c = colors[i % len(colors)]
@@ -149,14 +175,17 @@ def _draw_equity_panel(
 
 
 def _draw_drawdown_panel(
-    ax: plt.Axes, results: list[ChartSeries], colors: list[str]
+    ax: plt.Axes,
+    results: list[ChartSeries],
+    colors: list[str],
 ) -> None:
     for i, r in enumerate(results):
         c = colors[i % len(colors)]
         t = r.timestamps if r.timestamps is not None else np.arange(len(r.drawdown))
-        dd_pct = r.drawdown * 100  # convert fraction → %
-        ax.fill_between(t, 0, dd_pct, color=c, alpha=0.30, linewidth=0)
-        ax.plot(t, dd_pct, color=c, linewidth=0.7, alpha=0.85)
+        dd_pct = r.drawdown * 100  # positive fraction → %
+        dd_neg = -dd_pct  # underwater: fill downward from 0
+        ax.fill_between(t, 0, dd_neg, color=c, alpha=0.30, linewidth=0)
+        ax.plot(t, dd_neg, color=c, linewidth=0.7, alpha=0.85)
 
     ax.set_ylabel("Drawdown %", fontsize=LABEL_FONTSIZE)
     ax.tick_params(labelsize=TICK_FONTSIZE)
@@ -165,8 +194,11 @@ def _draw_drawdown_panel(
 
 
 def _draw_monthly_bar_panel(
-    ax: plt.Axes, results: list[ChartSeries], colors: list[str]
+    ax: plt.Axes,
+    results: list[ChartSeries],
+    colors: list[str] | None,
 ) -> None:
+    """Monthly P&L bar chart — auto-colours green/red by sign."""
     all_months = sorted(set().union(*(set(r.monthly_returns) for r in results)))
     if not all_months:
         ax.text(
@@ -186,20 +218,107 @@ def _draw_monthly_bar_panel(
     x = np.arange(n)
 
     for ri, r in enumerate(results):
-        c = colors[ri % len(colors)]
-        vals = [r.monthly_returns.get(m, 0.0) * 100 for m in all_months]  # fraction→%
+        vals = [r.monthly_returns.get(m, 0.0) * 100 for m in all_months]
         offset = (ri - (n_runs - 1) / 2) * bar_w
-        ax.bar(
-            x + offset,
+
+        if colors:
+            c = colors[ri % len(colors)]
+            ax.bar(
+                x + offset,
+                vals,
+                bar_w,
+                color=c,
+                alpha=0.82,
+                label=r.label if n_runs > 1 else None,
+                linewidth=0,
+            )
+        else:
+            # Auto-colour: green for positive, red for negative
+            pos_vals = [max(v, 0) for v in vals]
+            neg_vals = [min(v, 0) for v in vals]
+            ax.bar(
+                x + offset,
+                pos_vals,
+                bar_w,
+                color=BAR_POSITIVE_COLOR,
+                alpha=0.82,
+                linewidth=0,
+            )
+            ax.bar(
+                x + offset,
+                neg_vals,
+                bar_w,
+                color=BAR_NEGATIVE_COLOR,
+                alpha=0.82,
+                linewidth=0,
+            )
+            if n_runs > 1:
+                # Single-run legend: create proxy artists for green/red
+                from matplotlib.patches import Patch
+
+                if ri == 0:
+                    ax.legend(
+                        handles=[
+                            Patch(color=BAR_POSITIVE_COLOR, label="+"),
+                            Patch(color=BAR_NEGATIVE_COLOR, label="−"),
+                        ],
+                        fontsize=LEGEND_FONTSIZE,
+                        loc="upper left",
+                        framealpha=0.85,
+                    )
+
+    _fmt_monthly_x_ticks(ax, all_months, n)
+    ax.set_ylabel("Monthly Return %", fontsize=LABEL_FONTSIZE)
+    ax.tick_params(labelsize=TICK_FONTSIZE)
+    ax.grid(True, axis="y", alpha=GRID_ALPHA)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda y, _: f"{y:.0f}%"))
+
+
+def _draw_monthly_line_panel(
+    ax: plt.Axes,
+    results: list[ChartSeries],
+    colors: list[str],
+) -> None:
+    """Monthly P&L line chart — better for multi-config benchmarks."""
+    all_months = sorted(set().union(*(set(r.monthly_returns) for r in results)))
+    if not all_months:
+        ax.text(
+            0.5,
+            0.5,
+            "No monthly data",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=LABEL_FONTSIZE,
+        )
+        return
+
+    n = len(all_months)
+    x = np.arange(n)
+    for ri, r in enumerate(results):
+        c = colors[ri % len(colors)]
+        vals = [r.monthly_returns.get(m, 0.0) * 100 for m in all_months]
+        ax.plot(
+            x,
             vals,
-            bar_w,
             color=c,
-            alpha=0.82,
+            linewidth=1.0,
+            alpha=0.88,
+            marker="o",
+            markersize=2,
+            markevery=max(1, n // 20),
             label=r.label,
-            linewidth=0,
         )
 
-    # Smart x-tick labeling: show ~6 ticks, include year boundaries
+    _fmt_monthly_x_ticks(ax, all_months, n)
+    ax.set_ylabel("Monthly Return %", fontsize=LABEL_FONTSIZE)
+    ax.legend(fontsize=LEGEND_FONTSIZE, loc="upper left", framealpha=0.85)
+    ax.tick_params(labelsize=TICK_FONTSIZE)
+    ax.grid(True, alpha=GRID_ALPHA)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda y, _: f"{y:.0f}%"))
+
+
+def _fmt_monthly_x_ticks(ax: plt.Axes, all_months: list[str], n: int) -> None:
     tick_positions = []
     tick_labels = []
     for i, m in enumerate(all_months):
@@ -209,10 +328,3 @@ def _draw_monthly_bar_panel(
             tick_labels.append(m)
     ax.set_xticks(tick_positions)
     ax.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=6.5)
-
-    ax.set_ylabel("Monthly Return %", fontsize=LABEL_FONTSIZE)
-    if len(results) > 1:
-        ax.legend(fontsize=LEGEND_FONTSIZE, loc="upper left", framealpha=0.85)
-    ax.tick_params(labelsize=TICK_FONTSIZE)
-    ax.grid(True, axis="y", alpha=GRID_ALPHA)
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda y, _: f"{y:.0f}%"))

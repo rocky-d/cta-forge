@@ -6,9 +6,12 @@ on service-layer strategy code.
 """
 
 from backtest.chart import (
-    DEFAULT_COLORS,
+    BAR_NEGATIVE_COLOR,
+    BAR_POSITIVE_COLOR,
+    DD_COLOR,
     DEFAULT_FIGSIZE,
     DEFAULT_PANELS,
+    EQUITY_COLORS,
     MAX_CONFIGS,
     PanelSpec,
     create_comparison_figure,
@@ -22,6 +25,7 @@ from backtest.experiment import (
     OutputConfig,
     StrategyConfig,
     TimeRangeConfig,
+    compute_drawdown_series,
     compute_monthly_returns,
     run_backtest,
     save_experiment_artifacts,
@@ -50,9 +54,12 @@ __all__ = [
     "create_comparison_figure",
     "save_figure",
     "PanelSpec",
-    "DEFAULT_COLORS",
     "DEFAULT_FIGSIZE",
     "DEFAULT_PANELS",
+    "EQUITY_COLORS",
+    "DD_COLOR",
+    "BAR_POSITIVE_COLOR",
+    "BAR_NEGATIVE_COLOR",
     "MAX_CONFIGS",
     # Experiment
     "BacktestExperiment",
@@ -63,5 +70,6 @@ __all__ = [
     "OutputConfig",
     "run_backtest",
     "save_experiment_artifacts",
+    "compute_drawdown_series",
     "compute_monthly_returns",
 ]
