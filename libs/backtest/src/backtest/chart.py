@@ -5,8 +5,8 @@ Convention: 16:9 PNG with three vertically stacked panels:
   2. Underwater drawdown (filled downward from zero)
   3. Monthly P&L chart (bar or line)
 
-At most 4 configs per chart. The module consumes ``ChartSeries`` objects
-and knows nothing about strategies, profiles, or data sources.
+All panels share a common datetime x-axis.  Month-level grid lines are
+visible on all panels; month labels appear only on the bottom panel.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
@@ -27,27 +28,20 @@ from .result import ChartSeries
 # ── Colour constants ─────────────────────────────────────────────
 
 EQUITY_COLORS = ["#2f81f7", "#f0883e", "#3fb950", "#f85149"]
-DD_COLOR = "#f85149"  # red — drawdown default
-BAR_POSITIVE_COLOR = "#3fb950"  # green
-BAR_NEGATIVE_COLOR = "#f85149"  # red
+DD_COLOR = "#f85149"
+BAR_POSITIVE_COLOR = "#3fb950"
+BAR_NEGATIVE_COLOR = "#f85149"
 
 DEFAULT_FIGSIZE = (20, 11.25)  # 16:9
 DEFAULT_DPI = 150
 MAX_CONFIGS = 4
-
 
 # ── Panel specification ──────────────────────────────────────────
 
 
 @dataclass
 class PanelSpec:
-    """Definition of one panel in a comparison chart.
-
-    Supported kinds: ``"equity"``, ``"drawdown"``, ``"monthly_bar"``,
-    ``"monthly_line"``.
-    """
-
-    kind: str
+    kind: str  # "equity" | "drawdown" | "monthly_bar" | "monthly_line"
     height_ratio: float
     title: str = ""
     ylabel: str = ""
@@ -61,8 +55,9 @@ DEFAULT_PANELS = [
 
 LEGEND_FONTSIZE = 7.5
 LABEL_FONTSIZE = 9
-TICK_FONTSIZE = 7.5
-GRID_ALPHA = 0.25
+TICK_FONTSIZE = 6.5
+GRID_ALPHA = 0.20
+MONTH_LABEL_ROTATION = 45
 
 
 # ── Chart creation ───────────────────────────────────────────────
@@ -78,23 +73,6 @@ def create_comparison_figure(
     drawdown_colors: list[str] | None = None,
     monthly_colors: list[str] | None = None,
 ) -> plt.Figure:
-    """Create a multi-panel comparison chart.
-
-    Args:
-        results: One ChartSeries per config (max 4).
-        title: Overall chart title (rendered in panel 1).
-        figsize: Figure size in inches (default 16:9).
-        panels: Panel definitions (default: 3-panel convention).
-        equity_colors: Per-series equity line colours.  Defaults to
-            ``ChartSeries.color`` falling back to ``EQUITY_COLORS``.
-        drawdown_colors: Per-series drawdown fill colours.  If omitted,
-            every series uses ``DD_COLOR`` (red).
-        monthly_colors: Per-series monthly bar colours.  If omitted, bars
-            are auto-coloured green/red by sign.
-
-    Returns:
-        matplotlib Figure ready for save or display.
-    """
     if len(results) > MAX_CONFIGS:
         warnings.warn(
             f"Chart convention: max {MAX_CONFIGS} configs per chart, got "
@@ -106,19 +84,22 @@ def create_comparison_figure(
     ec = equity_colors or [
         r.color or EQUITY_COLORS[i % len(EQUITY_COLORS)] for i, r in enumerate(results)
     ]
-    n_panels = len(panels)
+    n = len(panels)
 
     fig = plt.figure(figsize=figsize, dpi=DEFAULT_DPI)
-    hspace = 0.35 if n_panels >= 3 else 0.25
     gs = fig.add_gridspec(
-        n_panels,
+        n,
         1,
         height_ratios=[p.height_ratio for p in panels],
-        hspace=hspace,
+        hspace=0.08 if n >= 3 else 0.15,
     )
 
+    axes: list[plt.Axes] = []
     for pi, panel in enumerate(panels):
-        ax = fig.add_subplot(gs[pi])
+        sharex = axes[0] if pi > 0 else None
+        ax = fig.add_subplot(gs[pi], sharex=sharex)
+        axes.append(ax)
+
         if panel.kind == "equity":
             _draw_equity_panel(ax, results, ec, title)
         elif panel.kind == "drawdown":
@@ -130,11 +111,32 @@ def create_comparison_figure(
         else:
             raise ValueError(f"Unknown panel kind: {panel.kind!r}")
 
+    # ── Shared x-axis formatting ─────────────────────────────────
+    _apply_shared_x_axis(axes, len(panels))
+
     return fig
 
 
+def _apply_shared_x_axis(axes: list[plt.Axes], n_panels: int) -> None:
+    """Month-level grid lines on all panels; labels only on the bottom."""
+    bottom = axes[-1]
+    # Month locator: every single month
+    bottom.xaxis.set_major_locator(mdates.MonthLocator())
+    bottom.xaxis.set_major_formatter(
+        mdates.ConciseDateFormatter(bottom.xaxis.get_major_locator())
+    )
+    bottom.tick_params(axis="x", labelsize=TICK_FONTSIZE, rotation=MONTH_LABEL_ROTATION)
+
+    for i, ax in enumerate(axes):
+        ax.xaxis.set_major_locator(mdates.MonthLocator())
+        ax.tick_params(axis="x", which="major", labelsize=TICK_FONTSIZE)
+        ax.grid(True, which="major", axis="x", alpha=GRID_ALPHA, linewidth=0.5)
+        if i < n_panels - 1:
+            # Hide labels on upper panels
+            ax.tick_params(axis="x", labelbottom=False)
+
+
 def save_figure(fig: plt.Figure, path: str | Path, *, dpi: int = DEFAULT_DPI) -> Path:
-    """Save figure to PNG and close it."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=dpi, bbox_inches="tight", facecolor="white", format="png")
@@ -182,8 +184,7 @@ def _draw_drawdown_panel(
     for i, r in enumerate(results):
         c = colors[i % len(colors)]
         t = r.timestamps if r.timestamps is not None else np.arange(len(r.drawdown))
-        dd_pct = r.drawdown * 100  # positive fraction → %
-        dd_neg = -dd_pct  # underwater: fill downward from 0
+        dd_neg = -(r.drawdown * 100)
         ax.fill_between(t, 0, dd_neg, color=c, alpha=0.30, linewidth=0)
         ax.plot(t, dd_neg, color=c, linewidth=0.7, alpha=0.85)
 
@@ -198,7 +199,7 @@ def _draw_monthly_bar_panel(
     results: list[ChartSeries],
     colors: list[str] | None,
 ) -> None:
-    """Monthly P&L bar chart — auto-colours green/red by sign."""
+    """Monthly P&L bar chart on a datetime x-axis shared with upper panels."""
     all_months = sorted(set().union(*(set(r.monthly_returns) for r in results)))
     if not all_months:
         ax.text(
@@ -212,48 +213,49 @@ def _draw_monthly_bar_panel(
         )
         return
 
-    n = len(all_months)
+    # Use datetime positions so grid lines align with panels 1-2
+    import datetime as dt
+
+    x_dates = [dt.datetime(int(m[:4]), int(m[5:7]), 1) for m in all_months]
     n_runs = len(results)
-    bar_w = 0.8 / n_runs
-    x = np.arange(n)
+    bar_w_days = 20.0 / n_runs
 
     for ri, r in enumerate(results):
         vals = [r.monthly_returns.get(m, 0.0) * 100 for m in all_months]
-        offset = (ri - (n_runs - 1) / 2) * bar_w
+        offset_days = (ri - (n_runs - 1) / 2) * bar_w_days
+        x_pos = [d + dt.timedelta(days=offset_days) for d in x_dates]
 
         if colors:
             c = colors[ri % len(colors)]
             ax.bar(
-                x + offset,
+                x_pos,
                 vals,
-                bar_w,
+                dt.timedelta(days=bar_w_days * 0.9),
                 color=c,
                 alpha=0.82,
                 label=r.label if n_runs > 1 else None,
                 linewidth=0,
             )
         else:
-            # Auto-colour: green for positive, red for negative
             pos_vals = [max(v, 0) for v in vals]
             neg_vals = [min(v, 0) for v in vals]
             ax.bar(
-                x + offset,
+                x_pos,
                 pos_vals,
-                bar_w,
+                dt.timedelta(days=bar_w_days * 0.9),
                 color=BAR_POSITIVE_COLOR,
                 alpha=0.82,
                 linewidth=0,
             )
             ax.bar(
-                x + offset,
+                x_pos,
                 neg_vals,
-                bar_w,
+                dt.timedelta(days=bar_w_days * 0.9),
                 color=BAR_NEGATIVE_COLOR,
                 alpha=0.82,
                 linewidth=0,
             )
             if n_runs > 1:
-                # Single-run legend: create proxy artists for green/red
                 from matplotlib.patches import Patch
 
                 if ri == 0:
@@ -267,7 +269,6 @@ def _draw_monthly_bar_panel(
                         framealpha=0.85,
                     )
 
-    _fmt_monthly_x_ticks(ax, all_months, n)
     ax.set_ylabel("Monthly Return %", fontsize=LABEL_FONTSIZE)
     ax.tick_params(labelsize=TICK_FONTSIZE)
     ax.grid(True, axis="y", alpha=GRID_ALPHA)
@@ -279,7 +280,7 @@ def _draw_monthly_line_panel(
     results: list[ChartSeries],
     colors: list[str],
 ) -> None:
-    """Monthly P&L line chart — better for multi-config benchmarks."""
+    """Monthly P&L line chart on a datetime x-axis."""
     all_months = sorted(set().union(*(set(r.monthly_returns) for r in results)))
     if not all_months:
         ax.text(
@@ -293,38 +294,26 @@ def _draw_monthly_line_panel(
         )
         return
 
-    n = len(all_months)
-    x = np.arange(n)
+    import datetime as dt
+
+    x_dates = [dt.datetime(int(m[:4]), int(m[5:7]), 1) for m in all_months]
     for ri, r in enumerate(results):
         c = colors[ri % len(colors)]
         vals = [r.monthly_returns.get(m, 0.0) * 100 for m in all_months]
         ax.plot(
-            x,
+            x_dates,
             vals,
             color=c,
             linewidth=1.0,
             alpha=0.88,
             marker="o",
             markersize=2,
-            markevery=max(1, n // 20),
+            markevery=1,
             label=r.label,
         )
 
-    _fmt_monthly_x_ticks(ax, all_months, n)
     ax.set_ylabel("Monthly Return %", fontsize=LABEL_FONTSIZE)
     ax.legend(fontsize=LEGEND_FONTSIZE, loc="upper left", framealpha=0.85)
     ax.tick_params(labelsize=TICK_FONTSIZE)
     ax.grid(True, alpha=GRID_ALPHA)
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda y, _: f"{y:.0f}%"))
-
-
-def _fmt_monthly_x_ticks(ax: plt.Axes, all_months: list[str], n: int) -> None:
-    tick_positions = []
-    tick_labels = []
-    for i, m in enumerate(all_months):
-        month = m[5:7]
-        if i % max(1, n // 6) == 0 or month == "01":
-            tick_positions.append(i)
-            tick_labels.append(m)
-    ax.set_xticks(tick_positions)
-    ax.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=6.5)
