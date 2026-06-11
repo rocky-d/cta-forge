@@ -21,6 +21,7 @@ dev = [
     "report-service",
     "exchange",
     "core",
+    "backtest",
 ]
 
 [tool.uv.sources]
@@ -31,11 +32,13 @@ executor = { workspace = true }
 report-service = { workspace = true }
 exchange = { workspace = true }
 core = { workspace = true }
+backtest = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "libs/core",
     "libs/exchange",
+    "libs/backtest",
     "services/data-service",
     "services/alpha-service",
     "services/strategy-service",

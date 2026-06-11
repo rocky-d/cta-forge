@@ -15,9 +15,11 @@ dependencies = [
     "exchange",
     "lark-bots>=0.2.2",
     "psycopg[binary]>=3.2.0",
+    "backtest",
 ]
 
 [tool.uv.sources]
 core = { workspace = true }
 alpha-service = { workspace = true }
 exchange = { workspace = true, editable = true }
+backtest = { workspace = true }
