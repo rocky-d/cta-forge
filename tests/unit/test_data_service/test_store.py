@@ -117,3 +117,37 @@ def test_read_with_time_filter(store: ParquetStore):
         end=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
     )
     assert len(result) == 2
+
+
+def test_production_data_is_perp_only() -> None:
+    """Guard: production parquet cache must not contain pre-perp-futures data."""
+    from pathlib import Path
+
+    DATA_DIR = Path("data")
+    if not DATA_DIR.exists():
+        pytest.skip("data dir not available in CI")
+
+    PERP_ERA = datetime(2019, 9, 1, tzinfo=UTC)
+    store = ParquetStore(DATA_DIR)
+
+    violations: list[str] = []
+    for sym_dir in sorted(DATA_DIR.iterdir()):
+        if not sym_dir.is_dir():
+            continue
+        sym = sym_dir.name
+        for pq_file in sym_dir.glob("*.parquet"):
+            tf = pq_file.stem
+            df = store.read(sym, tf)
+            if df.is_empty():
+                continue
+            earliest = df["open_time"].min()
+            if earliest < PERP_ERA:
+                violations.append(
+                    f"{sym}/{tf}: earliest bar at {earliest} is before {PERP_ERA}"
+                )
+
+    assert not violations, (
+        "Pre-perp-futures data detected in parquet cache. "
+        "Delete and re-fetch with data_service.fetcher (perps only from 2019-09-01).\n"
+        + "\n".join(violations)
+    )
