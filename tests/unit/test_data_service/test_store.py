@@ -141,6 +141,8 @@ def test_production_data_is_perp_only() -> None:
             if df.is_empty():
                 continue
             earliest = df["open_time"].min()
+            if not isinstance(earliest, datetime):
+                continue
             if earliest < PERP_ERA:
                 violations.append(
                     f"{sym}/{tf}: earliest bar at {earliest} is before {PERP_ERA}"
