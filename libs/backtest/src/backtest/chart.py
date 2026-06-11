@@ -120,11 +120,9 @@ def create_comparison_figure(
 def _apply_shared_x_axis(axes: list[plt.Axes], n_panels: int) -> None:
     """Month-level grid lines on all panels; labels only on the bottom."""
     bottom = axes[-1]
-    # Month locator: every single month
+    # Month locator: every single month, labelled as "YYYY-MM"
     bottom.xaxis.set_major_locator(mdates.MonthLocator())
-    bottom.xaxis.set_major_formatter(
-        mdates.ConciseDateFormatter(bottom.xaxis.get_major_locator())
-    )
+    bottom.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
     bottom.tick_params(axis="x", labelsize=TICK_FONTSIZE, rotation=MONTH_LABEL_ROTATION)
 
     for i, ax in enumerate(axes):
