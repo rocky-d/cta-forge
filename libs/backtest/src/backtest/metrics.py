@@ -78,9 +78,11 @@ def compute_metrics(
     sharpe = annualized_return / volatility if volatility > EPS else 0.0
 
     downside = returns[returns < 0]
-    downside_std = float(
-        np.std(downside, ddof=1) * np.sqrt(periods_per_year)
-    ) if len(downside) > 1 else 0.0
+    downside_std = (
+        float(np.std(downside, ddof=1) * np.sqrt(periods_per_year))
+        if len(downside) > 1
+        else 0.0
+    )
     sortino = annualized_return / downside_std if downside_std > EPS else 0.0
 
     calmar = annualized_return / max_dd if max_dd > EPS else 0.0
@@ -97,9 +99,7 @@ def compute_metrics(
         if w.ndim == 2 and w.shape[0] == n:
             avg_gross = float(np.nanmean(np.sum(np.abs(w), axis=1)))
             avg_net = float(np.nanmean(np.sum(w, axis=1)))
-            avg_turnover = float(
-                np.nanmean(np.sum(np.abs(np.diff(w, axis=0)), axis=1))
-            )
+            avg_turnover = float(np.nanmean(np.sum(np.abs(np.diff(w, axis=0)), axis=1)))
 
     # ── Monthly returns ──────────────────────────────────────────
     monthly: dict[str, float] | None = None
