@@ -124,6 +124,20 @@ def run_backtest(
     return result, metrics
 
 
+def compute_drawdown_series(equity: np.ndarray) -> np.ndarray:
+    """Compute drawdown as a fraction of running peak.
+
+    Returns a numpy array the same length as ``equity``, where each value is
+    the drawdown fraction from the current running maximum (0.0 = at peak,
+    0.05 = 5% below peak). Positive magnitudes, consistent with
+    ``BacktestMetrics.max_drawdown`` and ``ChartSeries.drawdown``.
+    """
+    running_max = np.maximum.accumulate(equity)
+    dd = (running_max - equity) / running_max
+    dd[dd < 0] = 0
+    return dd
+
+
 def compute_monthly_returns(
     timeline: list[datetime], equity: np.ndarray
 ) -> dict[str, float]:

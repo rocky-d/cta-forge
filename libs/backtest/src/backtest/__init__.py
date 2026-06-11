@@ -22,6 +22,7 @@ from backtest.experiment import (
     OutputConfig,
     StrategyConfig,
     TimeRangeConfig,
+    compute_drawdown_series,
     compute_monthly_returns,
     run_backtest,
     save_experiment_artifacts,
@@ -63,5 +64,6 @@ __all__ = [
     "OutputConfig",
     "run_backtest",
     "save_experiment_artifacts",
+    "compute_drawdown_series",
     "compute_monthly_returns",
 ]
