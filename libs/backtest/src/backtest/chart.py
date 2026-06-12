@@ -103,9 +103,11 @@ def create_comparison_figure(
         if panel.kind == "equity":
             _draw_equity_panel(ax, results, ec, title)
         elif panel.kind == "drawdown":
-            _draw_drawdown_panel(ax, results, drawdown_colors or ec)
+            dc = drawdown_colors or (ec if len(results) >= 2 else [DD_COLOR])
+            _draw_drawdown_panel(ax, results, dc)
         elif panel.kind == "monthly_bar":
-            _draw_monthly_bar_panel(ax, results, monthly_colors)
+            mc = monthly_colors or (ec if len(results) >= 2 else None)
+            _draw_monthly_bar_panel(ax, results, mc)
         elif panel.kind == "monthly_line":
             _draw_monthly_line_panel(ax, results, monthly_colors or ec)
         else:
