@@ -87,7 +87,7 @@ def run_one(label: str, *, gate_scale: float, persistence: int) -> dict:
 
     result = run_target_weight_backtest(
         ts.timeline, ts.returns, ts.target_weights,
-        initial_equity=INITIAL_EQUITY, fee=0.0004,
+        initial_equity=INITIAL_EQUITY, fee=0.000432,
     )
     metrics = calculate_hourly_metrics(result.returns, initial_equity=INITIAL_EQUITY)
 

@@ -34,7 +34,7 @@ def main():
 
     # Total via the canonical backtest
     print("Running canonical backtest...")
-    result = run_target_weight_backtest(timeline, returns, weights, initial_equity=INITIAL_EQUITY, fee=0.0004)
+    result = run_target_weight_backtest(timeline, returns, weights, initial_equity=INITIAL_EQUITY, fee=0.000432)
     total_equity = np.array([e[1] for e in result.equity_curve])
 
     # Per-symbol: same lag as run_target_weight_backtest

@@ -140,7 +140,7 @@ def main() -> None:
         target_set.returns,
         target_set.target_weights,
         initial_equity=INITIAL_EQUITY,
-        fee=0.0004,
+        fee=0.000432,
         slippage=0.0001,
         min_order_notional=10.0,
     )
@@ -174,9 +174,9 @@ def main() -> None:
         "period": f"{target_set.timeline[0].date()} -> {target_set.timeline[-1].date()}",
         "symbols": target_set.symbols,
         "gross_cap": 1.0,
-        "commission": 0.0004,
+        "commission": 0.000432,
         "execution_realistic_assumptions": {
-            "commission": 0.0004,
+            "commission": 0.000432,
             "slippage": 0.0001,
             "min_order_notional": 10.0,
             "funding_rates": "not included yet",

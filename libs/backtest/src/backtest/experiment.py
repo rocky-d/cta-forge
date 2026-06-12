@@ -46,7 +46,7 @@ class AccountConfig:
     """Account and cost parameters."""
 
     initial_equity: float = 10_000.0
-    fee: float = 0.0004
+    fee: float = 0.000432  # HL taker fee
     slippage: float = 0.0001
     min_order_notional: float = 10.0
 

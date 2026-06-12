@@ -41,7 +41,7 @@ TARGET_SCALE = 5.0       # TARGET_SCALE
 SOFT_DD = 0.15
 HARD_DD = 0.30
 CORE_PHASE = 2
-FEE = 0.0004
+FEE = 0.000432  # HL taker fee
 RUN_TAG = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 print(f"=== v16a 5x levered (exact live) ===")
