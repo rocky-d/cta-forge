@@ -7,6 +7,7 @@ No strategy knowledge — this module delegates to engine.py and metrics.py.
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -193,6 +194,8 @@ def save_experiment_artifacts(
     }
     (out_dir / "metrics.json").write_text(json.dumps(metrics_payload, indent=2))
 
+    git_commit = _git_commit_hash()
+
     config_payload = {
         "name": experiment.name,
         "symbols": experiment.symbols,
@@ -202,6 +205,8 @@ def save_experiment_artifacts(
         "strategy": asdict(experiment.strategy),
         "meta": experiment.meta,
     }
+    if git_commit:
+        config_payload["git_commit"] = git_commit
     (out_dir / "experiment.json").write_text(
         json.dumps(config_payload, indent=2, default=str)
     )
@@ -215,3 +220,19 @@ def _serialize_time_range(tr: TimeRangeConfig) -> dict[str, Any]:
         "end": tr.end.isoformat() if tr.end else None,
         "warmup_bars": tr.warmup_bars,
     }
+
+
+def _git_commit_hash() -> str | None:
+    """Return short commit hash if available, None on any failure."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None

@@ -235,25 +235,34 @@ async def run_full_backtest(
     tf = params.timeframe_str
 
     # 1. Fetch data
+    print(
+        f"[backtest] Loading {tf} bars for {len(symbols or DEFAULT_SYMBOLS)} symbols..."
+    )
     bars = await fetch_bars(data_dir, symbols, tf)
     if not bars:
+        print("[backtest] No data available — aborting.")
         return BacktestResult()
+    print(
+        f"[backtest] Loaded {sum(len(df) for df in bars.values())} bars across {len(bars)} symbols."
+    )
 
     # 2. Precompute indicators
-    # Use composite params from strategy params if available
-    # For now we use global _factor defaults, but this is the hook for profile-based signals
+    print("[backtest] Precomputing indicators...")
     data = precompute(bars, params)
 
     timeline, ts_to_idx = build_timeline(bars)
     align_data(bars, data, ts_to_idx)
+    print(f"[backtest] Unified timeline: {len(timeline)} bars.")
 
     # 3. Compute signals
+    print("[backtest] Computing signals...")
     sigs = compute_signals(data, timeline, params, btc_filter=True)
 
     # 4. Run backtest
     start = warmup
     end = len(timeline)
     days = (timeline[end - 1] - timeline[start]).days
+    print(f"[backtest] Running simulation ({days} days, {end - start} bars)...")
 
     curve, trades = run_backtest(
         data,
@@ -264,6 +273,7 @@ async def run_full_backtest(
         initial_equity=initial_equity,
         params=params,
     )
+    print(f"[backtest] Done — {len(trades)} trades, final equity {curve[-1][1]:.2f}.")
 
     return BacktestResult(
         equity_curve=curve,
