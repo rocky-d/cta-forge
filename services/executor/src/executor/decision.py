@@ -16,6 +16,8 @@ from enum import StrEnum
 
 import numpy as np
 
+from core import HL_TAKER_FEE
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,7 +50,7 @@ class V10GStrategyParams:
     risk_parity: bool = True
     signal_reversal_threshold: float = 0.15
     max_single_position_pct: float = 0.15
-    commission: float = 0.000432  # HL taker fee
+    commission: float = HL_TAKER_FEE
     # Factor params
     mom_lookbacks: list[int] = field(default_factory=lambda: [20, 60, 120])
     adx_threshold: float = 25.0

@@ -15,6 +15,8 @@ from typing import Any
 
 import numpy as np
 
+from core import HL_TAKER_FEE
+
 from .engine import run_target_weight_backtest
 from .metrics import compute_metrics
 from .result import BacktestMetrics, TargetBacktestResult
@@ -46,7 +48,7 @@ class AccountConfig:
     """Account and cost parameters."""
 
     initial_equity: float = 10_000.0
-    fee: float = 0.000432  # HL taker fee
+    fee: float = HL_TAKER_FEE
     slippage: float = 0.0001
     min_order_notional: float = 10.0
 
