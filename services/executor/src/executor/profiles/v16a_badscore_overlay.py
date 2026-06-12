@@ -265,7 +265,11 @@ def overlay_params() -> V10GStrategyParams:
 
 
 def load_bars(
-    tf: str, min_bars: int = 500, *, backfill: bool = True
+    tf: str,
+    min_bars: int = 500,
+    *,
+    backfill: bool = True,
+    min_ts: datetime | None = None,
 ) -> dict[str, pl.DataFrame]:
     """Load historical bars from parquet, optionally backfilling missing cache.
 
@@ -274,6 +278,10 @@ def load_bars(
     Live execution sets ``backfill=False`` because ``LiveEngine`` has already
     refreshed the required cache asynchronously before synchronous target
     construction begins; target generation must not start its own event loop.
+
+    When ``min_ts`` is set, bars before this timestamp are discarded before
+    any downstream computation.  This enforces a strict no-lookback cold-start
+    regime where no pre-start-date data is visible to warmup or gate.
     """
     if backfill:
         return asyncio.run(
@@ -291,6 +299,12 @@ def load_bars(
         df = store.read(symbol, tf)
         if not df.is_empty() and len(df) >= min_bars:
             bars[symbol] = df
+
+    if min_ts is not None:
+        bars = {
+            sym: df.filter(pl.col("open_time") >= min_ts) for sym, df in bars.items()
+        }
+
     return bars
 
 
@@ -569,7 +583,9 @@ def run_engine_positions(data, sigs, timeline, warmup: int, params: V10GStrategy
     return syms, weights, curve, trades
 
 
-def build_v10g_sleeve(*, backfill: bool = True, core_phase_hours: int = 2):
+def build_v10g_sleeve(
+    *, backfill: bool = True, core_phase_hours: int = 2, min_ts: datetime | None = None
+):
     """Build v10g sleeve using 1h data aggregated into 6h bars.
 
     All core-phase modes synthesize 6h bars from 1h parquet cache via
@@ -578,7 +594,7 @@ def build_v10g_sleeve(*, backfill: bool = True, core_phase_hours: int = 2):
     """
     params = v10g_params()
     core_phase_hours = validate_core_phase_hours(core_phase_hours)
-    hourly_bars = load_bars("1h", min_bars=5_000, backfill=backfill)
+    hourly_bars = load_bars("1h", min_bars=5_000, backfill=backfill, min_ts=min_ts)
     bars = {}
     for symbol, hourly in hourly_bars.items():
         phased = aggregate_phased_bars(
@@ -599,9 +615,9 @@ def build_v10g_sleeve(*, backfill: bool = True, core_phase_hours: int = 2):
     return (*run_engine_positions(data, shifted, timeline, 200, params), timeline)
 
 
-def build_overlay_sleeve(*, backfill: bool = True):
+def build_overlay_sleeve(*, backfill: bool = True, min_ts: datetime | None = None):
     params = overlay_params()
-    bars = load_bars("1h", min_bars=5_000, backfill=backfill)
+    bars = load_bars("1h", min_bars=5_000, backfill=backfill, min_ts=min_ts)
     data = precompute(bars, params)
     timeline, ts_to_idx = build_timeline(bars)
     align_data(bars, data, ts_to_idx)
@@ -838,21 +854,31 @@ def build_v16a_target_set(
     backfill: bool = True,
     gate_rolling_years: float = 3.0,
     start_date: datetime | None = None,
+    strict_start: bool = False,
 ) -> V16aTargetSet:
     """Build the full historical v16a target-weight matrix from local data.
 
     When ``start_date`` is set, the output timeline, weights, returns, and gate
     are sliced to start from that date onwards. Engine replay still uses all
     available data for warmup before the filter is applied.
+
+    When ``strict_start`` is True AND ``start_date`` is set, pre-start-date
+    bars are discarded before any computation — warmup, gate calibration, and
+    sleeve signals all operate exclusively on data from ``start_date`` onward.
+    The gate will be 1.0 for the first ~3 years (rolling window has
+    insufficient history) and warmup will delay the effective start by several
+    months.
     """
     global DATA_DIR
     DATA_DIR = Path(data_dir)
 
+    min_ts = start_date if strict_start else None
+
     v_syms, v_weights, v_curve, _v_trades, v_timeline = build_v10g_sleeve(
-        backfill=backfill, core_phase_hours=core_phase_hours
+        backfill=backfill, core_phase_hours=core_phase_hours, min_ts=min_ts
     )
     o_syms, o_weights, o_curve, _o_trades, o_timeline = build_overlay_sleeve(
-        backfill=backfill
+        backfill=backfill, min_ts=min_ts
     )
 
     start = max(v_curve[0][0], o_curve[0][0])
