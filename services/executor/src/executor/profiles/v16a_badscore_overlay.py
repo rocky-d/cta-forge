@@ -35,6 +35,7 @@ from executor.decision import (
     V10GDecisionEngine,
     V10GStrategyParams,
 )
+from core import HL_TAKER_FEE
 from executor.portfolio_backtest import calculate_hourly_metrics
 from executor.targeting import PortfolioTarget, StrategyProfile, normalize_gross
 
@@ -250,7 +251,7 @@ def overlay_params() -> V10GStrategyParams:
         signal_reversal_threshold=0.22,
         max_drawdown=1.0,
         dd_circuit_breaker=0.0,  # Disabled: SOFT_DD_LIMIT in LiveEngine handles DD protection
-        commission=0.000432,  # HL taker fee
+        commission=HL_TAKER_FEE,
         mom_lookbacks=[24, 72, 168],
         adx_ensemble=[20, 28, 36],
         adx_threshold=20.0,
