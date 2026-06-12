@@ -48,7 +48,7 @@ class V10GStrategyParams:
     risk_parity: bool = True
     signal_reversal_threshold: float = 0.15
     max_single_position_pct: float = 0.15
-    commission: float = 0.0004
+    commission: float = 0.000432  # HL taker fee
     # Factor params
     mom_lookbacks: list[int] = field(default_factory=lambda: [20, 60, 120])
     adx_threshold: float = 25.0

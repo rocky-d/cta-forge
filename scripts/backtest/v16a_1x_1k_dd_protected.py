@@ -51,7 +51,7 @@ GROSS_CAP = 1.0
 CORE_PHASE_HOURS = 2
 SOFT_DD_LIMIT = 0.03  # scaled from 0.15 for 1x (gross_cap=1.0 vs live 4.0)
 HARD_DD_LIMIT = 0.06  # scaled from 0.30 for 1x
-FEE = 0.0004
+FEE = 0.000432  # HL taker fee
 RUN_TAG = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 print(f"=== v16a 1x unlevered backtest with DD protection ===")

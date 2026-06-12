@@ -292,7 +292,7 @@ def test_v16a_online_strategy_returns_latest_non_stale_target(
     )
     target = strategy.target(datetime(2024, 1, 1, hour=1, minute=30, tzinfo=UTC))
 
-    assert calls == [(str(tmp_path), False, 0)]
+    assert calls == [(str(tmp_path), False, 2)]
     assert strategy.profile == V16A_MAINNET_PILOT_PROFILE
     assert target.timestamp == timeline[1]
     assert target.gross == pytest.approx(0.2)
@@ -301,7 +301,7 @@ def test_v16a_online_strategy_returns_latest_non_stale_target(
 
     # Cached target set should be reused inside refresh_seconds.
     strategy.target(datetime(2024, 1, 1, hour=1, minute=45, tzinfo=UTC))
-    assert calls == [(str(tmp_path), False, 0)]
+    assert calls == [(str(tmp_path), False, 2)]
 
 
 def test_v16a_online_strategy_threads_configured_core_phase(
@@ -445,12 +445,12 @@ def test_v16a_online_strategy_passes_gate_rolling_years(monkeypatch, tmp_path) -
 
     monkeypatch.setattr(v16a_module, "build_v16a_target_set", fake_build)
 
-    # Default (0.0)
+    # Default (3.0)
     strategy = V16aOnlineTargetStrategy(tmp_path)
     strategy.target(datetime(2024, 1, 1, hour=1, tzinfo=UTC))
-    assert build_calls == [0.0]
+    assert build_calls == [3.0]
 
-    # 3.0
-    strategy2 = V16aOnlineTargetStrategy(tmp_path, gate_rolling_years=3.0)
+    # Explicit 0.0 (expanding)
+    strategy2 = V16aOnlineTargetStrategy(tmp_path, gate_rolling_years=0.0)
     strategy2.target(datetime(2024, 1, 1, hour=1, tzinfo=UTC))
-    assert build_calls == [0.0, 3.0]
+    assert build_calls == [3.0, 0.0]

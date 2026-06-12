@@ -93,3 +93,14 @@ V10G_SIGNAL_REVERSAL_THRESHOLD = 0.15  # signal reversal close threshold
 # Risk limits (decimal fractions, NOT percentages)
 V10G_MAX_DRAWDOWN = 0.15  # hard stop: flatten everything
 V10G_DD_BREAKER = 0.08  # reduce position sizes by 50%
+
+# ── Hyperliquid fee schedule ─────────────────────────────────────
+# Source: https://hyperliquid.gitbook.io/hyperliquid-docs/trading/fees
+# Applies to all spot/perpetual trading on Hyperliquid.
+# CTA strategy uses taker fee as the default (conservative — assumes crossing spread).
+HL_TAKER_FEE = 0.000432  # 4.32 bps taker (0.036% with HL point rebate applied)
+HL_MAKER_FEE = 0.000144  # 1.44 bps maker (0.012% with HL point rebate applied)
+
+# ── v16a live defaults ───────────────────────────────────────────
+V16A_CORE_PHASE_HOURS = 2  # 6h core bars at UTC 02/08/14/20
+V16A_GATE_ROLLING_YEARS = 3.0  # 3-year rolling badscore gate window

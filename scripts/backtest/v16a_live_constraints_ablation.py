@@ -34,7 +34,7 @@ OUT = ROOT / "backtest-results" / "v16a_live_constraints_ablation.json"
 PHASES = [0, 2]
 TARGET_SCALE = 5.0
 TARGET_GROSS_CAP = 4.0
-FEE = 0.0004
+FEE = 0.000432  # HL taker fee
 EPS = 1e-12
 
 
@@ -210,7 +210,7 @@ def main():
             mode="target",
             min_order=0,
             max_increase=None,
-            fee=0.0004,
+            fee=0.000432,
             slippage=0.0,
         ),
         Case(
@@ -219,7 +219,7 @@ def main():
             mode="target",
             min_order=0,
             max_increase=None,
-            fee=0.0004,
+            fee=0.000432,
             slippage=0.0001,
         ),
         Case(
@@ -227,7 +227,7 @@ def main():
             initial_equity=100,
             min_order=0,
             max_increase=None,
-            fee=0.0004,
+            fee=0.000432,
             slippage=0.0,
         ),
         Case(
@@ -235,7 +235,7 @@ def main():
             initial_equity=100,
             min_order=0,
             max_increase=None,
-            fee=0.0004,
+            fee=0.000432,
             slippage=0.0001,
         ),
         Case(
@@ -243,7 +243,7 @@ def main():
             initial_equity=100,
             min_order=10,
             max_increase=None,
-            fee=0.0004,
+            fee=0.000432,
             slippage=0.0001,
         ),
         Case(
@@ -251,7 +251,7 @@ def main():
             initial_equity=100,
             min_order=0,
             max_increase=50,
-            fee=0.0004,
+            fee=0.000432,
             slippage=0.0001,
         ),
         Case(
@@ -259,7 +259,7 @@ def main():
             initial_equity=100,
             min_order=10,
             max_increase=50,
-            fee=0.0004,
+            fee=0.000432,
             slippage=0.0001,
         ),
     ]
@@ -271,7 +271,7 @@ def main():
                 initial_equity=eq,
                 min_order=10,
                 max_increase=50,
-                fee=0.0004,
+                fee=0.000432,
                 slippage=0.0001,
             )
         )
@@ -283,7 +283,7 @@ def main():
                 initial_equity=100,
                 min_order=10,
                 max_increase=max_inc,
-                fee=0.0004,
+                fee=0.000432,
                 slippage=0.0001,
             )
         )
@@ -294,7 +294,7 @@ def main():
                 initial_equity=100,
                 min_order=10,
                 max_increase=50,
-                fee=0.0004,
+                fee=0.000432,
                 slippage=0.0001,
                 target_scale=scale,
                 gross_cap=4.0,
@@ -307,7 +307,7 @@ def main():
                 initial_equity=100,
                 min_order=10,
                 max_increase=50,
-                fee=0.0004,
+                fee=0.000432,
                 slippage=0.0001,
                 target_scale=5.0,
                 gross_cap=cap,

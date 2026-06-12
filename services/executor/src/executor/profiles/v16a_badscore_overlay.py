@@ -135,8 +135,8 @@ class V16aOnlineTargetStrategy:
         max_staleness: timedelta = timedelta(hours=8),
         target_scale: float = 1.0,
         gross_cap: float = 1.0,
-        core_phase_hours: int = 0,
-        gate_rolling_years: float = 0.0,
+        core_phase_hours: int = 2,
+        gate_rolling_years: float = 3.0,
         profile: StrategyProfile = V16A_PROFILE,
     ) -> None:
         self.profile = profile
@@ -250,7 +250,7 @@ def overlay_params() -> V10GStrategyParams:
         signal_reversal_threshold=0.22,
         max_drawdown=1.0,
         dd_circuit_breaker=0.0,  # Disabled: SOFT_DD_LIMIT in LiveEngine handles DD protection
-        commission=0.0004,
+        commission=0.000432,  # HL taker fee
         mom_lookbacks=[24, 72, 168],
         adx_ensemble=[20, 28, 36],
         adx_threshold=20.0,
@@ -568,7 +568,7 @@ def run_engine_positions(data, sigs, timeline, warmup: int, params: V10GStrategy
     return syms, weights, curve, trades
 
 
-def build_v10g_sleeve(*, backfill: bool = True, core_phase_hours: int = 0):
+def build_v10g_sleeve(*, backfill: bool = True, core_phase_hours: int = 2):
     """Build v10g sleeve using 1h data aggregated into 6h bars.
 
     All core-phase modes synthesize 6h bars from 1h parquet cache via
@@ -833,9 +833,9 @@ def build_v16a_target_set(
     v10g_allocation: float = 0.5,
     overlay_allocation: float = 0.5,
     gross_cap: float = 1.0,
-    core_phase_hours: int = 0,
+    core_phase_hours: int = 2,
     backfill: bool = True,
-    gate_rolling_years: float = 0.0,
+    gate_rolling_years: float = 3.0,
     start_date: datetime | None = None,
 ) -> V16aTargetSet:
     """Build the full historical v16a target-weight matrix from local data.
