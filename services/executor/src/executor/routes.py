@@ -142,9 +142,6 @@ async def get_config() -> dict[str, Any]:
         "allow_v16a_testnet_live": _is_truthy(
             os.environ.get("ALLOW_V16A_TESTNET_LIVE")
         ),
-        "allow_mainnet_pilot_live": _is_truthy(
-            os.environ.get("ALLOW_MAINNET_PILOT_LIVE")
-        ),
         "v16a_max_staleness_hours": float(
             os.environ.get("V16A_MAX_STALENESS_HOURS", "8")
         ),
