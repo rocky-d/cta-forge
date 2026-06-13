@@ -6,20 +6,20 @@ Context: Full audit of all executor env vars + code references → 6 findings
 ## Issues & Status
 
 ### 1. `ALLOW_MAINNET_PILOT_LIVE` stale ref in routes.py
-- [ ] Code: remove from `services/executor/src/executor/routes.py:145-147`
-- [ ] Commit + push
+- [x] Code: remove from `services/executor/src/executor/routes.py:145-147`
+- [x] Commit + push → PR #27
 - [ ] CI: executor image rebuild
 - [ ] Deploy: restart executor containers on EC2
 
 ### 2. `MAX_ORDER_NOTIONAL` empty — add clarifying comment
-- [ ] Env template: `infra/env.mainnet-400-01.example` — add comment
-- [ ] Production: pilot `.env` on EC2 — add comment
-- [ ] Production: 400-01 `.env.mainnet-400-01` on EC2 — add comment
+- [x] Env template: `infra/env.mainnet-400-01.example` — add comment
+- [x] Production: pilot `.env` on EC2 — add comment
+- [x] Production: 400-01 `.env.mainnet-400-01` on EC2 — add comment
 
 ### 3. `MAX_EQUITY` vs `MAINNET_MAX_EQUITY` naming — add clarifying comment
-- [ ] Env template: `infra/env.mainnet-400-01.example` — add section comment
-- [ ] Production: pilot `.env` on EC2 — add comment
-- [ ] Production: 400-01 `.env.mainnet-400-01` on EC2 — add comment
+- [x] Env template: `infra/env.mainnet-400-01.example` — add section comment
+- [x] Production: pilot `.env` on EC2 — add comment
+- [x] Production: 400-01 `.env.mainnet-400-01` on EC2 — add comment
 
 ### 4. `TARGET_GROSS_CAP=4.00` precision
 - [x] Decision: cosmetic only, no action needed
