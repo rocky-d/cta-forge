@@ -92,7 +92,7 @@ def test_check_live_instance_env_rejects_enabled_live_flag_during_prep() -> None
 def test_check_live_instance_env_rejects_bad_values_and_paths() -> None:
     code, payload, _ = _run(
         _mainnet_400_env(
-            MAX_EQUITY="",
+            MAX_EQUITY="abc",
             MAX_ORDER_NOTIONAL="abc",
             STATE_FILE="/app/state/engine-state.json",
         )
