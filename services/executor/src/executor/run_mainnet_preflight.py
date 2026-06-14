@@ -31,12 +31,9 @@ from .profiles.v16a_badscore_overlay import (
 )
 from .run_bootstrap_live_instance import _address_hash
 from .run_live import (
-    ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
     _is_truthy,
     _parse_optional_float,
     _parse_symbols,
-    _read_mainnet_caps_from_env,
-    _validate_mainnet_caps,
 )
 from .targeting import weights_to_orders
 
@@ -73,25 +70,6 @@ async def _build_report() -> dict[str, Any]:
     max_equity = _parse_optional_float(os.environ.get("MAX_EQUITY"))
     max_order_notional = _parse_optional_float(os.environ.get("MAX_ORDER_NOTIONAL"))
     leverage = int(os.environ.get("HL_LEVERAGE", "5"))
-    allow_uncapped_orders = _is_truthy(
-        os.environ.get(ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV)
-    )
-    live_instance_id = os.environ.get("LIVE_INSTANCE_ID", "").strip()
-    dry_run = _is_truthy(os.environ.get("DRY_RUN"))
-    if not dry_run:
-        caps = _read_mainnet_caps_from_env()
-        _validate_mainnet_caps(
-            label=live_instance_id or "mainnet",
-            max_equity=max_equity,
-            max_order_notional=max_order_notional,
-            target_gross_cap=target_gross_cap,
-            leverage=leverage,
-            max_allowed_equity=caps["equity"],
-            max_allowed_order_notional=caps["order_notional"],
-            max_allowed_target_gross_cap=caps["gross_cap"],
-            max_allowed_leverage=int(caps["leverage"]),
-            allow_uncapped_orders=allow_uncapped_orders,
-        )
 
     adapter = HyperliquidAdapter(pk, addr, testnet=False)
     try:
@@ -180,10 +158,9 @@ async def _build_report() -> dict[str, Any]:
             "ts": datetime.now(tz=UTC).isoformat(),
             "network": "mainnet",
             "address_prefix": addr[:10],
-            "caps": {
+            "limits": {
                 "max_equity": max_equity,
                 "max_order_notional": max_order_notional,
-                "allow_uncapped_orders": allow_uncapped_orders,
                 "target_gross_cap": target_gross_cap,
                 "v16a_core_phase_hours": v16a_core_phase_hours,
                 "leverage": leverage,

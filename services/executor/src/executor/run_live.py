@@ -67,74 +67,6 @@ def _load_runtime_identity(env: Mapping[str, str] = os.environ) -> RuntimeIdenti
 
 MAINNET_400_LIVE_INSTANCE_ID = "mainnet-400-01"
 
-MAINNET_MAX_EQUITY_ENV = "MAINNET_MAX_EQUITY"
-MAINNET_MAX_ORDER_NOTIONAL_ENV = "MAINNET_MAX_ORDER_NOTIONAL"
-MAINNET_MAX_GROSS_CAP_ENV = "MAINNET_MAX_GROSS_CAP"
-MAINNET_MAX_LEVERAGE_ENV = "MAINNET_MAX_LEVERAGE"
-ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV = "ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS"
-
-
-def _read_mainnet_caps_from_env(
-    env: Mapping[str, str] | None = None,
-) -> dict[str, float]:
-    """Read per-instance mainnet safety caps from environment.
-
-    Each instance carries its own caps in its .env file.
-    An unset cap defaults to 0, which causes all live validation to fail
-    — this is intentional: caps must be explicitly configured.
-    """
-    source = env if env is not None else os.environ
-    return {
-        "equity": float(source.get(MAINNET_MAX_EQUITY_ENV, "0")),
-        "order_notional": float(source.get(MAINNET_MAX_ORDER_NOTIONAL_ENV, "0")),
-        "gross_cap": float(source.get(MAINNET_MAX_GROSS_CAP_ENV, "0")),
-        "leverage": float(source.get(MAINNET_MAX_LEVERAGE_ENV, "0")),
-    }
-
-
-def _validate_mainnet_caps(
-    *,
-    label: str,
-    max_equity: float | None,
-    max_order_notional: float | None,
-    target_gross_cap: float,
-    leverage: int,
-    max_allowed_equity: float,
-    max_allowed_order_notional: float,
-    max_allowed_target_gross_cap: float,
-    max_allowed_leverage: int,
-    allow_uncapped_orders: bool = False,
-) -> None:
-    """Require explicit bounded risk caps for guarded mainnet live modes."""
-    if max_equity is None or max_equity > max_allowed_equity:
-        msg = f"{label} live requires MAX_EQUITY <= {max_allowed_equity:g}"
-        raise ValueError(msg)
-    if max_order_notional is None:
-        if not allow_uncapped_orders:
-            msg = (
-                f"{label} live requires "
-                f"MAX_ORDER_NOTIONAL <= {max_allowed_order_notional:g} "
-                f"unless {ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV}=true"
-            )
-            raise ValueError(msg)
-    elif max_order_notional > max_allowed_order_notional:
-        msg = (
-            f"{label} live requires "
-            f"MAX_ORDER_NOTIONAL <= {max_allowed_order_notional:g}; "
-            "use an empty MAX_ORDER_NOTIONAL with "
-            f"{ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV}=true for no-max mode"
-        )
-        raise ValueError(msg)
-    if target_gross_cap > max_allowed_target_gross_cap:
-        msg = (
-            f"{label} live requires "
-            f"TARGET_GROSS_CAP <= {max_allowed_target_gross_cap:g}"
-        )
-        raise ValueError(msg)
-    if leverage > max_allowed_leverage:
-        msg = f"{label} live requires HL_LEVERAGE <= {max_allowed_leverage}"
-        raise ValueError(msg)
-
 
 def _validate_v16a_live_mode(
     *,
@@ -143,13 +75,6 @@ def _validate_v16a_live_mode(
     strategy_profile: str = V16A_PROFILE_SLUG,
     allow_live: bool = False,
     allow_testnet_live: bool = False,
-    live_instance_id: str | None = None,
-    enforce_pilot_caps: bool = False,
-    max_equity: float | None = None,
-    max_order_notional: float | None = None,
-    target_gross_cap: float = 1.0,
-    leverage: int = LiveEngine.DEFAULT_LEVERAGE,
-    allow_uncapped_orders: bool = False,
 ) -> None:
     """Validate v16a live-mode guardrails before constructing the engine."""
     if dry_run:
@@ -161,20 +86,6 @@ def _validate_v16a_live_mode(
         if not allow_live:
             msg = "Non-dry-run requires ALLOW_LIVE=true"
             raise ValueError(msg)
-        if enforce_pilot_caps:
-            caps = _read_mainnet_caps_from_env()
-            _validate_mainnet_caps(
-                label=live_instance_id or "mainnet",
-                max_equity=max_equity,
-                max_order_notional=max_order_notional,
-                target_gross_cap=target_gross_cap,
-                leverage=leverage,
-                max_allowed_equity=caps["equity"],
-                max_allowed_order_notional=caps["order_notional"],
-                max_allowed_target_gross_cap=caps["gross_cap"],
-                max_allowed_leverage=int(caps["leverage"]),
-                allow_uncapped_orders=allow_uncapped_orders,
-            )
         return
     if not testnet:
         msg = f"{V16A_PROFILE_SLUG} non-dry-run is only allowed on HL_NETWORK=testnet"
@@ -310,10 +221,6 @@ def main() -> None:
     )
     allow_v16a_testnet_live = _is_truthy(os.environ.get("ALLOW_V16A_TESTNET_LIVE"))
     allow_live = _is_truthy(os.environ.get("ALLOW_LIVE"))
-    allow_uncapped_orders = _is_truthy(
-        os.environ.get(ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV)
-    )
-
     try:
         _validate_mainnet_non_dry_run_profile(
             dry_run=dry_run, testnet=testnet, strategy_profile=strategy_profile
@@ -331,13 +238,6 @@ def main() -> None:
                 strategy_profile=strategy_profile,
                 allow_live=allow_live,
                 allow_testnet_live=allow_v16a_testnet_live,
-                live_instance_id=identity.live_instance_id,
-                enforce_pilot_caps=True,
-                max_equity=max_equity,
-                max_order_notional=max_order_notional,
-                target_gross_cap=target_gross_cap,
-                leverage=leverage,
-                allow_uncapped_orders=allow_uncapped_orders,
             )
         except ValueError as exc:
             logging.error("%s", exc)
