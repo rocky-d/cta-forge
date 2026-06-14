@@ -24,10 +24,6 @@ def _mainnet_400_env(**overrides: str) -> dict[str, str]:
         "MAX_ORDER_NOTIONAL": "50",
         "TARGET_GROSS_CAP": "1.00",
         "HL_LEVERAGE": "5",
-        "MAINNET_MAX_EQUITY": "500",
-        "MAINNET_MAX_ORDER_NOTIONAL": "50",
-        "MAINNET_MAX_GROSS_CAP": "4.0",
-        "MAINNET_MAX_LEVERAGE": "5",
         "HL_PRIVATE_KEY": "",
         "HL_ACCOUNT_ADDRESS": "",
     }
@@ -93,18 +89,18 @@ def test_check_live_instance_env_rejects_enabled_live_flag_during_prep() -> None
     assert live_flag_check["ok"] is False
 
 
-def test_check_live_instance_env_rejects_bad_caps_and_paths() -> None:
+def test_check_live_instance_env_rejects_bad_values_and_paths() -> None:
     code, payload, _ = _run(
         _mainnet_400_env(
-            MAX_EQUITY="501",
-            HL_LEVERAGE="6",
+            MAX_EQUITY="",
+            MAX_ORDER_NOTIONAL="abc",
             STATE_FILE="/app/state/engine-state.json",
         )
     )
 
     assert code == 2
     failed = {check["name"] for check in payload["checks"] if not check["ok"]}
-    assert {"max_equity", "hl_leverage", "state_file"}.issubset(failed)
+    assert {"max_equity", "max_order_notional", "state_file"}.issubset(failed)
 
 
 def test_check_live_instance_env_can_require_private_secrets_without_printing_them() -> (

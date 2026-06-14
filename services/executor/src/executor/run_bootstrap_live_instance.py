@@ -46,9 +46,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--account-id", default=os.environ.get("EXCHANGE_ACCOUNT_ID"))
     parser.add_argument("--exchange", default="hyperliquid")
     parser.add_argument("--network", default=os.environ.get("HL_NETWORK", "mainnet"))
-    parser.add_argument(
-        "--account-label", default=os.environ.get("EXCHANGE_ACCOUNT_LABEL")
-    )
+    parser.add_argument("--account-label")
     parser.add_argument(
         "--account-address", default=os.environ.get("HL_ACCOUNT_ADDRESS")
     )
@@ -58,9 +56,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--public-instance-slug", default=os.environ.get("PUBLIC_INSTANCE_SLUG")
     )
-    parser.add_argument(
-        "--display-name", default=os.environ.get("PUBLIC_INSTANCE_DISPLAY_NAME")
-    )
+    parser.add_argument("--display-name")
     parser.add_argument(
         "--mode",
         choices=["dry_run", "testnet_live", "mainnet_pilot", "mainnet_live"],

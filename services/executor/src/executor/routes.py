@@ -20,13 +20,7 @@ from .profiles.v16a_badscore_overlay import (
     V16A_MAINNET_PILOT_PROFILE,
     validate_core_phase_hours,
 )
-from .run_live import (
-    ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
-    MAINNET_MAX_EQUITY_ENV,
-    MAINNET_MAX_ORDER_NOTIONAL_ENV,
-    MAINNET_MAX_GROSS_CAP_ENV,
-    MAINNET_MAX_LEVERAGE_ENV,
-)
+
 
 router = APIRouter()
 
@@ -150,9 +144,6 @@ async def get_config() -> dict[str, Any]:
         ),
         "min_order_notional": float(os.environ.get("MIN_ORDER_NOTIONAL", "10")),
         "max_order_notional": _optional_float_from_env("MAX_ORDER_NOTIONAL"),
-        "allow_mainnet_pilot_uncapped_orders": _is_truthy(
-            os.environ.get(ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV)
-        ),
         "min_equity": _optional_float_from_env("MIN_EQUITY"),
         "min_available_balance": _optional_float_from_env("MIN_AVAILABLE_BALANCE"),
         "max_equity": _optional_float_from_env("MAX_EQUITY"),
@@ -166,15 +157,6 @@ async def get_config() -> dict[str, Any]:
             for symbol in os.environ.get("LIVE_SYMBOLS", "").split(",")
             if symbol.strip()
         ],
-        "mainnet_pilot_caps": {
-            "max_equity": float(os.environ.get(MAINNET_MAX_EQUITY_ENV, "200")),
-            "max_order_notional": float(
-                os.environ.get(MAINNET_MAX_ORDER_NOTIONAL_ENV, "50")
-            ),
-            "uncapped_orders_env": ALLOW_MAINNET_PILOT_UNCAPPED_ORDERS_ENV,
-            "target_gross_cap": float(os.environ.get(MAINNET_MAX_GROSS_CAP_ENV, "4.0")),
-            "leverage": float(os.environ.get(MAINNET_MAX_LEVERAGE_ENV, "5")),
-        },
     }
 
 

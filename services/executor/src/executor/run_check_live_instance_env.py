@@ -21,7 +21,6 @@ from .profiles.v16a_badscore_overlay import V16A_MAINNET_PILOT_PROFILE
 from .run_live import (
     MAINNET_400_LIVE_INSTANCE_ID,
     _is_truthy,
-    _read_mainnet_caps_from_env,
 )
 
 
@@ -111,7 +110,6 @@ def _validate_mainnet_400_env(
     allow_non_dry_run: bool,
     require_secrets: bool,
 ) -> list[CheckResult]:
-    caps = _read_mainnet_caps_from_env(env)
     return [
         _check_equals(
             "persistence_backend", env.get("PERSISTENCE_BACKEND"), "postgres"
@@ -137,26 +135,10 @@ def _validate_mainnet_400_env(
         ),
         _check_path_mentions_instance("state_file", env.get("STATE_FILE")),
         _check_path_mentions_instance("journal_dir", env.get("JOURNAL_DIR")),
-        _check_cap(
-            "max_equity",
-            env.get("MAX_EQUITY"),
-            caps["equity"],
-        ),
-        _check_cap(
-            "max_order_notional",
-            env.get("MAX_ORDER_NOTIONAL"),
-            caps["order_notional"],
-        ),
-        _check_cap(
-            "target_gross_cap",
-            env.get("TARGET_GROSS_CAP"),
-            caps["gross_cap"],
-        ),
-        _check_int_cap(
-            "hl_leverage",
-            env.get("HL_LEVERAGE"),
-            caps["leverage"],
-        ),
+        _check_present_positive("max_equity", env.get("MAX_EQUITY")),
+        _check_positive_or_empty("max_order_notional", env.get("MAX_ORDER_NOTIONAL")),
+        _check_present_positive("target_gross_cap", env.get("TARGET_GROSS_CAP")),
+        _check_present_positive_int("hl_leverage", env.get("HL_LEVERAGE")),
         _check_secrets(env, require_secrets=require_secrets),
     ]
 
@@ -267,28 +249,39 @@ def _check_path_mentions_instance(name: str, value: str | None) -> CheckResult:
     )
 
 
-def _check_cap(name: str, value: str | None, maximum: float) -> CheckResult:
+def _check_present_positive(name: str, value: str | None) -> CheckResult:
+    """Validate that a numeric env var is present and > 0."""
     actual = _optional_text(value)
     try:
         parsed = float(actual or "")
     except ValueError:
-        return CheckResult(name, False, f"must be a number <= {maximum:g}")
-    ok = parsed <= maximum
-    return CheckResult(
-        name, ok, f"{parsed:g} <= {maximum:g}" if ok else f"{parsed:g} > {maximum:g}"
-    )
+        return CheckResult(name, False, "must be a positive number")
+    ok = parsed > 0
+    return CheckResult(name, ok, f"{parsed:g}" if ok else "must be > 0")
 
 
-def _check_int_cap(name: str, value: str | None, maximum: int) -> CheckResult:
+def _check_positive_or_empty(name: str, value: str | None) -> CheckResult:
+    """Validate that a numeric env var is either empty (uncapped) or > 0."""
+    actual = _optional_text(value)
+    if actual is None:
+        return CheckResult(name, True, "empty (uncapped)")
+    try:
+        parsed = float(actual)
+    except ValueError:
+        return CheckResult(name, False, "must be a positive number or empty")
+    ok = parsed > 0
+    return CheckResult(name, ok, f"{parsed:g}" if ok else "must be > 0 or empty")
+
+
+def _check_present_positive_int(name: str, value: str | None) -> CheckResult:
+    """Validate that an integer env var is present and > 0."""
     actual = _optional_text(value)
     try:
         parsed = int(actual or "")
     except ValueError:
-        return CheckResult(name, False, f"must be an integer <= {maximum}")
-    ok = parsed <= maximum
-    return CheckResult(
-        name, ok, f"{parsed} <= {maximum}" if ok else f"{parsed} > {maximum}"
-    )
+        return CheckResult(name, False, "must be a positive integer")
+    ok = parsed > 0
+    return CheckResult(name, ok, f"{parsed}" if ok else "must be > 0")
 
 
 def _check_secrets(env: Mapping[str, str], *, require_secrets: bool) -> CheckResult:
