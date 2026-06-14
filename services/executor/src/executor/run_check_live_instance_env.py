@@ -135,7 +135,7 @@ def _validate_mainnet_400_env(
         ),
         _check_path_mentions_instance("state_file", env.get("STATE_FILE")),
         _check_path_mentions_instance("journal_dir", env.get("JOURNAL_DIR")),
-        _check_present_positive("max_equity", env.get("MAX_EQUITY")),
+        _check_positive_or_empty("max_equity", env.get("MAX_EQUITY")),
         _check_positive_or_empty("max_order_notional", env.get("MAX_ORDER_NOTIONAL")),
         _check_present_positive("target_gross_cap", env.get("TARGET_GROSS_CAP")),
         _check_present_positive_int("hl_leverage", env.get("HL_LEVERAGE")),

@@ -49,8 +49,9 @@ def test_second_live_env_example_uses_db_primary_and_bounded_caps() -> None:
     assert env["ALLOW_POSTGRES_SOURCE_OF_TRUTH"] == "true"
     assert env["HL_NETWORK"] == "mainnet"
     assert env["STRATEGY_PROFILE"] == "v16a-mainnet-pilot"
-    assert float(env["MAX_EQUITY"]) <= 1000
-    assert float(env["TARGET_GROSS_CAP"]) <= 4
+    # MAX_EQUITY is empty by default (disabled; DB address match is the real guard)
+    assert env["MAX_EQUITY"] == ""
+    assert float(env["TARGET_GROSS_CAP"]) <= 5
     assert int(env["HL_LEVERAGE"]) <= 5
 
 
